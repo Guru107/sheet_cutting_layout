@@ -22,6 +22,8 @@
   "no_of_strips",
   "parts_per_sheet",
   "status",
+  "project_manager_ok",
+  "manufacturing_manager_ok",
   "finished_parts",
   "end_pieces",
   "approval_snapshot",
@@ -131,8 +133,24 @@
    "fieldtype": "Select",
    "in_list_view": 1,
    "label": "Status",
-   "options": "Draft\nSubmitted for Check\nChecked\nApproved by Purchase\nRelease Pending Impact\nReleased\nRejected",
+   "options": "Draft\nSubmitted for Check\nChecked\nApproved by Purchase\nRelease Pending Impact\nReleased\nRejected\nSuperseded",
    "reqd": 1
+  },
+  {
+   "default": "0",
+   "fieldname": "project_manager_ok",
+   "fieldtype": "Check",
+   "hidden": 1,
+   "label": "Project Manager OK",
+   "read_only": 1
+  },
+  {
+   "default": "0",
+   "fieldname": "manufacturing_manager_ok",
+   "fieldtype": "Check",
+   "hidden": 1,
+   "label": "Manufacturing Manager OK",
+   "read_only": 1
   },
   {
    "fieldname": "finished_parts",

@@ -35,6 +35,8 @@ def test_sheet_cutting_layout_doctypes_define_normalized_model() -> None:
 		"no_of_strips",
 		"parts_per_sheet",
 		"status",
+		"project_manager_ok",
+		"manufacturing_manager_ok",
 	}.issubset(parent_fields)
 	assert_float_fields(
 		parent_fields,
@@ -46,6 +48,7 @@ def test_sheet_cutting_layout_doctypes_define_normalized_model() -> None:
 		},
 	)
 	assert_int_fields(parent_fields, {"parts_per_strip", "no_of_strips", "parts_per_sheet"})
+	assert_check_fields(parent_fields, {"project_manager_ok", "manufacturing_manager_ok"})
 
 	assert_table_field(parent_fields["finished_parts"], "Layout Finished Part")
 	assert_table_field(parent_fields["end_pieces"], "Layout End Piece")
@@ -93,12 +96,32 @@ def test_sheet_cutting_layout_doctypes_define_normalized_model() -> None:
 	)
 
 
+def test_workflow_fixture_uses_draft_docstatus_for_non_submittable_layout() -> None:
+	workflow = load_workflow_fixture()
+	states = workflow.get("states")
+	assert isinstance(states, list)
+
+	for state in states:
+		assert isinstance(state, dict)
+		assert state.get("doc_status") == "0"
+
+
 def load_doctype(directory: str, filename: str) -> DocTypeJSON:
 	doctype_path = DOCTYPE_ROOT / directory / f"{filename}.json"
 	assert doctype_path.exists(), f"Missing DocType JSON: {doctype_path}"
 	loaded = json.loads(doctype_path.read_text(encoding="utf-8"))
 	assert isinstance(loaded, dict)
 	return loaded
+
+
+def load_workflow_fixture() -> DocTypeJSON:
+	fixture_path = DOCTYPE_ROOT.parents[1] / "fixtures" / "workflow.json"
+	loaded = json.loads(fixture_path.read_text(encoding="utf-8"))
+	assert isinstance(loaded, list)
+	assert len(loaded) == 1
+	workflow = loaded[0]
+	assert isinstance(workflow, dict)
+	return workflow
 
 
 def fields_by_name(doctype: DocTypeJSON) -> dict[str, FieldJSON]:
@@ -127,6 +150,11 @@ def assert_float_fields(fields: dict[str, FieldJSON], fieldnames: set[str]) -> N
 def assert_int_fields(fields: dict[str, FieldJSON], fieldnames: set[str]) -> None:
 	for fieldname in fieldnames:
 		assert fields[fieldname].get("fieldtype") == "Int"
+
+
+def assert_check_fields(fields: dict[str, FieldJSON], fieldnames: set[str]) -> None:
+	for fieldname in fieldnames:
+		assert fields[fieldname].get("fieldtype") == "Check"
 
 
 def assert_child_doctype_fields(directory: str, filename: str, name: str, required_fields: set[str]) -> None:
