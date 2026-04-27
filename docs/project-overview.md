@@ -11,13 +11,13 @@ Two local bench workspaces are available:
 - `~/Workspace/bench15`
 - `~/Workspace/bench16`
 
-Local MariaDB credentials for development:
+Store local-only environment details in an ignored `.env` file. Use `.env.example` as the template:
 
-- Username: `gurudattkulkarni`
-- Password: `123`
+```bash
+cp .env.example .env
+```
 
-Treat these as local-only development credentials. Do not reuse them for production or shared
-environments.
+Do not commit local MariaDB credentials, bench site config, or production secrets.
 
 ## Repository Structure
 
