@@ -108,6 +108,29 @@ def test_workflow_fixture_uses_draft_docstatus_for_non_submittable_layout() -> N
 		assert state.get("doc_status") == "0"
 
 
+def test_workflow_states_are_exported_as_master_records() -> None:
+	workflow_states = load_workflow_states_fixture()
+	workflow = load_workflow_fixture()
+	states = workflow.get("states")
+	assert isinstance(states, list)
+
+	expected_states = {state["state"] for state in states if isinstance(state.get("state"), str)}
+	exported_states = {state.get("name") for state in workflow_states}
+
+	assert expected_states.issubset(exported_states)
+
+
+def test_child_doctypes_have_controller_modules_for_frappe_sync() -> None:
+	for directory, filename in (
+		("layout_finished_part", "layout_finished_part"),
+		("layout_end_piece", "layout_end_piece"),
+		("layout_approval_snapshot", "layout_approval_snapshot"),
+		("layout_impact_resolution", "layout_impact_resolution"),
+	):
+		controller_path = DOCTYPE_ROOT / directory / f"{filename}.py"
+		assert controller_path.exists(), f"Missing DocType controller: {controller_path}"
+
+
 def load_doctype(directory: str, filename: str) -> DocTypeJSON:
 	doctype_path = DOCTYPE_ROOT / directory / f"{filename}.json"
 	assert doctype_path.exists(), f"Missing DocType JSON: {doctype_path}"
@@ -124,6 +147,15 @@ def load_workflow_fixture() -> DocTypeJSON:
 	workflow = loaded[0]
 	assert isinstance(workflow, dict)
 	return workflow
+
+
+def load_workflow_states_fixture() -> list[DocTypeJSON]:
+	fixture_path = DOCTYPE_ROOT.parents[1] / "fixtures" / "workflow_state.json"
+	loaded = json.loads(fixture_path.read_text(encoding="utf-8"))
+	assert isinstance(loaded, list)
+	for state in loaded:
+		assert isinstance(state, dict)
+	return loaded
 
 
 def fields_by_name(doctype: DocTypeJSON) -> dict[str, FieldJSON]:

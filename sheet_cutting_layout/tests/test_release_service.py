@@ -111,6 +111,25 @@ class FrappeLikeLayout(Layout):
 def test_hooks_exposes_required_fixtures() -> None:
 	expected_fixtures = [
 		{
+			"dt": "Workflow State",
+			"filters": [
+				[
+					"name",
+					"in",
+					[
+						"Draft",
+						"Submitted for Check",
+						"Checked",
+						"Approved by Purchase",
+						"Release Pending Impact",
+						"Released",
+						"Rejected",
+						"Superseded",
+					],
+				]
+			],
+		},
+		{
 			"dt": "Workflow",
 			"filters": [["name", "=", "Sheet Cutting Layout Approval Workflow"]],
 		},
@@ -123,7 +142,7 @@ def test_hooks_exposes_required_fixtures() -> None:
 	assert hooks.fixtures == expected_fixtures
 
 	fixtures_dir = Path(__file__).resolve().parents[1] / "fixtures"
-	for fixture_file_name in ("workflow.json", "custom_field.json"):
+	for fixture_file_name in ("workflow_state.json", "workflow.json", "custom_field.json"):
 		fixture_path = fixtures_dir / fixture_file_name
 
 		assert fixture_path.exists()

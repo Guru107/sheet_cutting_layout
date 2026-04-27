@@ -1,0 +1,58 @@
+[
+ {
+  "doctype": "Workflow State",
+  "icon": "edit",
+  "name": "Draft",
+  "style": "Primary",
+  "workflow_state_name": "Draft"
+ },
+ {
+  "doctype": "Workflow State",
+  "icon": "right",
+  "name": "Submitted for Check",
+  "style": "Info",
+  "workflow_state_name": "Submitted for Check"
+ },
+ {
+  "doctype": "Workflow State",
+  "icon": "right",
+  "name": "Checked",
+  "style": "Info",
+  "workflow_state_name": "Checked"
+ },
+ {
+  "doctype": "Workflow State",
+  "icon": "right",
+  "name": "Approved by Purchase",
+  "style": "Info",
+  "workflow_state_name": "Approved by Purchase"
+ },
+ {
+  "doctype": "Workflow State",
+  "icon": "time",
+  "name": "Release Pending Impact",
+  "style": "Warning",
+  "workflow_state_name": "Release Pending Impact"
+ },
+ {
+  "doctype": "Workflow State",
+  "icon": "ok",
+  "name": "Released",
+  "style": "Success",
+  "workflow_state_name": "Released"
+ },
+ {
+  "doctype": "Workflow State",
+  "icon": "remove",
+  "name": "Rejected",
+  "style": "Danger",
+  "workflow_state_name": "Rejected"
+ },
+ {
+  "doctype": "Workflow State",
+  "icon": "ban-circle",
+  "name": "Superseded",
+  "style": "Warning",
+  "workflow_state_name": "Superseded"
+ }
+]

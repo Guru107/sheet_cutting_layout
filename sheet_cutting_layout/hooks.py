@@ -6,6 +6,25 @@ app_email = "connect@gurudatt.in"
 app_license = "mit"
 
 fixtures = [
+	{
+		"dt": "Workflow State",
+		"filters": [
+			[
+				"name",
+				"in",
+				[
+					"Draft",
+					"Submitted for Check",
+					"Checked",
+					"Approved by Purchase",
+					"Release Pending Impact",
+					"Released",
+					"Rejected",
+					"Superseded",
+				],
+			]
+		],
+	},
 	{"dt": "Workflow", "filters": [["name", "=", "Sheet Cutting Layout Approval Workflow"]]},
 	{"dt": "Custom Field", "filters": [["dt", "in", ["BOM", "Work Order", "Production Plan"]]]},
 ]
