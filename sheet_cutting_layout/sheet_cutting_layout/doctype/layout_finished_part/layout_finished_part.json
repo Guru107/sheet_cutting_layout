@@ -1,0 +1,63 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "creation": "2026-04-27 00:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "finished_part_item",
+  "parts_per_sheet",
+  "gross_weight_per_part_kg",
+  "scrap_weight_per_part_kg",
+  "generated_bom"
+ ],
+ "fields": [
+  {
+   "fieldname": "finished_part_item",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Finished Part Item",
+   "options": "Item",
+   "reqd": 1
+  },
+  {
+   "fieldname": "parts_per_sheet",
+   "fieldtype": "Int",
+   "in_list_view": 1,
+   "label": "Parts Per Sheet",
+   "reqd": 1
+  },
+  {
+   "fieldname": "gross_weight_per_part_kg",
+   "fieldtype": "Float",
+   "in_list_view": 1,
+   "label": "Gross Weight Per Part Kg",
+   "reqd": 1
+  },
+  {
+   "fieldname": "scrap_weight_per_part_kg",
+   "fieldtype": "Float",
+   "in_list_view": 1,
+   "label": "Scrap Weight Per Part Kg"
+  },
+  {
+   "fieldname": "generated_bom",
+   "fieldtype": "Link",
+   "label": "Generated BOM",
+   "options": "BOM",
+   "read_only": 1
+  }
+ ],
+ "istable": 1,
+ "links": [],
+ "modified": "2026-04-27 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Sheet Cutting Layout",
+ "name": "Layout Finished Part",
+ "owner": "Administrator",
+ "permissions": [],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}
