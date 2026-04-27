@@ -3,6 +3,11 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass, field
 from math import inf, isfinite, nan
+from string import ascii_letters, digits
+
+import pytest
+from hypothesis import given, settings
+from hypothesis import strategies as st
 
 
 @dataclass
@@ -24,6 +29,7 @@ class EndPiece:
 
 @dataclass
 class Layout:
+	raw_material_item: str = "RAW-SHEET"
 	sheet_width_mm: float = 1000
 	sheet_length_mm: float = 2000
 	sheet_thickness_mm: float = 1.2
@@ -139,6 +145,102 @@ def test_canvas_payload_is_strict_json_serializable_for_non_finite_inputs() -> N
 	json.dumps(payload, allow_nan=False)
 
 
+@dataclass
+class LayoutCase:
+	layout: Layout
+	finished_part: FinishedPart
+	expected_derived_fg_weight_kg: float
+
+
+@st.composite
+def layout_case_strategy(draw: st.DrawFn) -> LayoutCase:
+	parts_per_sheet = draw(st.integers(min_value=1, max_value=200))
+	end_pieces = draw(end_pieces_strategy())
+	process_scrap = draw(finite_weight_strategy())
+	derived_fg_weight = draw(finite_weight_strategy())
+	distributed_end_piece_scrap = sum(
+		(end_piece.weight_kg * end_piece.qty_per_sheet) / parts_per_sheet for end_piece in end_pieces
+	)
+	gross_weight = process_scrap + distributed_end_piece_scrap + derived_fg_weight
+
+	return LayoutCase(
+		layout=Layout(end_pieces=end_pieces),
+		finished_part=FinishedPart(
+			finished_part_item=draw(finished_part_code_strategy()),
+			parts_per_sheet=parts_per_sheet,
+			gross_weight_per_part_kg=gross_weight,
+			scrap_weight_per_part_kg=process_scrap,
+		),
+		expected_derived_fg_weight_kg=derived_fg_weight,
+	)
+
+
+def finished_part_code_strategy() -> st.SearchStrategy[str]:
+	return st.text(alphabet=ascii_letters + digits, min_size=1, max_size=24).map(lambda code: f"{code}SHR")
+
+
+def end_pieces_strategy() -> st.SearchStrategy[list[EndPiece]]:
+	return st.lists(
+		st.builds(
+			EndPiece,
+			end_piece_item=st.text(alphabet=ascii_letters + digits, min_size=1, max_size=24).map(
+				lambda code: f"END{code}"
+			),
+			weight_kg=finite_weight_strategy(),
+			qty_per_sheet=positive_finite_weight_strategy(),
+		),
+		max_size=5,
+	)
+
+
+def finite_weight_strategy() -> st.SearchStrategy[float]:
+	return st.floats(
+		min_value=0,
+		max_value=10_000,
+		allow_nan=False,
+		allow_infinity=False,
+		width=32,
+	)
+
+
+def positive_finite_weight_strategy() -> st.SearchStrategy[float]:
+	return st.floats(
+		min_value=0,
+		max_value=10_000,
+		allow_nan=False,
+		allow_infinity=False,
+		width=32,
+		exclude_min=True,
+	)
+
+
+@given(layout_case_strategy())
+@settings(max_examples=40)
+def test_bom_invariants_hold_for_random_valid_layouts(layout_case: LayoutCase) -> None:
+	from sheet_cutting_layout.services.bom_service import build_bom_from_layout_row
+
+	bom = build_bom_from_layout_row(layout_case.layout, layout_case.finished_part)
+	process_scrap_qty = _sum_bom_qty(bom.items, "process_scrap")
+	end_piece_scrap_qty = _sum_bom_qty(bom.items, "end_piece_scrap")
+	expected_end_piece_scrap_qty = sum(
+		(end_piece.weight_kg * end_piece.qty_per_sheet) / layout_case.finished_part.parts_per_sheet
+		for end_piece in layout_case.layout.end_pieces
+	)
+	total_scrap_qty = process_scrap_qty + end_piece_scrap_qty
+	derived_fg_qty = layout_case.finished_part.gross_weight_per_part_kg - total_scrap_qty
+
+	assert bom.quantity == 1
+	assert _sum_bom_qty(bom.items, "raw_material") == pytest.approx(
+		layout_case.finished_part.gross_weight_per_part_kg
+	)
+	assert process_scrap_qty == pytest.approx(layout_case.finished_part.scrap_weight_per_part_kg)
+	assert end_piece_scrap_qty == pytest.approx(expected_end_piece_scrap_qty)
+	assert total_scrap_qty == pytest.approx(
+		layout_case.finished_part.scrap_weight_per_part_kg + expected_end_piece_scrap_qty
+	)
+	assert derived_fg_qty == pytest.approx(layout_case.expected_derived_fg_weight_kg)
+
+
 def test_canvas_payload_summary_distributes_gross_scrap_and_end_pieces_consistently() -> None:
 	from sheet_cutting_layout.services.canvas_payload import build_canvas_payload
 
@@ -155,6 +257,10 @@ def test_canvas_payload_summary_distributes_gross_scrap_and_end_pieces_consisten
 	assert summary["total_end_piece_weight_kg"] == 3
 	assert summary["total_scrap_weight_kg"] == 7
 	assert summary["derived_fg_estimate_kg"] == 33
+
+
+def _sum_bom_qty(items: list[object], row_type: str) -> float:
+	return sum(item.qty for item in items if item.row_type == row_type)
 
 
 def _non_finite_float_paths(value: object, path: str = "payload") -> list[str]:
