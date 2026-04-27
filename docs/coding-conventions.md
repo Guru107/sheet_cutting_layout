@@ -13,6 +13,8 @@ Follow Frappe/ERPNext conventions unless this repository documents a stricter ru
 ## Python Practices
 
 - Prefer plain functions and small controller methods before adding classes or service layers.
+- Write strict type-safe Python. Add explicit type annotations for public functions, controller
+  helpers, service functions, and non-obvious return values; avoid `Any` unless unavoidable.
 - Validate inputs early and fail with clear Frappe exceptions such as `frappe.throw`.
 - Avoid module-level queries, mutable globals, and work that runs at import time.
 - Use `frappe.get_cached_doc` or cached lookups only for stable reference data.

@@ -6,7 +6,13 @@
 
 **Architecture:** Implement as a single custom Frappe app (`sheet_cutting_layout`) with normalized DocTypes, workflow-gated release orchestration, and backend services for validation/BOM/versioning. Use form-driven Canvas 2D rendering for CAD-like live feedback. Keep release actions atomic and auditable, with explicit impact resolution for open manufacturing documents.
 
-**Tech Stack:** Frappe/ERPNext, Python 3, JavaScript (Canvas 2D), pytest, Hypothesis
+**Tech Stack:** Frappe/ERPNext, Python 3, JavaScript (Canvas 2D), pytest, Hypothesis, Cypress
+
+**Repository gates:**
+- Development must follow TDD: write a failing test, verify the failure, implement minimally, then refactor while green.
+- Python application code must be strictly type-safe with explicit annotations for public functions, controller helpers, service functions, and non-obvious return values.
+- Project-owned code coverage must stay above 96%; exclude framework, library, generated, and vendored code.
+- Cypress is required for end-to-end coverage of critical Frappe UI workflows.
 
 ---
 
@@ -18,51 +24,61 @@ The approved spec is cohesive for one subsystem (`Sheet Cutting Layout` module) 
 
 ### App and module files
 
-- Create: `apps/sheet_cutting_layout/sheet_cutting_layout/hooks.py`
-- Create: `apps/sheet_cutting_layout/sheet_cutting_layout/fixtures/workflow.json`
-- Create: `apps/sheet_cutting_layout/sheet_cutting_layout/fixtures/custom_field.json`
-- Create: `apps/sheet_cutting_layout/sheet_cutting_layout/public/js/sheet_layout_canvas.js`
+- Create: `sheet_cutting_layout/hooks.py`
+- Create: `sheet_cutting_layout/fixtures/workflow.json`
+- Create: `sheet_cutting_layout/fixtures/custom_field.json`
+- Create: `sheet_cutting_layout/public/js/sheet_layout_canvas.js`
 
 ### Parent doctype
 
-- Create: `apps/sheet_cutting_layout/sheet_cutting_layout/sheet_cutting_layout/doctype/sheet_cutting_layout/sheet_cutting_layout.json`
-- Create: `apps/sheet_cutting_layout/sheet_cutting_layout/sheet_cutting_layout/doctype/sheet_cutting_layout/sheet_cutting_layout.py`
-- Create: `apps/sheet_cutting_layout/sheet_cutting_layout/sheet_cutting_layout/doctype/sheet_cutting_layout/sheet_cutting_layout.js`
-- Create: `apps/sheet_cutting_layout/sheet_cutting_layout/sheet_cutting_layout/doctype/sheet_cutting_layout/test_sheet_cutting_layout.py`
+- Create: `sheet_cutting_layout/sheet_cutting_layout/doctype/sheet_cutting_layout/sheet_cutting_layout.json`
+- Create: `sheet_cutting_layout/sheet_cutting_layout/doctype/sheet_cutting_layout/sheet_cutting_layout.py`
+- Create: `sheet_cutting_layout/sheet_cutting_layout/doctype/sheet_cutting_layout/sheet_cutting_layout.js`
+- Create: `sheet_cutting_layout/sheet_cutting_layout/doctype/sheet_cutting_layout/test_sheet_cutting_layout.py`
 
 ### Child doctypes
 
-- Create: `apps/sheet_cutting_layout/sheet_cutting_layout/sheet_cutting_layout/doctype/layout_finished_part/layout_finished_part.json`
-- Create: `apps/sheet_cutting_layout/sheet_cutting_layout/sheet_cutting_layout/doctype/layout_end_piece/layout_end_piece.json`
-- Create: `apps/sheet_cutting_layout/sheet_cutting_layout/sheet_cutting_layout/doctype/layout_approval_snapshot/layout_approval_snapshot.json`
-- Create: `apps/sheet_cutting_layout/sheet_cutting_layout/sheet_cutting_layout/doctype/layout_impact_resolution/layout_impact_resolution.json`
+- Create: `sheet_cutting_layout/sheet_cutting_layout/doctype/layout_finished_part/layout_finished_part.json`
+- Create: `sheet_cutting_layout/sheet_cutting_layout/doctype/layout_end_piece/layout_end_piece.json`
+- Create: `sheet_cutting_layout/sheet_cutting_layout/doctype/layout_approval_snapshot/layout_approval_snapshot.json`
+- Create: `sheet_cutting_layout/sheet_cutting_layout/doctype/layout_impact_resolution/layout_impact_resolution.json`
 
 ### Services
 
-- Create: `apps/sheet_cutting_layout/sheet_cutting_layout/services/validators.py`
-- Create: `apps/sheet_cutting_layout/sheet_cutting_layout/services/versioning.py`
-- Create: `apps/sheet_cutting_layout/sheet_cutting_layout/services/bom_service.py`
-- Create: `apps/sheet_cutting_layout/sheet_cutting_layout/services/release_service.py`
+- Create: `sheet_cutting_layout/services/validators.py`
+- Create: `sheet_cutting_layout/services/versioning.py`
+- Create: `sheet_cutting_layout/services/bom_service.py`
+- Create: `sheet_cutting_layout/services/release_service.py`
 
 ### Tests
 
-- Create: `apps/sheet_cutting_layout/sheet_cutting_layout/tests/test_validators.py`
-- Create: `apps/sheet_cutting_layout/sheet_cutting_layout/tests/test_bom_service.py`
-- Create: `apps/sheet_cutting_layout/sheet_cutting_layout/tests/test_release_service.py`
-- Create: `apps/sheet_cutting_layout/sheet_cutting_layout/tests/test_property_layout_invariants.py`
-- Create: `apps/sheet_cutting_layout/sheet_cutting_layout/tests/test_model_workflow_state_machine.py`
+- Create: `sheet_cutting_layout/tests/test_validators.py`
+- Create: `sheet_cutting_layout/tests/test_bom_service.py`
+- Create: `sheet_cutting_layout/tests/test_release_service.py`
+- Create: `sheet_cutting_layout/tests/test_property_layout_invariants.py`
+- Create: `sheet_cutting_layout/tests/test_model_workflow_state_machine.py`
+- Create: `cypress/integration/sheet_cutting_layout_release.js`
 
 ### Docs
 
-- Modify: `apps/sheet_cutting_layout/README.md`
+- Modify: `README.md`
+
+## Tooling Prerequisites
+
+Add or verify test tooling before feature implementation:
+
+- `pytest` for Python unit and integration tests.
+- `hypothesis` for property-based and model-based tests.
+- coverage reporting for project-owned Python code with a 96% minimum.
+- Cypress E2E support through Frappe bench.
 
 ## Task 1: Bootstrap App Skeleton and Fixtures Registration
 
 **Files:**
-- Create: `apps/sheet_cutting_layout/sheet_cutting_layout/hooks.py`
-- Create: `apps/sheet_cutting_layout/sheet_cutting_layout/fixtures/workflow.json`
-- Create: `apps/sheet_cutting_layout/sheet_cutting_layout/fixtures/custom_field.json`
-- Test: `apps/sheet_cutting_layout/sheet_cutting_layout/tests/test_release_service.py`
+- Create: `sheet_cutting_layout/hooks.py`
+- Create: `sheet_cutting_layout/fixtures/workflow.json`
+- Create: `sheet_cutting_layout/fixtures/custom_field.json`
+- Test: `sheet_cutting_layout/tests/test_release_service.py`
 
 - [ ] **Step 1: Write the failing test**
 
@@ -74,7 +90,7 @@ def test_hooks_exposes_required_fixtures():
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `cd apps/sheet_cutting_layout && pytest sheet_cutting_layout/tests/test_release_service.py::test_hooks_exposes_required_fixtures -v`  
+Run: `cd /Users/gurudattkulkarni/Workspace/sheet_cutting_layout && pytest sheet_cutting_layout/tests/test_release_service.py::test_hooks_exposes_required_fixtures -v`  
 Expected: FAIL with `ImportError` or missing fixture entry.
 
 - [ ] **Step 3: Write minimal implementation**
@@ -89,28 +105,28 @@ fixtures = [
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `cd apps/sheet_cutting_layout && pytest sheet_cutting_layout/tests/test_release_service.py::test_hooks_exposes_required_fixtures -v`  
+Run: `cd /Users/gurudattkulkarni/Workspace/sheet_cutting_layout && pytest sheet_cutting_layout/tests/test_release_service.py::test_hooks_exposes_required_fixtures -v`  
 Expected: PASS.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add apps/sheet_cutting_layout/sheet_cutting_layout/hooks.py \
-        apps/sheet_cutting_layout/sheet_cutting_layout/fixtures/workflow.json \
-        apps/sheet_cutting_layout/sheet_cutting_layout/fixtures/custom_field.json \
-        apps/sheet_cutting_layout/sheet_cutting_layout/tests/test_release_service.py
+git add sheet_cutting_layout/hooks.py \
+        sheet_cutting_layout/fixtures/workflow.json \
+        sheet_cutting_layout/fixtures/custom_field.json \
+        sheet_cutting_layout/tests/test_release_service.py
 git commit -m "chore: register workflow and custom field fixtures"
 ```
 
 ## Task 2: Build Parent and Child DocTypes (Normalized Model)
 
 **Files:**
-- Create: `apps/sheet_cutting_layout/sheet_cutting_layout/sheet_cutting_layout/doctype/sheet_cutting_layout/sheet_cutting_layout.json`
-- Create: `apps/sheet_cutting_layout/sheet_cutting_layout/sheet_cutting_layout/doctype/layout_finished_part/layout_finished_part.json`
-- Create: `apps/sheet_cutting_layout/sheet_cutting_layout/sheet_cutting_layout/doctype/layout_end_piece/layout_end_piece.json`
-- Create: `apps/sheet_cutting_layout/sheet_cutting_layout/sheet_cutting_layout/doctype/layout_approval_snapshot/layout_approval_snapshot.json`
-- Create: `apps/sheet_cutting_layout/sheet_cutting_layout/sheet_cutting_layout/doctype/layout_impact_resolution/layout_impact_resolution.json`
-- Test: `apps/sheet_cutting_layout/sheet_cutting_layout/doctype/sheet_cutting_layout/test_sheet_cutting_layout.py`
+- Create: `sheet_cutting_layout/sheet_cutting_layout/doctype/sheet_cutting_layout/sheet_cutting_layout.json`
+- Create: `sheet_cutting_layout/sheet_cutting_layout/doctype/layout_finished_part/layout_finished_part.json`
+- Create: `sheet_cutting_layout/sheet_cutting_layout/doctype/layout_end_piece/layout_end_piece.json`
+- Create: `sheet_cutting_layout/sheet_cutting_layout/doctype/layout_approval_snapshot/layout_approval_snapshot.json`
+- Create: `sheet_cutting_layout/sheet_cutting_layout/doctype/layout_impact_resolution/layout_impact_resolution.json`
+- Test: `sheet_cutting_layout/doctype/sheet_cutting_layout/test_sheet_cutting_layout.py`
 
 - [ ] **Step 1: Write the failing test**
 
@@ -124,7 +140,7 @@ def test_sheet_cutting_layout_doctype_has_finished_part_and_end_piece_tables():
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `cd apps/sheet_cutting_layout && pytest sheet_cutting_layout/sheet_cutting_layout/doctype/sheet_cutting_layout/test_sheet_cutting_layout.py::test_sheet_cutting_layout_doctype_has_finished_part_and_end_piece_tables -v`  
+Run: `cd /Users/gurudattkulkarni/Workspace/sheet_cutting_layout && pytest sheet_cutting_layout/sheet_cutting_layout/doctype/sheet_cutting_layout/test_sheet_cutting_layout.py::test_sheet_cutting_layout_doctype_has_finished_part_and_end_piece_tables -v`  
 Expected: FAIL because DocType does not exist yet.
 
 - [ ] **Step 3: Write minimal implementation**
@@ -137,22 +153,22 @@ Define DocType JSONs with required fields from spec:
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `cd apps/sheet_cutting_layout && bench --site test_site migrate && pytest sheet_cutting_layout/sheet_cutting_layout/doctype/sheet_cutting_layout/test_sheet_cutting_layout.py -v`  
+Run: `cd /Users/gurudattkulkarni/Workspace/sheet_cutting_layout && bench --site test_site migrate && pytest sheet_cutting_layout/sheet_cutting_layout/doctype/sheet_cutting_layout/test_sheet_cutting_layout.py -v`  
 Expected: PASS.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add apps/sheet_cutting_layout/sheet_cutting_layout/sheet_cutting_layout/doctype
+git add sheet_cutting_layout/sheet_cutting_layout/doctype
 git commit -m "feat: add sheet cutting layout doctypes and child tables"
 ```
 
 ## Task 3: Implement Core Validations on Save
 
 **Files:**
-- Create: `apps/sheet_cutting_layout/sheet_cutting_layout/services/validators.py`
-- Modify: `apps/sheet_cutting_layout/sheet_cutting_layout/sheet_cutting_layout/doctype/sheet_cutting_layout/sheet_cutting_layout.py`
-- Test: `apps/sheet_cutting_layout/sheet_cutting_layout/tests/test_validators.py`
+- Create: `sheet_cutting_layout/services/validators.py`
+- Modify: `sheet_cutting_layout/sheet_cutting_layout/doctype/sheet_cutting_layout/sheet_cutting_layout.py`
+- Test: `sheet_cutting_layout/tests/test_validators.py`
 
 - [ ] **Step 1: Write the failing test**
 
@@ -165,7 +181,7 @@ def test_finished_part_item_must_end_with_shr_and_be_alnum():
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `cd apps/sheet_cutting_layout && pytest sheet_cutting_layout/tests/test_validators.py::test_finished_part_item_must_end_with_shr_and_be_alnum -v`  
+Run: `cd /Users/gurudattkulkarni/Workspace/sheet_cutting_layout && pytest sheet_cutting_layout/tests/test_validators.py::test_finished_part_item_must_end_with_shr_and_be_alnum -v`  
 Expected: FAIL because validator function is missing.
 
 - [ ] **Step 3: Write minimal implementation**
@@ -190,24 +206,24 @@ Wire save-time checks for:
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `cd apps/sheet_cutting_layout && pytest sheet_cutting_layout/tests/test_validators.py -v`  
+Run: `cd /Users/gurudattkulkarni/Workspace/sheet_cutting_layout && pytest sheet_cutting_layout/tests/test_validators.py -v`  
 Expected: PASS.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add apps/sheet_cutting_layout/sheet_cutting_layout/services/validators.py \
-        apps/sheet_cutting_layout/sheet_cutting_layout/sheet_cutting_layout/doctype/sheet_cutting_layout/sheet_cutting_layout.py \
-        apps/sheet_cutting_layout/sheet_cutting_layout/tests/test_validators.py
+git add sheet_cutting_layout/services/validators.py \
+        sheet_cutting_layout/sheet_cutting_layout/doctype/sheet_cutting_layout/sheet_cutting_layout.py \
+        sheet_cutting_layout/tests/test_validators.py
 git commit -m "feat: enforce finished part and scrap validation rules"
 ```
 
 ## Task 4: Configure Approval Workflow with Parallel Checker Gate
 
 **Files:**
-- Modify: `apps/sheet_cutting_layout/sheet_cutting_layout/fixtures/workflow.json`
-- Modify: `apps/sheet_cutting_layout/sheet_cutting_layout/sheet_cutting_layout/doctype/sheet_cutting_layout/sheet_cutting_layout.py`
-- Test: `apps/sheet_cutting_layout/sheet_cutting_layout/tests/test_model_workflow_state_machine.py`
+- Modify: `sheet_cutting_layout/fixtures/workflow.json`
+- Modify: `sheet_cutting_layout/sheet_cutting_layout/doctype/sheet_cutting_layout/sheet_cutting_layout.py`
+- Test: `sheet_cutting_layout/tests/test_model_workflow_state_machine.py`
 
 - [ ] **Step 1: Write the failing test**
 
@@ -221,7 +237,7 @@ def test_release_blocked_until_both_parallel_checkers_approve():
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `cd apps/sheet_cutting_layout && pytest sheet_cutting_layout/tests/test_model_workflow_state_machine.py::test_release_blocked_until_both_parallel_checkers_approve -v`  
+Run: `cd /Users/gurudattkulkarni/Workspace/sheet_cutting_layout && pytest sheet_cutting_layout/tests/test_model_workflow_state_machine.py::test_release_blocked_until_both_parallel_checkers_approve -v`  
 Expected: FAIL since workflow model and transitions are missing.
 
 - [ ] **Step 3: Write minimal implementation**
@@ -234,23 +250,23 @@ Implement workflow states and role transitions:
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `cd apps/sheet_cutting_layout && bench --site test_site migrate && pytest sheet_cutting_layout/tests/test_model_workflow_state_machine.py -v`  
+Run: `cd /Users/gurudattkulkarni/Workspace/sheet_cutting_layout && bench --site test_site migrate && pytest sheet_cutting_layout/tests/test_model_workflow_state_machine.py -v`  
 Expected: PASS.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add apps/sheet_cutting_layout/sheet_cutting_layout/fixtures/workflow.json \
-        apps/sheet_cutting_layout/sheet_cutting_layout/sheet_cutting_layout/doctype/sheet_cutting_layout/sheet_cutting_layout.py \
-        apps/sheet_cutting_layout/sheet_cutting_layout/tests/test_model_workflow_state_machine.py
+git add sheet_cutting_layout/fixtures/workflow.json \
+        sheet_cutting_layout/sheet_cutting_layout/doctype/sheet_cutting_layout/sheet_cutting_layout.py \
+        sheet_cutting_layout/tests/test_model_workflow_state_machine.py
 git commit -m "feat: add approval workflow with parallel checker gate"
 ```
 
 ## Task 5: Implement BOM Mapping Service (Qty=1, Kg-only Logic)
 
 **Files:**
-- Create: `apps/sheet_cutting_layout/sheet_cutting_layout/services/bom_service.py`
-- Test: `apps/sheet_cutting_layout/sheet_cutting_layout/tests/test_bom_service.py`
+- Create: `sheet_cutting_layout/services/bom_service.py`
+- Test: `sheet_cutting_layout/tests/test_bom_service.py`
 
 - [ ] **Step 1: Write the failing test**
 
@@ -263,7 +279,7 @@ def test_generated_bom_uses_quantity_one_and_gross_as_raw_qty():
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `cd apps/sheet_cutting_layout && pytest sheet_cutting_layout/tests/test_bom_service.py::test_generated_bom_uses_quantity_one_and_gross_as_raw_qty -v`  
+Run: `cd /Users/gurudattkulkarni/Workspace/sheet_cutting_layout && pytest sheet_cutting_layout/tests/test_bom_service.py::test_generated_bom_uses_quantity_one_and_gross_as_raw_qty -v`  
 Expected: FAIL because service is missing.
 
 - [ ] **Step 3: Write minimal implementation**
@@ -290,23 +306,23 @@ Add scrap rows:
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `cd apps/sheet_cutting_layout && pytest sheet_cutting_layout/tests/test_bom_service.py -v`  
+Run: `cd /Users/gurudattkulkarni/Workspace/sheet_cutting_layout && pytest sheet_cutting_layout/tests/test_bom_service.py -v`  
 Expected: PASS.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add apps/sheet_cutting_layout/sheet_cutting_layout/services/bom_service.py \
-        apps/sheet_cutting_layout/sheet_cutting_layout/tests/test_bom_service.py
+git add sheet_cutting_layout/services/bom_service.py \
+        sheet_cutting_layout/tests/test_bom_service.py
 git commit -m "feat: implement qty-1 bom mapping with distributed scrap"
 ```
 
 ## Task 6: Implement Release Orchestration and Impact Resolution
 
 **Files:**
-- Create: `apps/sheet_cutting_layout/sheet_cutting_layout/services/release_service.py`
-- Modify: `apps/sheet_cutting_layout/sheet_cutting_layout/sheet_cutting_layout/doctype/sheet_cutting_layout/sheet_cutting_layout.py`
-- Test: `apps/sheet_cutting_layout/sheet_cutting_layout/tests/test_release_service.py`
+- Create: `sheet_cutting_layout/services/release_service.py`
+- Modify: `sheet_cutting_layout/sheet_cutting_layout/doctype/sheet_cutting_layout/sheet_cutting_layout.py`
+- Test: `sheet_cutting_layout/tests/test_release_service.py`
 
 - [ ] **Step 1: Write the failing test**
 
@@ -319,7 +335,7 @@ def test_release_creates_impact_rows_when_open_docs_exist():
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `cd apps/sheet_cutting_layout && pytest sheet_cutting_layout/tests/test_release_service.py::test_release_creates_impact_rows_when_open_docs_exist -v`  
+Run: `cd /Users/gurudattkulkarni/Workspace/sheet_cutting_layout && pytest sheet_cutting_layout/tests/test_release_service.py::test_release_creates_impact_rows_when_open_docs_exist -v`  
 Expected: FAIL because release service is missing.
 
 - [ ] **Step 3: Write minimal implementation**
@@ -332,24 +348,24 @@ Implement:
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `cd apps/sheet_cutting_layout && pytest sheet_cutting_layout/tests/test_release_service.py -v`  
+Run: `cd /Users/gurudattkulkarni/Workspace/sheet_cutting_layout && pytest sheet_cutting_layout/tests/test_release_service.py -v`  
 Expected: PASS.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add apps/sheet_cutting_layout/sheet_cutting_layout/services/release_service.py \
-        apps/sheet_cutting_layout/sheet_cutting_layout/sheet_cutting_layout/doctype/sheet_cutting_layout/sheet_cutting_layout.py \
-        apps/sheet_cutting_layout/sheet_cutting_layout/tests/test_release_service.py
+git add sheet_cutting_layout/services/release_service.py \
+        sheet_cutting_layout/sheet_cutting_layout/doctype/sheet_cutting_layout/sheet_cutting_layout.py \
+        sheet_cutting_layout/tests/test_release_service.py
 git commit -m "feat: add release orchestration with per-document impact handling"
 ```
 
 ## Task 7: Implement Revision and Supersede Service
 
 **Files:**
-- Create: `apps/sheet_cutting_layout/sheet_cutting_layout/services/versioning.py`
-- Modify: `apps/sheet_cutting_layout/sheet_cutting_layout/sheet_cutting_layout/doctype/sheet_cutting_layout/sheet_cutting_layout.py`
-- Test: `apps/sheet_cutting_layout/sheet_cutting_layout/tests/test_release_service.py`
+- Create: `sheet_cutting_layout/services/versioning.py`
+- Modify: `sheet_cutting_layout/sheet_cutting_layout/doctype/sheet_cutting_layout/sheet_cutting_layout.py`
+- Test: `sheet_cutting_layout/tests/test_release_service.py`
 
 - [ ] **Step 1: Write the failing test**
 
@@ -362,7 +378,7 @@ def test_revising_released_layout_clones_and_increments_revision():
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `cd apps/sheet_cutting_layout && pytest sheet_cutting_layout/tests/test_release_service.py::test_revising_released_layout_clones_and_increments_revision -v`  
+Run: `cd /Users/gurudattkulkarni/Workspace/sheet_cutting_layout && pytest sheet_cutting_layout/tests/test_release_service.py::test_revising_released_layout_clones_and_increments_revision -v`  
 Expected: FAIL.
 
 - [ ] **Step 3: Write minimal implementation**
@@ -375,24 +391,24 @@ Implement:
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `cd apps/sheet_cutting_layout && pytest sheet_cutting_layout/tests/test_release_service.py -v`  
+Run: `cd /Users/gurudattkulkarni/Workspace/sheet_cutting_layout && pytest sheet_cutting_layout/tests/test_release_service.py -v`  
 Expected: PASS.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add apps/sheet_cutting_layout/sheet_cutting_layout/services/versioning.py \
-        apps/sheet_cutting_layout/sheet_cutting_layout/sheet_cutting_layout/doctype/sheet_cutting_layout/sheet_cutting_layout.py \
-        apps/sheet_cutting_layout/sheet_cutting_layout/tests/test_release_service.py
+git add sheet_cutting_layout/services/versioning.py \
+        sheet_cutting_layout/sheet_cutting_layout/doctype/sheet_cutting_layout/sheet_cutting_layout.py \
+        sheet_cutting_layout/tests/test_release_service.py
 git commit -m "feat: add layout revision and supersede lifecycle"
 ```
 
 ## Task 8: Build Form Script and Canvas 2D Preview
 
 **Files:**
-- Create: `apps/sheet_cutting_layout/sheet_cutting_layout/public/js/sheet_layout_canvas.js`
-- Modify: `apps/sheet_cutting_layout/sheet_cutting_layout/sheet_cutting_layout/doctype/sheet_cutting_layout/sheet_cutting_layout.js`
-- Test: `apps/sheet_cutting_layout/sheet_cutting_layout/tests/test_property_layout_invariants.py`
+- Create: `sheet_cutting_layout/public/js/sheet_layout_canvas.js`
+- Modify: `sheet_cutting_layout/sheet_cutting_layout/doctype/sheet_cutting_layout/sheet_cutting_layout.js`
+- Test: `sheet_cutting_layout/tests/test_property_layout_invariants.py`
 
 - [ ] **Step 1: Write the failing test**
 
@@ -404,7 +420,7 @@ def test_canvas_payload_builder_returns_end_piece_zones_for_all_rows():
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `cd apps/sheet_cutting_layout && pytest sheet_cutting_layout/tests/test_property_layout_invariants.py::test_canvas_payload_builder_returns_end_piece_zones_for_all_rows -v`  
+Run: `cd /Users/gurudattkulkarni/Workspace/sheet_cutting_layout && pytest sheet_cutting_layout/tests/test_property_layout_invariants.py::test_canvas_payload_builder_returns_end_piece_zones_for_all_rows -v`  
 Expected: FAIL because payload builder is missing.
 
 - [ ] **Step 3: Write minimal implementation**
@@ -418,22 +434,22 @@ Implement:
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `cd apps/sheet_cutting_layout && pytest sheet_cutting_layout/tests/test_property_layout_invariants.py::test_canvas_payload_builder_returns_end_piece_zones_for_all_rows -v`  
+Run: `cd /Users/gurudattkulkarni/Workspace/sheet_cutting_layout && pytest sheet_cutting_layout/tests/test_property_layout_invariants.py::test_canvas_payload_builder_returns_end_piece_zones_for_all_rows -v`  
 Expected: PASS.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add apps/sheet_cutting_layout/sheet_cutting_layout/public/js/sheet_layout_canvas.js \
-        apps/sheet_cutting_layout/sheet_cutting_layout/sheet_cutting_layout/doctype/sheet_cutting_layout/sheet_cutting_layout.js \
-        apps/sheet_cutting_layout/sheet_cutting_layout/tests/test_property_layout_invariants.py
+git add sheet_cutting_layout/public/js/sheet_layout_canvas.js \
+        sheet_cutting_layout/sheet_cutting_layout/doctype/sheet_cutting_layout/sheet_cutting_layout.js \
+        sheet_cutting_layout/tests/test_property_layout_invariants.py
 git commit -m "feat: add form-driven pseudo-3d canvas preview"
 ```
 
 ## Task 9: Add Property-Based Tests for Invariants
 
 **Files:**
-- Modify: `apps/sheet_cutting_layout/sheet_cutting_layout/tests/test_property_layout_invariants.py`
+- Modify: `sheet_cutting_layout/tests/test_property_layout_invariants.py`
 
 - [ ] **Step 1: Write the failing test**
 
@@ -447,7 +463,7 @@ def test_bom_invariants_hold_for_random_valid_layouts(layout_case):
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `cd apps/sheet_cutting_layout && pytest sheet_cutting_layout/tests/test_property_layout_invariants.py::test_bom_invariants_hold_for_random_valid_layouts -v`  
+Run: `cd /Users/gurudattkulkarni/Workspace/sheet_cutting_layout && pytest sheet_cutting_layout/tests/test_property_layout_invariants.py::test_bom_invariants_hold_for_random_valid_layouts -v`  
 Expected: FAIL until strategy/simulator are complete.
 
 - [ ] **Step 3: Write minimal implementation**
@@ -466,20 +482,20 @@ Assertions:
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `cd apps/sheet_cutting_layout && pytest sheet_cutting_layout/tests/test_property_layout_invariants.py -v`  
+Run: `cd /Users/gurudattkulkarni/Workspace/sheet_cutting_layout && pytest sheet_cutting_layout/tests/test_property_layout_invariants.py -v`  
 Expected: PASS.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add apps/sheet_cutting_layout/sheet_cutting_layout/tests/test_property_layout_invariants.py
+git add sheet_cutting_layout/tests/test_property_layout_invariants.py
 git commit -m "test: add property-based invariant coverage for bom mapping"
 ```
 
 ## Task 10: Add Model-Based Workflow State Machine Tests
 
 **Files:**
-- Modify: `apps/sheet_cutting_layout/sheet_cutting_layout/tests/test_model_workflow_state_machine.py`
+- Modify: `sheet_cutting_layout/tests/test_model_workflow_state_machine.py`
 
 - [ ] **Step 1: Write the failing test**
 
@@ -491,7 +507,7 @@ def test_state_machine_never_reaches_released_without_purchase_and_mr():
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `cd apps/sheet_cutting_layout && pytest sheet_cutting_layout/tests/test_model_workflow_state_machine.py::test_state_machine_never_reaches_released_without_purchase_and_mr -v`  
+Run: `cd /Users/gurudattkulkarni/Workspace/sheet_cutting_layout && pytest sheet_cutting_layout/tests/test_model_workflow_state_machine.py::test_state_machine_never_reaches_released_without_purchase_and_mr -v`  
 Expected: FAIL until state model is complete.
 
 - [ ] **Step 3: Write minimal implementation**
@@ -511,20 +527,21 @@ Invariants:
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `cd apps/sheet_cutting_layout && pytest sheet_cutting_layout/tests/test_model_workflow_state_machine.py -v`  
+Run: `cd /Users/gurudattkulkarni/Workspace/sheet_cutting_layout && pytest sheet_cutting_layout/tests/test_model_workflow_state_machine.py -v`  
 Expected: PASS.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add apps/sheet_cutting_layout/sheet_cutting_layout/tests/test_model_workflow_state_machine.py
+git add sheet_cutting_layout/tests/test_model_workflow_state_machine.py
 git commit -m "test: add model-based workflow state machine tests"
 ```
 
 ## Task 11: End-to-End Release Flow Integration Tests
 
 **Files:**
-- Modify: `apps/sheet_cutting_layout/sheet_cutting_layout/tests/test_release_service.py`
+- Modify: `sheet_cutting_layout/tests/test_release_service.py`
+- Create: `cypress/integration/sheet_cutting_layout_release.js`
 
 - [ ] **Step 1: Write the failing test**
 
@@ -537,7 +554,7 @@ def test_release_generates_two_boms_for_lh_rh_and_supersedes_old():
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `cd apps/sheet_cutting_layout && pytest sheet_cutting_layout/tests/test_release_service.py::test_release_generates_two_boms_for_lh_rh_and_supersedes_old -v`  
+Run: `cd /Users/gurudattkulkarni/Workspace/sheet_cutting_layout && pytest sheet_cutting_layout/tests/test_release_service.py::test_release_generates_two_boms_for_lh_rh_and_supersedes_old -v`  
 Expected: FAIL.
 
 - [ ] **Step 3: Write minimal implementation**
@@ -546,38 +563,48 @@ Complete wiring:
 - orchestrator calls validators -> BOM service -> versioning -> impact checks
 - status transitions: `Approved by Purchase -> Release Pending Impact/Released`
 - link generated BOMs back to finished-part rows
+- Cypress workflow covers draft creation, approval path, release action, and generated BOM visibility.
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `cd apps/sheet_cutting_layout && pytest sheet_cutting_layout/tests/test_release_service.py -v`  
+Run: `cd /Users/gurudattkulkarni/Workspace/sheet_cutting_layout && pytest sheet_cutting_layout/tests/test_release_service.py -v`  
 Expected: PASS.
+
+Run Cypress through bench:
+
+```bash
+bench --site <site> run-ui-tests sheet_cutting_layout --headless
+```
+
+Expected: PASS for the release-flow E2E spec.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add apps/sheet_cutting_layout/sheet_cutting_layout/tests/test_release_service.py \
-        apps/sheet_cutting_layout/sheet_cutting_layout/services/release_service.py \
-        apps/sheet_cutting_layout/sheet_cutting_layout/services/bom_service.py \
-        apps/sheet_cutting_layout/sheet_cutting_layout/services/versioning.py
+git add sheet_cutting_layout/tests/test_release_service.py \
+        sheet_cutting_layout/services/release_service.py \
+        sheet_cutting_layout/services/bom_service.py \
+        sheet_cutting_layout/services/versioning.py \
+        cypress/integration/sheet_cutting_layout_release.js
 git commit -m "feat: complete release orchestration and integration coverage"
 ```
 
 ## Task 12: Documentation and Operational Runbook
 
 **Files:**
-- Modify: `apps/sheet_cutting_layout/README.md`
+- Modify: `README.md`
 
 - [ ] **Step 1: Write the failing test**
 
 ```python
 def test_readme_mentions_release_gate_and_bom_qty_one():
-    content = Path("apps/sheet_cutting_layout/README.md").read_text()
+    content = Path("README.md").read_text()
     assert "BOM quantity is always 1" in content
 ```
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `cd apps/sheet_cutting_layout && pytest sheet_cutting_layout/tests/test_release_service.py::test_readme_mentions_release_gate_and_bom_qty_one -v`  
+Run: `cd /Users/gurudattkulkarni/Workspace/sheet_cutting_layout && pytest sheet_cutting_layout/tests/test_release_service.py::test_readme_mentions_release_gate_and_bom_qty_one -v`  
 Expected: FAIL.
 
 - [ ] **Step 3: Write minimal implementation**
@@ -592,14 +619,14 @@ Document:
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `cd apps/sheet_cutting_layout && pytest sheet_cutting_layout/tests/test_release_service.py::test_readme_mentions_release_gate_and_bom_qty_one -v`  
+Run: `cd /Users/gurudattkulkarni/Workspace/sheet_cutting_layout && pytest sheet_cutting_layout/tests/test_release_service.py::test_readme_mentions_release_gate_and_bom_qty_one -v`  
 Expected: PASS.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add apps/sheet_cutting_layout/README.md \
-        apps/sheet_cutting_layout/sheet_cutting_layout/tests/test_release_service.py
+git add README.md \
+        sheet_cutting_layout/tests/test_release_service.py
 git commit -m "docs: add sheet cutting layout operational runbook"
 ```
 
@@ -608,14 +635,24 @@ git commit -m "docs: add sheet cutting layout operational runbook"
 - [ ] Run all tests:
 
 ```bash
-cd apps/sheet_cutting_layout
+cd /Users/gurudattkulkarni/Workspace/sheet_cutting_layout
 pytest sheet_cutting_layout/tests -v
 ```
+
+- [ ] Run coverage for project-owned code and confirm it remains above 96%, excluding framework, library, generated, and vendored code.
+
+- [ ] Run static type checking for project-owned Python code once the checker is configured.
 
 - [ ] Run targeted performance sanity:
 
 ```bash
 pytest sheet_cutting_layout/tests/test_property_layout_invariants.py -k "canvas or redraw" -v
+```
+
+- [ ] Run Cypress E2E through Frappe bench:
+
+```bash
+bench --site <site> run-ui-tests sheet_cutting_layout --headless
 ```
 
 - [ ] Export fixtures after workflow/custom field changes:
@@ -630,4 +667,3 @@ bench --site <site> export-fixtures
 3. Complete approvals.
 4. Resolve impact prompts.
 5. Release and verify BOMs (`qty=1`) + old revision superseded.
-

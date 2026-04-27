@@ -345,6 +345,13 @@ Design notes:
 
 ## 15. Testing Requirements
 
+Global requirements:
+
+1. Development follows test-driven development only: failing test first, minimal implementation, refactor while green.
+2. Project-owned code coverage must stay above 96%.
+3. Framework, library, generated, and vendored code are excluded from coverage calculations.
+4. Python application code must be strictly type-safe, with explicit annotations for public functions, controller helpers, service functions, and non-obvious return values.
+
 ### 15.1 Unit Tests
 
 1. Finished part validator (`SHR` + alphanumeric).
@@ -380,6 +387,7 @@ Model workflow as state machine and generate event sequences:
 3. Impact resolution flow updates/retains documents per decision.
 4. Form-to-canvas sync correctness.
 5. Canvas redraw performance checks.
+6. Cypress end-to-end tests cover critical release workflows through Frappe bench.
 
 ## 16. Rollout Plan
 
