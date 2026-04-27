@@ -62,4 +62,6 @@ Follow Frappe/ERPNext conventions unless this repository documents a stricter ru
 - Name test files `test_*.py`.
 - Prefer Frappe tests that exercise documents, hooks, permissions, calculations, and patches through
   framework APIs.
+- Keep test coverage above 96% at all times for project-owned code. Exclude framework, library,
+  generated, and vendored code from coverage calculations.
 - Run `bench --site <site-name> run-tests --app sheet_cutting_layout` before opening a pull request.
