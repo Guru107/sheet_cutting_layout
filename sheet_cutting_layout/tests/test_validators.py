@@ -153,3 +153,14 @@ def test_controller_validate_delegates_to_service(monkeypatch: pytest.MonkeyPatc
 	doc.validate()
 
 	assert called_with == [doc]
+
+
+def test_revision_and_workflow_invalid_transitions_raise() -> None:
+	from sheet_cutting_layout.services.versioning import create_revision
+	from sheet_cutting_layout.services.workflow import LayoutWorkflowModel
+
+	with pytest.raises(ValueError, match="Only released"):
+		create_revision(type("Layout", (), {"status": "Draft"})())
+
+	with pytest.raises(AssertionError, match="Expected layout state"):
+		LayoutWorkflowModel().supersede()

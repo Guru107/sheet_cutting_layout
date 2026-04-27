@@ -91,3 +91,15 @@ def test_parts_per_sheet_must_be_positive_for_end_piece_distribution() -> None:
 
 	with pytest.raises(bom_service.ValidationError, match="Parts per sheet"):
 		bom_service.end_piece_per_part_kg(ep_weight_kg=3, qty_per_sheet=2, parts_per_sheet=0)
+
+
+def test_custom_bom_document_factory_is_used() -> None:
+	bom_service = import_bom_service()
+
+	bom = bom_service.build_bom_from_layout_row(
+		Layout(),
+		FinishedPart(),
+		document_factory=lambda item: bom_service.BomDocument(item=item, name="CUSTOM-BOM"),
+	)
+
+	assert bom.name == "CUSTOM-BOM"

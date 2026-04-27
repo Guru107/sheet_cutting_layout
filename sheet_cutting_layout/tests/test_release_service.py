@@ -603,6 +603,227 @@ def test_frappe_bom_insert_sets_required_company_from_layout(
 	assert inserted.name == "BOM-PART001SHR"
 
 
+def test_release_requires_context_when_provider_returns_none() -> None:
+	from sheet_cutting_layout.services.release_service import release_layout
+
+	with pytest.raises(RuntimeError, match="Release requires open"):
+		release_layout(Layout(bom_replacements={}), release_context_provider=lambda _layout: None)
+
+
+def test_get_release_context_uses_test_fallback_when_frappe_is_unavailable(
+	monkeypatch: pytest.MonkeyPatch,
+) -> None:
+	from sheet_cutting_layout.services import release_service
+
+	monkeypatch.setattr(release_service, "frappe", None)
+	monkeypatch.setattr(release_service, "_is_test_runtime", lambda: True)
+
+	context = release_service.get_release_context(Layout(bom_replacements={}))
+
+	assert context.open_documents == ()
+	assert context.layouts == ()
+	assert context.boms == []
+
+
+def test_get_release_context_requires_frappe_outside_tests(monkeypatch: pytest.MonkeyPatch) -> None:
+	from sheet_cutting_layout.services import release_service
+
+	monkeypatch.setattr(release_service, "frappe", None)
+	monkeypatch.setattr(release_service, "_is_test_runtime", lambda: False)
+
+	with pytest.raises(RuntimeError, match="Frappe is required"):
+		release_service.get_release_context(Layout(bom_replacements={}))
+
+
+def test_release_context_discovers_layouts_boms_and_open_documents(
+	monkeypatch: pytest.MonkeyPatch,
+) -> None:
+	from sheet_cutting_layout.services import release_service
+
+	class FrappeStub:
+		@staticmethod
+		def get_all(doctype: str, **kwargs: object) -> list[object]:
+			if doctype == "Work Order":
+				return [type("Row", (), {"name": "WO-001", "bom_no": "BOM-WO", "status": "Open"})()]
+			if doctype == "Production Plan":
+				return [{"name": "PP-001", "status": "Draft"}]
+			if doctype == "Production Plan Item":
+				return [{"parent": "PP-001", "bom_no": "BOM-PP"}]
+			if doctype == "Sheet Cutting Layout":
+				return ["SCL-OLD"]
+			if doctype == "BOM":
+				return ["BOM-OLD"]
+			raise AssertionError(f"Unexpected doctype {doctype}")
+
+		@staticmethod
+		def get_doc(doctype: str, name: str) -> object:
+			return type("Doc", (), {"doctype": doctype, "name": name})()
+
+	layout = RevisionLayout(
+		name="SCL-NEW",
+		layout_family="FAM-001",
+		revision_no=2,
+		status="Approved by Purchase",
+		is_active=False,
+		finished_parts=[FinishedPart("PART001SHR")],
+	)
+	monkeypatch.setattr(release_service, "frappe", FrappeStub)
+
+	context = release_service.get_release_context(layout)
+
+	assert [(doc.doctype, doc.name, doc.bom_no) for doc in context.open_documents] == [
+		("Work Order", "WO-001", "BOM-WO"),
+		("Production Plan", "PP-001", "BOM-PP"),
+	]
+	assert [getattr(doc, "name", None) for doc in context.layouts] == ["SCL-OLD", "SCL-NEW"]
+	assert [getattr(doc, "name", None) for doc in context.boms or []] == ["BOM-OLD"]
+
+
+def test_release_context_handles_layout_without_family_or_finished_parts(
+	monkeypatch: pytest.MonkeyPatch,
+) -> None:
+	from sheet_cutting_layout.services import release_service
+
+	class FrappeStub:
+		@staticmethod
+		def get_all(doctype: str, **_kwargs: object) -> list[object]:
+			if doctype in {"Work Order", "Production Plan"}:
+				return []
+			raise AssertionError(f"Unexpected doctype {doctype}")
+
+	layout = type(
+		"LayoutWithoutFamily",
+		(),
+		{
+			"layout_family": "",
+			"finished_parts": [],
+		},
+	)()
+	monkeypatch.setattr(release_service, "frappe", FrappeStub)
+
+	context = release_service.get_release_context(layout)
+
+	assert context.layouts == [layout]
+	assert context.boms == []
+
+
+def test_release_context_skips_empty_production_plan_result(monkeypatch: pytest.MonkeyPatch) -> None:
+	from sheet_cutting_layout.services import release_service
+
+	class FrappeStub:
+		@staticmethod
+		def get_all(doctype: str, **_kwargs: object) -> list[object]:
+			assert doctype == "Production Plan"
+			return []
+
+	monkeypatch.setattr(release_service, "frappe", FrappeStub)
+
+	assert release_service._get_open_production_plans() == []
+
+
+def test_release_helpers_raise_without_frappe(monkeypatch: pytest.MonkeyPatch) -> None:
+	from sheet_cutting_layout.services import release_service
+
+	monkeypatch.setattr(release_service, "frappe", None)
+
+	with pytest.raises(RuntimeError, match="open manufacturing"):
+		release_service._get_open_manufacturing_documents()
+	with pytest.raises(RuntimeError, match="work orders"):
+		release_service._get_open_work_orders()
+	with pytest.raises(RuntimeError, match="production plans"):
+		release_service._get_open_production_plans()
+	with pytest.raises(RuntimeError, match="same-family"):
+		release_service._get_same_family_layouts(Layout(bom_replacements={}))
+	with pytest.raises(RuntimeError, match="BOM records"):
+		release_service._get_finished_part_boms(Layout(bom_replacements={}))
+
+
+def test_unsupported_impact_doctype_raises() -> None:
+	from sheet_cutting_layout.services import release_service
+
+	with pytest.raises(ValueError, match="Unsupported impact"):
+		release_service._impact_doctype("Sales Order")
+
+
+def test_default_bom_factory_requires_frappe_outside_tests(monkeypatch: pytest.MonkeyPatch) -> None:
+	from sheet_cutting_layout.services import release_service
+
+	layout = Layout(bom_replacements={})
+	finished_part = layout.finished_parts[0]
+	monkeypatch.setattr(release_service, "frappe", None)
+	monkeypatch.setattr(release_service, "_is_test_runtime", lambda: False)
+
+	with pytest.raises(RuntimeError, match="persist generated BOM"):
+		release_service._default_bom_document_factory(layout, finished_part, 1, None)
+
+
+def test_company_resolution_uses_defaults_and_errors_when_missing(
+	monkeypatch: pytest.MonkeyPatch,
+) -> None:
+	from sheet_cutting_layout.services import release_service
+
+	class DefaultsOnly:
+		class defaults:
+			@staticmethod
+			def get_user_default(_key: str) -> str:
+				return "Default Company"
+
+	class DbDefault:
+		class defaults:
+			@staticmethod
+			def get_user_default(_key: str) -> str:
+				return ""
+
+		class db:
+			@staticmethod
+			def get_default(_key: str) -> str:
+				return "DB Company"
+
+	class NoCompany:
+		class ValidationError(Exception):
+			pass
+
+		class defaults:
+			@staticmethod
+			def get_user_default(_key: str) -> str:
+				return ""
+
+		@staticmethod
+		def throw(message: str) -> None:
+			raise NoCompany.ValidationError(message)
+
+	monkeypatch.setattr(release_service, "frappe", DefaultsOnly)
+	assert release_service._company_for_layout(None) == "Default Company"
+
+	monkeypatch.setattr(release_service, "frappe", DbDefault)
+	assert release_service._company_for_layout(None) == "DB Company"
+
+	monkeypatch.setattr(release_service, "frappe", NoCompany)
+	with pytest.raises(NoCompany.ValidationError, match="Company is required"):
+		release_service._company_for_layout(None)
+
+
+def test_set_frappe_field_only_when_supported() -> None:
+	from sheet_cutting_layout.services import release_service
+
+	class Meta:
+		@staticmethod
+		def has_field(fieldname: str) -> bool:
+			return fieldname == "enabled"
+
+	class Doc:
+		meta = Meta()
+		enabled = 0
+
+	doc = Doc()
+	release_service._set_frappe_field_if_supported(doc, "enabled", 1)
+	release_service._set_frappe_field_if_supported(doc, "missing", 1)
+	release_service._set_frappe_field_if_supported(object(), "missing", 1)
+
+	assert doc.enabled == 1
+	assert not hasattr(doc, "missing")
+
+
 def test_finalize_waits_until_all_impact_decisions_are_present() -> None:
 	from sheet_cutting_layout.services.release_service import finalize_release, release_layout, resolve_impact
 
@@ -925,3 +1146,10 @@ def test_release_generates_two_boms_for_lh_rh_and_supersedes_old() -> None:
 	assert all(bom.is_active is True for bom in result.generated_boms)
 	assert all(bom.disabled is False for bom in result.generated_boms)
 	assert all(bom.status == "Active" for bom in result.generated_boms)
+
+
+def test_readme_mentions_release_gate_and_bom_qty_one() -> None:
+	content = Path("README.md").read_text(encoding="utf-8")
+
+	assert "BOM quantity is always 1" in content
+	assert "Release Pending Impact" in content

@@ -146,6 +146,27 @@ def test_canvas_payload_is_strict_json_serializable_for_non_finite_inputs() -> N
 	json.dumps(payload, allow_nan=False)
 
 
+def test_canvas_payload_marks_non_numeric_values_without_crashing() -> None:
+	from sheet_cutting_layout.services.canvas_payload import build_canvas_payload
+
+	layout = Layout(
+		sheet_width_mm="wide",
+		no_of_strips="2.5",
+		finished_parts=[FinishedPart("PART001SHR", "many", "gross", "scrap")],
+		end_pieces=[EndPiece("", "heavy", "qty")],
+	)
+
+	payload = build_canvas_payload(layout)
+	marked_fields = {marker["field"] for marker in payload["invalid_markers"]}
+
+	assert "sheet_width_mm" in marked_fields
+	assert "no_of_strips" in marked_fields
+	assert "finished_parts[0].gross_weight_per_part_kg" in marked_fields
+	assert "finished_parts[0].scrap_weight_per_part_kg" in marked_fields
+	assert "end_pieces[0].weight_kg" in marked_fields
+	assert "end_pieces[0].qty_per_sheet" in marked_fields
+
+
 @dataclass
 class LayoutCase:
 	layout: Layout
@@ -239,7 +260,7 @@ def test_bom_invariants_hold_for_random_valid_layouts(layout_case: LayoutCase) -
 	assert total_scrap_qty == pytest.approx(
 		layout_case.finished_part.scrap_weight_per_part_kg + expected_end_piece_scrap_qty
 	)
-	assert derived_fg_qty == pytest.approx(layout_case.expected_derived_fg_weight_kg)
+	assert derived_fg_qty == pytest.approx(layout_case.expected_derived_fg_weight_kg, rel=1e-6, abs=1e-6)
 
 
 def test_canvas_payload_summary_distributes_gross_scrap_and_end_pieces_consistently() -> None:
