@@ -24,6 +24,7 @@ class EndPieceRow(Protocol):
 
 class LayoutDocument(Protocol):
 	raw_material_item: str
+	process_scrap_item: str
 	end_pieces: Sequence[EndPieceRow]
 
 
@@ -41,7 +42,11 @@ class BomItemRow:
 @dataclass
 class BomDocument:
 	item: str
+	name: str = ""
 	quantity: int = 1
+	is_active: bool = True
+	disabled: bool = False
+	status: str = "Active"
 	items: list[BomItemRow] = field(default_factory=list)
 
 
@@ -72,7 +77,7 @@ def build_bom_from_layout_row(
 	if finished_part_row.scrap_weight_per_part_kg > 0:
 		bom.items.append(
 			BomItemRow(
-				item_code=layout_doc.raw_material_item,
+				item_code=layout_doc.process_scrap_item,
 				qty=finished_part_row.scrap_weight_per_part_kg,
 				row_type="process_scrap",
 			)

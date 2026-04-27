@@ -37,6 +37,7 @@ class EndPieceRow(Protocol):
 class SheetCuttingLayoutDocument(Protocol):
 	finished_parts: Sequence[FinishedPartRow]
 	end_pieces: Sequence[EndPieceRow]
+	process_scrap_item: str | None
 
 
 ALNUM_RE = re.compile(r"^[A-Za-z0-9]+$")
@@ -59,6 +60,10 @@ def validate_sheet_cutting_layout(layout: SheetCuttingLayoutDocument) -> None:
 	for finished_part in finished_parts:
 		validate_finished_part_code(finished_part.finished_part_item)
 		_validate_finished_part_weights(finished_part)
+		if finished_part.scrap_weight_per_part_kg > 0 and _is_missing(
+			getattr(layout, "process_scrap_item", None)
+		):
+			frappe.throw("Process scrap item is required when process scrap weight is positive")
 
 	for end_piece in end_pieces:
 		_validate_end_piece_required_fields(end_piece)

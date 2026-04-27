@@ -39,7 +39,8 @@
    "fieldname": "scrap_weight_per_part_kg",
    "fieldtype": "Float",
    "in_list_view": 1,
-   "label": "Scrap Weight Per Part Kg"
+   "label": "Scrap Weight Per Part Kg",
+   "reqd": 1
   },
   {
    "fieldname": "generated_bom",

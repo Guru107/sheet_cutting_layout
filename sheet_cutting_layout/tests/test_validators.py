@@ -38,6 +38,7 @@ class EndPiece:
 class Layout:
 	finished_parts: list[FinishedPart] = field(default_factory=list)
 	end_pieces: list[EndPiece] = field(default_factory=list)
+	process_scrap_item: str = "PROCESSSCRAP001"
 
 
 @pytest.fixture
@@ -71,6 +72,18 @@ def test_finished_part_weights_must_be_non_negative(validators: types.ModuleType
 
 	with pytest.raises(ValidationError, match="Scrap weight"):
 		validators.validate_sheet_cutting_layout(Layout(finished_parts=[FinishedPart("AB12SHR", 1, 1, -0.1)]))
+
+
+def test_process_scrap_item_required_when_process_scrap_weight_is_positive(
+	validators: types.ModuleType,
+) -> None:
+	with pytest.raises(ValidationError, match="Process scrap item"):
+		validators.validate_sheet_cutting_layout(
+			Layout(
+				finished_parts=[FinishedPart("AB12SHR", 2, 5, 1)],
+				process_scrap_item="",
+			)
+		)
 
 
 def test_end_piece_rows_require_item_weight_and_qty(validators: types.ModuleType) -> None:

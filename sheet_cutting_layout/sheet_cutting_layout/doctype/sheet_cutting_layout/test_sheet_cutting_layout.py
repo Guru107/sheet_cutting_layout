@@ -22,7 +22,9 @@ def test_sheet_cutting_layout_doctypes_define_normalized_model() -> None:
 		"layout_code",
 		"layout_family",
 		"revision_no",
+		"is_active",
 		"raw_material_item",
+		"process_scrap_item",
 		"sheet_thickness_mm",
 		"sheet_width_mm",
 		"sheet_length_mm",
@@ -48,7 +50,7 @@ def test_sheet_cutting_layout_doctypes_define_normalized_model() -> None:
 		},
 	)
 	assert_int_fields(parent_fields, {"parts_per_strip", "no_of_strips", "parts_per_sheet"})
-	assert_check_fields(parent_fields, {"project_manager_ok", "manufacturing_manager_ok"})
+	assert_check_fields(parent_fields, {"is_active", "project_manager_ok", "manufacturing_manager_ok"})
 
 	assert_table_field(parent_fields["finished_parts"], "Layout Finished Part")
 	assert_table_field(parent_fields["end_pieces"], "Layout End Piece")

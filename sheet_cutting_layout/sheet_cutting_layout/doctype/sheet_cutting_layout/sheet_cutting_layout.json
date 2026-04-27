@@ -9,7 +9,9 @@
   "layout_code",
   "layout_family",
   "revision_no",
+  "is_active",
   "raw_material_item",
+  "process_scrap_item",
   "sheet_thickness_mm",
   "sheet_width_mm",
   "sheet_length_mm",
@@ -54,12 +56,26 @@
    "reqd": 1
   },
   {
+   "default": "0",
+   "fieldname": "is_active",
+   "fieldtype": "Check",
+   "in_list_view": 1,
+   "label": "Is Active",
+   "read_only": 1
+  },
+  {
    "fieldname": "raw_material_item",
    "fieldtype": "Link",
    "in_list_view": 1,
    "label": "Raw Material Item",
    "options": "Item",
    "reqd": 1
+  },
+  {
+   "fieldname": "process_scrap_item",
+   "fieldtype": "Link",
+   "label": "Process Scrap Item",
+   "options": "Item"
   },
   {
    "fieldname": "sheet_thickness_mm",

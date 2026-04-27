@@ -120,6 +120,12 @@
     "state": "Release Pending Impact"
    },
    {
+    "action": "Finalize Impact Release",
+    "allowed": "MR Coordinator",
+    "next_state": "Released",
+    "state": "Release Pending Impact"
+   },
+   {
     "action": "Supersede",
     "allowed": "System Manager",
     "next_state": "Superseded",

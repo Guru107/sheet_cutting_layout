@@ -25,6 +25,7 @@ class EndPiece:
 @dataclass
 class Layout:
 	raw_material_item: str = "RAW-SHEET"
+	process_scrap_item: str = "PROCESS-SCRAP"
 	end_pieces: list[EndPiece] = field(default_factory=list)
 
 
@@ -56,7 +57,7 @@ def test_process_scrap_row_is_included_when_scrap_weight_is_positive() -> None:
 		FinishedPart(scrap_weight_per_part_kg=1.25),
 	)
 
-	assert bom.items[1].item_code == "RAW-SHEET"
+	assert bom.items[1].item_code == "PROCESS-SCRAP"
 	assert bom.items[1].qty == pytest.approx(1.25)
 	assert bom.items[1].uom == "Kg"
 	assert bom.items[1].row_type == "process_scrap"

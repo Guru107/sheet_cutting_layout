@@ -30,6 +30,7 @@ class EndPiece:
 @dataclass
 class Layout:
 	raw_material_item: str = "RAW-SHEET"
+	process_scrap_item: str = "PROCESS-SCRAP"
 	sheet_width_mm: float = 1000
 	sheet_length_mm: float = 2000
 	sheet_thickness_mm: float = 1.2
