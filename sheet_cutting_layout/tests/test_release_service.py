@@ -6,6 +6,7 @@ from typing import Literal
 
 import sheet_cutting_layout.hooks as hooks
 from sheet_cutting_layout.services.release_service import LayoutImpactResolution, LayoutReleaseStatus
+from sheet_cutting_layout.services.versioning import LayoutVersionStatus
 
 
 @dataclass
@@ -21,6 +22,34 @@ class Layout:
 	bom_replacements: dict[str, str]
 	status: LayoutReleaseStatus = "Approved by Purchase"
 	impact_resolutions: list[LayoutImpactResolution] = field(default_factory=list)
+
+
+@dataclass
+class FinishedPart:
+	finished_part_item: str
+	generated_bom: str | None = None
+
+
+@dataclass
+class RevisionLayout:
+	name: str
+	layout_family: str
+	revision_no: int
+	status: LayoutVersionStatus
+	is_active: bool
+	based_on_layout: str | None = None
+	approval_snapshot: list[str] = field(default_factory=list)
+	impact_resolutions: list[str] = field(default_factory=list)
+	finished_parts: list[FinishedPart] = field(default_factory=list)
+
+
+@dataclass
+class Bom:
+	name: str
+	item: str
+	is_active: bool = True
+	disabled: bool = False
+	status: str = "Active"
 
 
 def test_hooks_exposes_required_fixtures() -> None:
@@ -137,3 +166,165 @@ def test_finalize_completes_when_all_impact_decisions_are_present() -> None:
 	assert result.status == "Released"
 	assert layout.status == "Released"
 	assert {impact_row.status for impact_row in result.impact_rows} == {"Resolved"}
+
+
+def test_revising_released_layout_clones_and_increments_revision() -> None:
+	from sheet_cutting_layout.services.versioning import create_revision
+
+	old_layout = RevisionLayout(
+		name="SCL-001",
+		layout_family="FAM-001",
+		revision_no=2,
+		status="Released",
+		is_active=True,
+	)
+
+	new_layout = create_revision(old_layout)
+
+	assert new_layout is not old_layout
+	assert new_layout.revision_no == 3
+	assert new_layout.status == "Draft"
+	assert new_layout.based_on_layout == "SCL-001"
+	assert new_layout.is_active is False
+
+
+def test_revision_resets_approval_snapshot_impact_rows_and_generated_boms() -> None:
+	from sheet_cutting_layout.services.versioning import create_revision
+
+	old_layout = RevisionLayout(
+		name="SCL-001",
+		layout_family="FAM-001",
+		revision_no=1,
+		status="Released",
+		is_active=True,
+		approval_snapshot=["purchase-approved"],
+		impact_resolutions=["WO-001"],
+		finished_parts=[
+			FinishedPart("PART-001SHR", generated_bom="BOM-PART-001-001"),
+			FinishedPart("PART-002SHR", generated_bom="BOM-PART-002-001"),
+		],
+	)
+
+	new_layout = create_revision(old_layout)
+
+	assert new_layout.approval_snapshot == []
+	assert new_layout.impact_resolutions == []
+	assert [row.generated_bom for row in new_layout.finished_parts] == [None, None]
+	assert [row.generated_bom for row in old_layout.finished_parts] == [
+		"BOM-PART-001-001",
+		"BOM-PART-002-001",
+	]
+
+
+def test_finalizing_new_revision_supersedes_previous_active_layout() -> None:
+	from sheet_cutting_layout.services.versioning import finalize_new_revision_release
+
+	old_layout = RevisionLayout(
+		name="SCL-001",
+		layout_family="FAM-001",
+		revision_no=1,
+		status="Released",
+		is_active=True,
+	)
+	other_family_layout = RevisionLayout(
+		name="SCL-OTHER",
+		layout_family="FAM-OTHER",
+		revision_no=1,
+		status="Released",
+		is_active=True,
+	)
+	new_layout = RevisionLayout(
+		name="SCL-002",
+		layout_family="FAM-001",
+		revision_no=2,
+		status="Approved by Purchase",
+		is_active=False,
+	)
+
+	finalize_new_revision_release([old_layout, other_family_layout, new_layout], new_layout, [])
+
+	assert old_layout.status == "Superseded"
+	assert old_layout.is_active is False
+	assert new_layout.status == "Released"
+	assert new_layout.is_active is True
+	assert other_family_layout.status == "Released"
+	assert other_family_layout.is_active is True
+
+
+def test_finalizing_new_revision_disables_old_boms_for_affected_finished_parts() -> None:
+	from sheet_cutting_layout.services.versioning import finalize_new_revision_release
+
+	old_layout = RevisionLayout(
+		name="SCL-001",
+		layout_family="FAM-001",
+		revision_no=1,
+		status="Released",
+		is_active=True,
+		finished_parts=[
+			FinishedPart("PART-001SHR", generated_bom="BOM-PART-001-OLD"),
+			FinishedPart("PART-UNTOUCHEDSHR", generated_bom="BOM-UNTOUCHED-OLD"),
+		],
+	)
+	new_layout = RevisionLayout(
+		name="SCL-002",
+		layout_family="FAM-001",
+		revision_no=2,
+		status="Approved by Purchase",
+		is_active=False,
+		finished_parts=[FinishedPart("PART-001SHR", generated_bom="BOM-PART-001-NEW")],
+	)
+	old_bom = Bom("BOM-PART-001-OLD", item="PART-001SHR")
+	new_bom = Bom("BOM-PART-001-NEW", item="PART-001SHR")
+	unaffected_bom = Bom("BOM-UNTOUCHED-OLD", item="PART-UNTOUCHEDSHR")
+
+	finalize_new_revision_release([old_layout, new_layout], new_layout, [old_bom, new_bom, unaffected_bom])
+
+	assert old_bom.is_active is False
+	assert old_bom.disabled is True
+	assert old_bom.status == "Superseded"
+	assert new_bom.is_active is True
+	assert new_bom.disabled is False
+	assert new_bom.status == "Active"
+	assert unaffected_bom.is_active is True
+	assert unaffected_bom.disabled is False
+	assert unaffected_bom.status == "Active"
+
+
+def test_finalizing_new_revision_keeps_unlinked_same_item_boms_active() -> None:
+	from sheet_cutting_layout.services.versioning import finalize_new_revision_release
+
+	old_layout = RevisionLayout(
+		name="SCL-001",
+		layout_family="FAM-001",
+		revision_no=1,
+		status="Released",
+		is_active=True,
+		finished_parts=[FinishedPart("PART-001SHR", generated_bom="BOM-PART-001-OLD")],
+	)
+	new_layout = RevisionLayout(
+		name="SCL-002",
+		layout_family="FAM-001",
+		revision_no=2,
+		status="Approved by Purchase",
+		is_active=False,
+		finished_parts=[FinishedPart("PART-001SHR", generated_bom="BOM-PART-001-NEW")],
+	)
+	old_linked_bom = Bom("BOM-PART-001-OLD", item="PART-001SHR")
+	unlinked_same_item_bom = Bom("BOM-PART-001-UNRELATED", item="PART-001SHR")
+	new_bom = Bom("BOM-PART-001-NEW", item="PART-001SHR")
+
+	finalize_new_revision_release(
+		[old_layout, new_layout],
+		new_layout,
+		[old_linked_bom, unlinked_same_item_bom, new_bom],
+	)
+
+	assert old_linked_bom.is_active is False
+	assert old_linked_bom.disabled is True
+	assert old_linked_bom.status == "Superseded"
+	assert unlinked_same_item_bom.is_active is True
+	assert unlinked_same_item_bom.disabled is False
+	assert unlinked_same_item_bom.status == "Active"
+	assert new_bom.is_active is True
+	assert new_bom.disabled is False
+	assert new_bom.status == "Active"
