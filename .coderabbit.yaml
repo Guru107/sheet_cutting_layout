@@ -1,0 +1,59 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+language: "en-US"
+early_access: false
+tone_instructions: "Be concise, direct, and focused on correctness, maintainability, test coverage, security, and Frappe/ERPNext conventions."
+
+reviews:
+  profile: "assertive"
+  request_changes_workflow: false
+  high_level_summary: true
+  poem: false
+  review_status: true
+  review_details: true
+  auto_review:
+    enabled: true
+    drafts: false
+  path_instructions:
+    - path: "sheet_cutting_layout/**/*.py"
+      instructions: |
+        Review Python as Frappe server code. Check that behavior is covered by tests first,
+        business rules live server-side, database access uses Frappe APIs or Query Builder when
+        practical, raw SQL is parameterized, and expensive work is not performed in request hooks.
+    - path: "sheet_cutting_layout/public/**/*.js"
+      instructions: |
+        Review JavaScript as Frappe client code. Prefer frm APIs, small event handlers, translated
+        user-facing text, and server-side enforcement for calculations or validations that affect
+        persisted documents.
+    - path: "cypress/integration/**/*.js"
+      instructions: |
+        Review Cypress tests for realistic user workflows, clear assertions, stable selectors, and
+        setup that runs through Frappe bench using run-ui-tests.
+    - path: "docs/**/*.md"
+      instructions: |
+        Check documentation for accuracy, concise wording, actionable commands, and consistency with
+        the repository guides.
+  pre_merge_checks:
+    custom_checks:
+      - mode: "error"
+        name: "TDD evidence"
+        instructions: |
+          Pass only when behavior changes include tests written for the changed behavior, or when the
+          PR is documentation-only. Accept unit, integration, end-to-end, property-based, or
+          model-based tests. Fail if test gaps are not explicitly explained with a follow-up plan.
+
+chat:
+  auto_reply: true
+
+knowledge_base:
+  code_guidelines:
+    enabled: true
+    filePatterns:
+      - "docs/coding-conventions.md"
+      - "docs/development-philosophy.md"
+      - "docs/project-overview.md"
+
+code_generation:
+  docstrings:
+    enabled: true
+  unit_tests:
+    enabled: true
