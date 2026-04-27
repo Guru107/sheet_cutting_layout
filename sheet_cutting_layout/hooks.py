@@ -5,6 +5,11 @@ app_description = "A module for creating Sheet Cutting Layout for Press Parts"
 app_email = "connect@gurudatt.in"
 app_license = "mit"
 
+fixtures = [
+	{"dt": "Workflow", "filters": [["name", "=", "Sheet Cutting Layout Approval Workflow"]]},
+	{"dt": "Custom Field", "filters": [["dt", "in", ["BOM", "Work Order", "Production Plan"]]]},
+]
+
 # Apps
 # ------------------
 
