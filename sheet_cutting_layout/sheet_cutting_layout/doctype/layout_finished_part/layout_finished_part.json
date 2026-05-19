@@ -8,6 +8,7 @@
  "field_order": [
   "finished_part_item",
   "parts_per_sheet",
+  "net_weight_per_part_kg",
   "gross_weight_per_part_kg",
   "scrap_weight_per_part_kg",
   "generated_bom"
@@ -26,6 +27,14 @@
    "fieldtype": "Int",
    "in_list_view": 1,
    "label": "Parts Per Sheet",
+   "read_only": 1,
+   "reqd": 1
+  },
+  {
+   "fieldname": "net_weight_per_part_kg",
+   "fieldtype": "Float",
+   "in_list_view": 1,
+   "label": "Net Weight Per Part Kg",
    "reqd": 1
   },
   {
@@ -33,6 +42,7 @@
    "fieldtype": "Float",
    "in_list_view": 1,
    "label": "Gross Weight Per Part Kg",
+   "read_only": 1,
    "reqd": 1
   },
   {
@@ -40,6 +50,7 @@
    "fieldtype": "Float",
    "in_list_view": 1,
    "label": "Scrap Weight Per Part Kg",
+   "read_only": 1,
    "reqd": 1
   },
   {

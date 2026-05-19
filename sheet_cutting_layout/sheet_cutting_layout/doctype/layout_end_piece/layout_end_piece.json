@@ -7,6 +7,8 @@
  "engine": "InnoDB",
  "field_order": [
   "end_piece_item",
+  "width_mm",
+  "length_mm",
   "weight_kg",
   "qty_per_sheet",
   "disposition",
@@ -22,10 +24,25 @@
    "reqd": 1
   },
   {
+   "fieldname": "width_mm",
+   "fieldtype": "Float",
+   "in_list_view": 1,
+   "label": "Width Mm",
+   "reqd": 1
+  },
+  {
+   "fieldname": "length_mm",
+   "fieldtype": "Float",
+   "in_list_view": 1,
+   "label": "Length Mm",
+   "reqd": 1
+  },
+  {
    "fieldname": "weight_kg",
    "fieldtype": "Float",
    "in_list_view": 1,
    "label": "Weight Kg",
+   "read_only": 1,
    "reqd": 1
   },
   {

@@ -4,3 +4,7 @@
 
 [post_model_sync]
 # Patches added in this section will be executed after doctypes are migrated
+sheet_cutting_layout.patches.v1_0_repair_checked_workflow_state
+sheet_cutting_layout.patches.v1_0_submit_released_layouts
+sheet_cutting_layout.patches.v1_0_submit_superseded_layouts
+sheet_cutting_layout.patches.v1_0_backfill_mr_approval_snapshots

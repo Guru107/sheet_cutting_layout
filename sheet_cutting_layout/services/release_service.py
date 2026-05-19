@@ -58,9 +58,12 @@ class FinishedPartRow(Protocol):
 
 
 class ReleaseLayoutDocument(Protocol):
+	name: str
+	project: str
 	status: LayoutReleaseStatus
 	impact_resolutions: list[LayoutImpactResolution]
 	raw_material_item: str
+	weight_per_sheet_kg: float
 	end_pieces: Sequence[EndPieceRow]
 	finished_parts: Sequence[FinishedPartRow]
 
@@ -68,6 +71,8 @@ class ReleaseLayoutDocument(Protocol):
 class BomRecord(Protocol):
 	name: str
 	item: str
+	custom_operation: str | None
+	sheet_cutting_layout: str | None
 	is_active: bool
 	disabled: bool
 	status: str
@@ -226,7 +231,7 @@ def get_release_context(layout: ReleaseLayoutDocument) -> ReleaseContext:
 			return ReleaseContext(open_documents=(), layouts=(), boms=[])
 		raise RuntimeError("Frappe is required to build Sheet Cutting Layout release context")
 
-	layouts = _get_same_family_layouts(layout)
+	layouts = _get_same_project_layouts(layout)
 	boms = _get_finished_part_boms(layout)
 	return ReleaseContext(
 		open_documents=_get_open_manufacturing_documents(),
@@ -343,6 +348,7 @@ def _default_bom_document_factory(
 		else _default_bom_name(layout, finished_part, index)
 	)
 	bom._layout = layout
+	bom.sheet_cutting_layout = getattr(layout, "name", None)
 
 	if frappe is None:
 		if _is_test_runtime():
@@ -362,13 +368,28 @@ def _insert_frappe_bom(bom: BomDocument) -> BomDocument:
 	bom_doc.item = bom.item
 	bom_doc.company = _company_for_layout(getattr(bom, "_layout", None))
 	bom_doc.quantity = bom.quantity
+	bom_doc.uom = "Kg"
 	bom_doc.is_active = 0
 	bom_doc.disabled = 1
+	bom_doc.custom_operation = "Shearing"
+	bom_doc.sheet_cutting_layout = bom.sheet_cutting_layout or getattr(
+		getattr(bom, "_layout", None), "name", None
+	)
 	for row in bom.items:
 		bom_doc.append(
 			"items",
 			{
 				"item_code": row.item_code,
+				"qty": row.qty,
+				"uom": row.uom,
+			},
+		)
+	for row in bom.scrap_items:
+		bom_doc.append(
+			"scrap_items",
+			{
+				"item_code": row.item_code,
+				"stock_qty": row.qty,
 				"qty": row.qty,
 				"uom": row.uom,
 			},
@@ -415,7 +436,7 @@ def _superseded_layout(layout: ReleaseLayoutDocument, layouts: Sequence[object])
 
 def _is_previous_layout(previous_layout: object, layout: ReleaseLayoutDocument) -> bool:
 	return (
-		getattr(previous_layout, "layout_family", None) == getattr(layout, "layout_family", None)
+		getattr(previous_layout, "project", None) == getattr(layout, "project", None)
 		and getattr(previous_layout, "status", None) == "Released"
 		and getattr(previous_layout, "is_active", False) is True
 	)
@@ -424,7 +445,7 @@ def _is_previous_layout(previous_layout: object, layout: ReleaseLayoutDocument) 
 def _is_superseded_previous_layout(previous_layout: object, layout: ReleaseLayoutDocument) -> bool:
 	return (
 		previous_layout is not layout
-		and getattr(previous_layout, "layout_family", None) == getattr(layout, "layout_family", None)
+		and getattr(previous_layout, "project", None) == getattr(layout, "project", None)
 		and getattr(previous_layout, "status", None) == "Superseded"
 		and getattr(previous_layout, "is_active", True) is False
 	)
@@ -495,17 +516,17 @@ def _get_open_production_plans() -> list[FrappeManufacturingDocument]:
 	return documents
 
 
-def _get_same_family_layouts(layout: ReleaseLayoutDocument) -> list[object]:
+def _get_same_project_layouts(layout: ReleaseLayoutDocument) -> list[object]:
 	if frappe is None:
-		raise RuntimeError("Frappe is required to discover same-family layouts")
+		raise RuntimeError("Frappe is required to discover same-project layouts")
 
-	layout_family = getattr(layout, "layout_family", None)
-	if not layout_family:
+	project = getattr(layout, "project", None)
+	if not project:
 		return [layout]
 
 	layout_names = frappe.get_all(
 		"Sheet Cutting Layout",
-		filters={"layout_family": layout_family},
+		filters={"project": project},
 		pluck="name",
 	)
 	layouts = [frappe.get_doc("Sheet Cutting Layout", name) for name in layout_names]
@@ -526,10 +547,14 @@ def _get_finished_part_boms(layout: ReleaseLayoutDocument) -> list[BomRecord]:
 
 	bom_names = frappe.get_all(
 		"BOM",
-		filters={"item": ["in", finished_part_items]},
+		filters={"item": ["in", finished_part_items], "custom_operation": "Shearing"},
 		pluck="name",
 	)
 	return [frappe.get_doc("BOM", name) for name in bom_names]
+
+
+def _get_same_family_layouts(layout: ReleaseLayoutDocument) -> list[object]:
+	return _get_same_project_layouts(layout)
 
 
 def _row_value(row: object, fieldname: str) -> str:
@@ -555,8 +580,25 @@ def _save_layout_records(layouts: Sequence[object]) -> None:
 		return
 
 	for layout in layouts:
-		if hasattr(layout, "save"):
+		if _is_submitted_document(layout) and hasattr(layout, "db_set"):
+			layout.db_set(
+				{
+					"status": getattr(layout, "status", None),
+					"is_active": getattr(layout, "is_active", None),
+				},
+				update_modified=True,
+				notify=False,
+			)
+		elif hasattr(layout, "save"):
 			layout.save(ignore_permissions=True)
+
+
+def _is_submitted_document(doc: object) -> bool:
+	docstatus = getattr(doc, "docstatus", None)
+	if docstatus == 1:
+		return True
+	is_submitted = getattr(docstatus, "is_submitted", None)
+	return bool(callable(is_submitted) and is_submitted())
 
 
 def _is_test_runtime() -> bool:

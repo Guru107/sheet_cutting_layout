@@ -34,7 +34,7 @@
    },
    {
     "allow_edit": "System Manager",
-    "doc_status": "0",
+    "doc_status": "1",
     "state": "Released"
    },
    {
@@ -44,7 +44,7 @@
    },
    {
     "allow_edit": "System Manager",
-    "doc_status": "0",
+    "doc_status": "1",
     "state": "Superseded"
    }
   ],
@@ -56,21 +56,16 @@
     "state": "Draft"
    },
    {
-    "action": "Project Manager Approves",
-    "allowed": "Project Manager",
+    "action": "Projects Manager Approves",
+    "allowed": "Projects Manager",
+    "condition": "not doc.project_manager_ok and not doc.manufacturing_manager_ok",
     "next_state": "Submitted for Check",
     "state": "Submitted for Check"
    },
    {
     "action": "Manufacturing Manager Approves",
     "allowed": "Manufacturing Manager",
-    "next_state": "Submitted for Check",
-    "state": "Submitted for Check"
-   },
-   {
-    "action": "Mark Checked",
-    "allowed": "System Manager",
-    "condition": "doc.project_manager_ok and doc.manufacturing_manager_ok",
+    "condition": "doc.project_manager_ok and not doc.manufacturing_manager_ok",
     "next_state": "Checked",
     "state": "Submitted for Check"
    },

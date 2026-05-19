@@ -32,7 +32,7 @@
    "fieldtype": "Select",
    "in_list_view": 1,
    "label": "Decision",
-   "options": "\nApproved\nRejected"
+   "options": "\nSubmitted\nApproved\nRejected"
   },
   {
    "fieldname": "comment",

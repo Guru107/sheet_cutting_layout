@@ -67,12 +67,20 @@
 				finishedParts,
 				sheetWidth,
 				sheetLength,
+				stripLength,
 				noOfStrips,
 				partsPerStrip,
 				partsPerSheet,
 				invalidMarkers
 			),
-			end_piece_zones: buildEndPieceZones(endPieces, sheetWidth, sheetLength, invalidMarkers),
+			end_piece_zones: buildEndPieceZones(
+				endPieces,
+				sheetWidth,
+				sheetLength,
+				stripLength,
+				noOfStrips,
+				invalidMarkers
+			),
 			summary: buildSummary(finishedParts, endPieces, invalidMarkers),
 			invalid_markers: invalidMarkers,
 		};
@@ -83,24 +91,34 @@
 			return [];
 		}
 
-		const width = stripWidth || sheetWidth / noOfStrips;
-		const length = stripLength || sheetLength;
+		const width = stripWidth || sheetWidth;
+		const length = stripLength || sheetLength / noOfStrips;
 		return Array.from({ length: noOfStrips }, (_, index) => ({
 			index: index + 1,
-			x_mm: index * width,
-			y_mm: 0,
+			x_mm: 0,
+			y_mm: index * length,
 			width_mm: width,
 			length_mm: length,
 		}));
 	}
 
-	function buildPartZones(finishedParts, sheetWidth, sheetLength, noOfStrips, partsPerStrip, partsPerSheet, invalidMarkers) {
+	function buildPartZones(
+		finishedParts,
+		sheetWidth,
+		sheetLength,
+		stripLength,
+		noOfStrips,
+		partsPerStrip,
+		partsPerSheet,
+		invalidMarkers
+	) {
 		if (!sheetWidth || !sheetLength) {
 			return [];
 		}
 
 		const zones = [];
-		const columns = noOfStrips || 1;
+		const rowsFromStrips = noOfStrips || 1;
+		const columns = partsPerStrip || Math.max(1, Math.ceil((partsPerSheet || 1) / rowsFromStrips));
 		const defaultParts = (noOfStrips || 0) * (partsPerStrip || 0) || partsPerSheet || 1;
 
 		finishedParts.forEach((row, rowIndex) => {
@@ -110,9 +128,9 @@
 			}
 
 			const partCount = rowParts || defaultParts;
-			const rows = Math.max(1, Math.ceil(partCount / columns));
+			const rows = noOfStrips || Math.max(1, Math.ceil(partCount / columns));
 			const cellWidth = sheetWidth / columns;
-			const cellLength = sheetLength / rows;
+			const cellLength = stripLength && noOfStrips ? stripLength : sheetLength / rows;
 
 			for (let index = 0; index < partCount; index += 1) {
 				zones.push({
@@ -129,10 +147,12 @@
 		return zones;
 	}
 
-	function buildEndPieceZones(endPieces, sheetWidth, sheetLength, invalidMarkers) {
+	function buildEndPieceZones(endPieces, sheetWidth, sheetLength, stripLength, noOfStrips, invalidMarkers) {
 		const width = sheetWidth || 1;
 		const length = sheetLength || 1;
-		const zoneLength = length / Math.max(1, endPieces.length);
+		const usedLength = stripLength && noOfStrips ? stripLength * noOfStrips : 0;
+		const remnantLength = Math.max(0, length - usedLength);
+		const zoneWidth = width / Math.max(1, endPieces.length);
 
 		return endPieces.map((row, index) => {
 			const weight = numberOrNull(row.weight_kg);
@@ -150,10 +170,10 @@
 				qty_per_sheet: qty,
 				disposition: row.disposition || null,
 				used_for_finished_part: row.used_for_finished_part || null,
-				x_mm: width * 0.88,
-				y_mm: index * zoneLength,
-				width_mm: width * 0.12,
-				length_mm: zoneLength,
+				x_mm: index * zoneWidth,
+				y_mm: usedLength,
+				width_mm: zoneWidth,
+				length_mm: remnantLength > 0 ? remnantLength : length / Math.max(1, endPieces.length),
 			};
 		});
 	}
@@ -227,7 +247,7 @@
 		const sheetWidth = sheet.width_mm || 1;
 		const sheetLength = sheet.length_mm || 1;
 		const padding = 28;
-		const depth = 18;
+		const depth = 8;
 		const scale = Math.min((cssWidth - padding * 2 - depth) / sheetWidth, (cssHeight - padding * 2 - depth - 34) / sheetLength);
 		const originX = padding;
 		const originY = padding + depth;
@@ -236,8 +256,8 @@
 
 		drawSheetBase(context, originX, originY, width, length, depth);
 		drawZones(context, payload.strips || [], originX, originY, scale, "#7895b2", "rgba(120, 149, 178, 0.16)");
-		drawZones(context, payload.part_zones || [], originX, originY, scale, "#2f7d68", "rgba(47, 125, 104, 0.22)");
 		drawZones(context, payload.end_piece_zones || [], originX, originY, scale, "#b6633b", "rgba(182, 99, 59, 0.32)");
+		drawDimensionMarkers(context, payload, originX, originY, width, length, scale);
 		drawInvalidMarkers(context, payload.invalid_markers || [], cssWidth, cssHeight);
 		drawSummary(context, payload.summary || {}, padding, cssHeight - 18);
 	}
@@ -287,6 +307,99 @@
 		context.restore();
 	}
 
+	function drawDimensionMarkers(context, payload, originX, originY, width, length, scale) {
+		const sheet = payload.sheet_dimensions || {};
+		const strips = payload.strips || [];
+		const endPieces = payload.end_piece_zones || [];
+		const firstStrip = strips[0];
+		const firstEndPiece = endPieces[0];
+
+		context.save();
+		context.strokeStyle = "#26313f";
+		context.fillStyle = "#26313f";
+		context.lineWidth = 1;
+		context.font = "12px system-ui, sans-serif";
+		context.textAlign = "center";
+		context.textBaseline = "middle";
+
+		if (sheet.width_mm) {
+			drawHorizontalDimension(
+				context,
+				originX,
+				originX + width,
+				originY - 12,
+				formatDimension(sheet.width_mm),
+				-7
+			);
+		}
+
+		if (firstStrip && firstStrip.length_mm) {
+			const stripY = originY + (firstStrip.y_mm || 0) * scale;
+			const stripLength = firstStrip.length_mm * scale;
+			drawVerticalDimension(
+				context,
+				originX - 10,
+				stripY,
+				stripY + stripLength,
+				formatDimension(firstStrip.length_mm),
+				-8
+			);
+		}
+
+		if (firstEndPiece && firstEndPiece.length_mm) {
+			const endPieceY = originY + (firstEndPiece.y_mm || 0) * scale;
+			const endPieceLength = firstEndPiece.length_mm * scale;
+			drawVerticalDimension(
+				context,
+				originX + width + 10,
+				endPieceY,
+				Math.min(originY + length, endPieceY + endPieceLength),
+				formatDimension(firstEndPiece.length_mm),
+				8
+			);
+		}
+
+		endPieces.forEach((zone) => {
+			if (!zone.width_mm) {
+				return;
+			}
+			const x = originX + (zone.x_mm || 0) * scale;
+			const zoneWidth = zone.width_mm * scale;
+			const y = originY + length + 12;
+			drawHorizontalDimension(context, x, x + zoneWidth, y, formatDimension(zone.width_mm), 8);
+		});
+
+		context.restore();
+	}
+
+	function drawHorizontalDimension(context, x1, x2, y, label, labelOffset) {
+		context.beginPath();
+		context.moveTo(x1, y - 4);
+		context.lineTo(x1, y + 4);
+		context.moveTo(x1, y);
+		context.lineTo(x2, y);
+		context.moveTo(x2, y - 4);
+		context.lineTo(x2, y + 4);
+		context.stroke();
+		context.fillText(label, (x1 + x2) / 2, y + labelOffset);
+	}
+
+	function drawVerticalDimension(context, x, y1, y2, label, labelOffset) {
+		context.beginPath();
+		context.moveTo(x - 4, y1);
+		context.lineTo(x + 4, y1);
+		context.moveTo(x, y1);
+		context.lineTo(x, y2);
+		context.moveTo(x - 4, y2);
+		context.lineTo(x + 4, y2);
+		context.stroke();
+		context.save();
+		context.translate(x + labelOffset, (y1 + y2) / 2);
+		context.rotate(-Math.PI / 2);
+		context.fillText(label, 0, 0);
+		context.restore();
+	}
+
 	function drawInvalidMarkers(context, markers, width, height) {
 		if (!markers.length) {
 			return;
@@ -324,6 +437,11 @@
 	function formatWeight(value) {
 		const number = numberOrNull(value) || 0;
 		return `${number.toFixed(3)} kg`;
+	}
+
+	function formatDimension(value) {
+		const number = numberOrNull(value) || 0;
+		return Number.isInteger(number) ? String(number) : number.toFixed(1);
 	}
 
 	window.SheetLayoutCanvas = {

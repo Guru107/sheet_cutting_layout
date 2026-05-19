@@ -66,6 +66,7 @@ def build_canvas_payload(layout_doc: SheetCuttingLayoutDocument) -> dict[str, Js
 			finished_parts=finished_parts,
 			sheet_width=sheet_width,
 			sheet_length=sheet_length,
+			strip_length=strip_length,
 			no_of_strips=no_of_strips,
 			parts_per_strip=parts_per_strip,
 			parts_per_sheet=parts_per_sheet,
@@ -74,6 +75,8 @@ def build_canvas_payload(layout_doc: SheetCuttingLayoutDocument) -> dict[str, Js
 			end_pieces=end_pieces,
 			sheet_width=sheet_width,
 			sheet_length=sheet_length,
+			strip_length=strip_length,
+			no_of_strips=no_of_strips,
 			invalid_markers=invalid_markers,
 		),
 		"summary": _build_summary(
@@ -96,13 +99,13 @@ def _build_strip_zones(
 	if sheet_width is None or sheet_length is None or no_of_strips is None:
 		return []
 
-	width = strip_width if strip_width is not None else sheet_width / no_of_strips
-	length = strip_length if strip_length is not None else sheet_length
+	width = strip_width if strip_width is not None else sheet_width
+	length = strip_length if strip_length is not None else sheet_length / no_of_strips
 	return [
 		{
 			"index": index + 1,
-			"x_mm": index * width,
-			"y_mm": 0,
+			"x_mm": 0,
+			"y_mm": index * length,
 			"width_mm": width,
 			"length_mm": length,
 		}
@@ -115,6 +118,7 @@ def _build_part_zones(
 	finished_parts: Sequence[FinishedPartRow],
 	sheet_width: float | None,
 	sheet_length: float | None,
+	strip_length: float | None,
 	no_of_strips: int | None,
 	parts_per_strip: int | None,
 	parts_per_sheet: int | None,
@@ -123,14 +127,17 @@ def _build_part_zones(
 		return []
 
 	zones: list[JsonValue] = []
-	columns = no_of_strips or 1
+	rows = no_of_strips or 1
+	columns = parts_per_strip or max(1, ((parts_per_sheet or 1) + rows - 1) // rows)
 	default_parts = (no_of_strips or 0) * (parts_per_strip or 0) or parts_per_sheet or 1
 	for finished_part in finished_parts:
 		row_parts = _as_positive_int(getattr(finished_part, "parts_per_sheet", None))
 		part_count = row_parts or default_parts
-		rows = max(1, (part_count + columns - 1) // columns)
+		rows = no_of_strips or max(1, (part_count + columns - 1) // columns)
 		cell_width = sheet_width / columns
-		cell_length = sheet_length / rows
+		cell_length = (
+			strip_length if strip_length is not None and no_of_strips is not None else sheet_length / rows
+		)
 
 		for index in range(part_count):
 			zones.append(
@@ -152,11 +159,17 @@ def _build_end_piece_zones(
 	end_pieces: Sequence[EndPieceRow],
 	sheet_width: float | None,
 	sheet_length: float | None,
+	strip_length: float | None,
+	no_of_strips: int | None,
 	invalid_markers: list[JsonValue],
 ) -> list[JsonValue]:
 	width = sheet_width or 1
 	length = sheet_length or 1
-	zone_length = length / max(1, len(end_pieces))
+	used_length = (
+		(strip_length * no_of_strips) if strip_length is not None and no_of_strips is not None else 0
+	)
+	remnant_length = max(0.0, length - used_length)
+	zone_width = width / max(1, len(end_pieces))
 	zones: list[JsonValue] = []
 
 	for index, end_piece in enumerate(end_pieces):
@@ -169,10 +182,10 @@ def _build_end_piece_zones(
 				"qty_per_sheet": qty,
 				"disposition": _optional_str(getattr(end_piece, "disposition", None)),
 				"used_for_finished_part": _optional_str(getattr(end_piece, "used_for_finished_part", None)),
-				"x_mm": width * 0.88,
-				"y_mm": index * zone_length,
-				"width_mm": width * 0.12,
-				"length_mm": zone_length,
+				"x_mm": index * zone_width,
+				"y_mm": used_length,
+				"width_mm": zone_width,
+				"length_mm": remnant_length if remnant_length > 0 else length / max(1, len(end_pieces)),
 			}
 		)
 

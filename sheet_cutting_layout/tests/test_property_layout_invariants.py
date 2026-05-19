@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import json
+import subprocess
 from dataclasses import dataclass, field
 from math import inf, isfinite, nan
+from pathlib import Path
 from string import ascii_letters, digits
 
 import pytest
@@ -31,6 +33,7 @@ class EndPiece:
 class Layout:
 	raw_material_item: str = "RAW-SHEET"
 	process_scrap_item: str = "PROCESS-SCRAP"
+	weight_per_sheet_kg: float | None = None
 	sheet_width_mm: float = 1000
 	sheet_length_mm: float = 2000
 	sheet_thickness_mm: float = 1.2
@@ -56,6 +59,347 @@ def test_canvas_payload_builder_returns_end_piece_zones_for_all_rows() -> None:
 	payload = build_canvas_payload(layout)
 
 	assert len(payload["end_piece_zones"]) == len(layout.end_pieces)
+
+
+def test_canvas_payload_places_full_width_strips_down_sheet_length() -> None:
+	from sheet_cutting_layout.services.canvas_payload import build_canvas_payload
+
+	layout = Layout(
+		sheet_width_mm=1250,
+		sheet_length_mm=2500,
+		strip_width_mm=1250,
+		strip_length_mm=211,
+		no_of_strips=11,
+		parts_per_strip=7,
+		parts_per_sheet=77,
+		finished_parts=[FinishedPart("0101BW503230NSHR", 77, 0.47, 0.18)],
+		end_pieces=[EndPiece("HSLA34016MM", 2.81, 1, "Reuse")],
+	)
+
+	payload = build_canvas_payload(layout)
+	strips = payload["strips"]
+	part_zones = payload["part_zones"]
+	end_piece_zones = payload["end_piece_zones"]
+
+	assert len(strips) == 11
+	assert strips[0] == {
+		"index": 1,
+		"x_mm": 0,
+		"y_mm": 0,
+		"width_mm": 1250,
+		"length_mm": 211,
+	}
+	assert strips[1]["x_mm"] == 0
+	assert strips[1]["y_mm"] == 211
+	assert strips[-1]["x_mm"] == 0
+	assert strips[-1]["y_mm"] == 2110
+
+	assert len(part_zones) == 77
+	assert part_zones[0]["x_mm"] == 0
+	assert part_zones[0]["y_mm"] == 0
+	assert part_zones[6]["x_mm"] == pytest.approx(1250 * 6 / 7)
+	assert part_zones[6]["y_mm"] == 0
+	assert part_zones[7]["x_mm"] == 0
+	assert part_zones[7]["y_mm"] == 211
+	assert part_zones[-1]["x_mm"] == pytest.approx(1250 * 6 / 7)
+	assert part_zones[-1]["y_mm"] == 2110
+
+	assert end_piece_zones == [
+		{
+			"end_piece_item": "HSLA34016MM",
+			"weight_kg": 2.81,
+			"qty_per_sheet": 1.0,
+			"disposition": "Reuse",
+			"used_for_finished_part": None,
+			"x_mm": 0,
+			"y_mm": 2321,
+			"width_mm": 1250,
+			"length_mm": 179,
+		}
+	]
+
+
+def test_browser_canvas_payload_places_full_width_strips_down_sheet_length() -> None:
+	script_path = Path("sheet_cutting_layout/public/js/sheet_layout_canvas.js")
+	node_script = f"""
+const fs = require("node:fs");
+const vm = require("node:vm");
+const code = fs.readFileSync({str(script_path)!r}, "utf8");
+const context = {{ window: {{ clearTimeout, setTimeout, devicePixelRatio: 1 }}, console }};
+context.window.window = context.window;
+vm.createContext(context);
+vm.runInContext(code, context);
+const payload = context.window.SheetLayoutCanvas.buildPayloadFromDoc({{
+  sheet_width_mm: 1250,
+  sheet_length_mm: 2500,
+  sheet_thickness_mm: 1.2,
+  strip_width_mm: 1250,
+  strip_length_mm: 211,
+  no_of_strips: 11,
+  parts_per_strip: 7,
+  parts_per_sheet: 77,
+  finished_parts: [
+    {{
+      finished_part_item: "0101BW503230NSHR",
+      parts_per_sheet: 77,
+      gross_weight_per_part_kg: 0.47,
+      scrap_weight_per_part_kg: 0.18,
+    }},
+  ],
+  end_pieces: [
+    {{
+      end_piece_item: "HSLA34016MM",
+      weight_kg: 2.81,
+      qty_per_sheet: 1,
+      disposition: "Reuse",
+    }},
+  ],
+}});
+const actual = {{
+ secondStripX: payload.strips[1].x_mm,
+ secondStripY: payload.strips[1].y_mm,
+ eighthPartX: payload.part_zones[7].x_mm,
+ eighthPartY: payload.part_zones[7].y_mm,
+ lastPartX: payload.part_zones[76].x_mm,
+ lastPartY: payload.part_zones[76].y_mm,
+  remnantX: payload.end_piece_zones[0].x_mm,
+  remnantY: payload.end_piece_zones[0].y_mm,
+  remnantWidth: payload.end_piece_zones[0].width_mm,
+  remnantLength: payload.end_piece_zones[0].length_mm,
+}};
+console.log(JSON.stringify(actual));
+"""
+	result = subprocess.run(["node", "-e", node_script], check=True, capture_output=True, text=True)
+	actual = json.loads(result.stdout)
+
+	assert actual["secondStripX"] == 0
+	assert actual["secondStripY"] == 211
+	assert actual["eighthPartX"] == 0
+	assert actual["eighthPartY"] == 211
+	assert actual["lastPartX"] == pytest.approx(1250 * 6 / 7)
+	assert actual["lastPartY"] == 2110
+	assert actual["remnantX"] == 0
+	assert actual["remnantY"] == 2321
+	assert actual["remnantWidth"] == 1250
+	assert actual["remnantLength"] == 179
+
+
+def test_browser_canvas_renderer_does_not_draw_part_grid_over_cutting_layout() -> None:
+	script_path = Path("sheet_cutting_layout/public/js/sheet_layout_canvas.js")
+	node_script = f"""
+const fs = require("node:fs");
+const vm = require("node:vm");
+const code = fs.readFileSync({str(script_path)!r}, "utf8");
+const calls = [];
+const context = {{
+  window: {{ clearTimeout, setTimeout, devicePixelRatio: 1 }},
+  console,
+}};
+context.window.window = context.window;
+vm.createContext(context);
+vm.runInContext(code, context);
+const canvas = {{
+  clientWidth: 860,
+  clientHeight: 420,
+  width: 0,
+  height: 0,
+  getContext() {{
+    return {{
+      setTransform() {{}},
+      clearRect() {{}},
+      beginPath() {{}},
+      moveTo() {{}},
+      lineTo() {{}},
+      closePath() {{}},
+      fill() {{}},
+      stroke() {{}},
+      save() {{}},
+      restore() {{}},
+      translate() {{}},
+      rotate() {{}},
+      fillText() {{}},
+      fillRect(x, y, width, height) {{ calls.push({{ type: "fillRect", x, y, width, height }}); }},
+      strokeRect(x, y, width, height) {{ calls.push({{ type: "strokeRect", x, y, width, height }}); }},
+      set fillStyle(value) {{}},
+      set strokeStyle(value) {{}},
+      set lineWidth(value) {{}},
+      set font(value) {{}},
+      set textAlign(value) {{}},
+      set textBaseline(value) {{}},
+    }};
+  }},
+}};
+const payload = context.window.SheetLayoutCanvas.buildPayloadFromDoc({{
+  sheet_width_mm: 1250,
+  sheet_length_mm: 2500,
+  sheet_thickness_mm: 1.2,
+  strip_width_mm: 1250,
+  strip_length_mm: 211,
+  no_of_strips: 11,
+  parts_per_strip: 7,
+  parts_per_sheet: 77,
+  finished_parts: [
+    {{
+      finished_part_item: "0101BW503230NSHR",
+      parts_per_sheet: 77,
+      gross_weight_per_part_kg: 0.47,
+      scrap_weight_per_part_kg: 0.18,
+    }},
+  ],
+  end_pieces: [
+    {{
+      end_piece_item: "HSLA34016MM",
+      weight_kg: 2.81,
+      qty_per_sheet: 1,
+      disposition: "Reuse",
+    }},
+  ],
+}});
+context.window.SheetLayoutCanvas.render(canvas, payload);
+const narrowVerticalOverlays = calls.filter((call) => call.width > 2 && call.width < 100 && call.height > 20);
+console.log(JSON.stringify({{ narrowVerticalOverlayCount: narrowVerticalOverlays.length }}));
+"""
+	result = subprocess.run(["node", "-e", node_script], check=True, capture_output=True, text=True)
+	actual = json.loads(result.stdout)
+
+	assert actual["narrowVerticalOverlayCount"] == 0
+
+
+def test_browser_canvas_renderer_uses_subtle_pseudo_depth() -> None:
+	script_path = Path("sheet_cutting_layout/public/js/sheet_layout_canvas.js")
+	node_script = f"""
+const fs = require("node:fs");
+const vm = require("node:vm");
+const code = fs.readFileSync({str(script_path)!r}, "utf8");
+const calls = [];
+const context = {{
+  window: {{ clearTimeout, setTimeout, devicePixelRatio: 1 }},
+  console,
+}};
+context.window.window = context.window;
+vm.createContext(context);
+vm.runInContext(code, context);
+const canvas = {{
+  clientWidth: 860,
+  clientHeight: 420,
+  width: 0,
+  height: 0,
+  getContext() {{
+    return {{
+      setTransform() {{}},
+      clearRect() {{}},
+      beginPath() {{}},
+      moveTo(x, y) {{ calls.push({{ type: "moveTo", x, y }}); }},
+      lineTo(x, y) {{ calls.push({{ type: "lineTo", x, y }}); }},
+      closePath() {{}},
+      fill() {{}},
+      stroke() {{}},
+      save() {{}},
+      restore() {{}},
+      translate() {{}},
+      rotate() {{}},
+      fillText() {{}},
+      fillRect(x, y, width, height) {{ calls.push({{ type: "fillRect", x, y, width, height }}); }},
+      strokeRect() {{}},
+      set fillStyle(value) {{}},
+      set strokeStyle(value) {{}},
+      set lineWidth(value) {{}},
+      set font(value) {{}},
+      set textAlign(value) {{}},
+      set textBaseline(value) {{}},
+    }};
+  }},
+}};
+const payload = context.window.SheetLayoutCanvas.buildPayloadFromDoc({{
+  sheet_width_mm: 1250,
+  sheet_length_mm: 2500,
+  sheet_thickness_mm: 1,
+  strip_width_mm: 1250,
+  strip_length_mm: 242,
+  no_of_strips: 10,
+  parts_per_strip: 8,
+  parts_per_sheet: 80,
+  finished_parts: [],
+  end_pieces: [{{ end_piece_item: "RM1", weight_kg: 2.814, qty_per_sheet: 1, disposition: "Reuse" }}],
+}});
+context.window.SheetLayoutCanvas.render(canvas, payload);
+const sheetFaceIndex = calls.findIndex((call) => call.type === "fillRect");
+const sheetFace = calls[sheetFaceIndex];
+const minLineY = Math.min(...calls.slice(0, sheetFaceIndex).filter((call) => call.type === "lineTo").map((call) => call.y));
+console.log(JSON.stringify({{ pseudoDepth: sheetFace.y - minLineY }}));
+"""
+	result = subprocess.run(["node", "-e", node_script], check=True, capture_output=True, text=True)
+	actual = json.loads(result.stdout)
+
+	assert actual["pseudoDepth"] <= 8
+
+
+def test_browser_canvas_renderer_draws_sheet_strip_and_end_piece_dimension_labels() -> None:
+	script_path = Path("sheet_cutting_layout/public/js/sheet_layout_canvas.js")
+	node_script = f"""
+const fs = require("node:fs");
+const vm = require("node:vm");
+const code = fs.readFileSync({str(script_path)!r}, "utf8");
+const labels = [];
+const context = {{
+  window: {{ clearTimeout, setTimeout, devicePixelRatio: 1 }},
+  console,
+}};
+context.window.window = context.window;
+vm.createContext(context);
+vm.runInContext(code, context);
+const canvas = {{
+  clientWidth: 860,
+  clientHeight: 420,
+  width: 0,
+  height: 0,
+  getContext() {{
+    return {{
+      setTransform() {{}},
+      clearRect() {{}},
+      beginPath() {{}},
+      moveTo() {{}},
+      lineTo() {{}},
+      closePath() {{}},
+      fill() {{}},
+      stroke() {{}},
+      save() {{}},
+      restore() {{}},
+      translate() {{}},
+      rotate() {{}},
+      fillRect() {{}},
+      strokeRect() {{}},
+      fillText(text) {{ labels.push(String(text)); }},
+      set fillStyle(value) {{}},
+      set strokeStyle(value) {{}},
+      set lineWidth(value) {{}},
+      set font(value) {{}},
+      set textAlign(value) {{}},
+      set textBaseline(value) {{}},
+    }};
+  }},
+}};
+const payload = context.window.SheetLayoutCanvas.buildPayloadFromDoc({{
+  sheet_width_mm: 1250,
+  sheet_length_mm: 2500,
+  sheet_thickness_mm: 1,
+  strip_width_mm: 1250,
+  strip_length_mm: 242,
+  no_of_strips: 10,
+  parts_per_strip: 8,
+  parts_per_sheet: 80,
+  finished_parts: [{{ finished_part_item: "FG001SHR", parts_per_sheet: 80, gross_weight_per_part_kg: 0.474, scrap_weight_per_part_kg: 0.185 }}],
+  end_pieces: [{{ end_piece_item: "RM1", weight_kg: 2.814, qty_per_sheet: 1, disposition: "Reuse" }}],
+}});
+context.window.SheetLayoutCanvas.render(canvas, payload);
+console.log(JSON.stringify({{ labels }}));
+"""
+	result = subprocess.run(["node", "-e", node_script], check=True, capture_output=True, text=True)
+	actual = json.loads(result.stdout)
+
+	assert "1250" in actual["labels"]
+	assert "242" in actual["labels"]
+	assert "80" in actual["labels"]
 
 
 def test_canvas_payload_builder_marks_invalid_dimensions_without_crashing() -> None:
@@ -184,9 +528,12 @@ def layout_case_strategy(draw: st.DrawFn) -> LayoutCase:
 		(end_piece.weight_kg * end_piece.qty_per_sheet) / parts_per_sheet for end_piece in end_pieces
 	)
 	gross_weight = process_scrap + distributed_end_piece_scrap + derived_fg_weight
+	weight_per_sheet = gross_weight * parts_per_sheet + sum(
+		end_piece.weight_kg * end_piece.qty_per_sheet for end_piece in end_pieces
+	)
 
 	return LayoutCase(
-		layout=Layout(end_pieces=end_pieces),
+		layout=Layout(end_pieces=end_pieces, weight_per_sheet_kg=weight_per_sheet),
 		finished_part=FinishedPart(
 			finished_part_item=draw(finished_part_code_strategy()),
 			parts_per_sheet=parts_per_sheet,
@@ -242,23 +589,45 @@ def test_bom_invariants_hold_for_random_valid_layouts(layout_case: LayoutCase) -
 	from sheet_cutting_layout.services.bom_service import build_bom_from_layout_row
 
 	bom = build_bom_from_layout_row(layout_case.layout, layout_case.finished_part)
-	process_scrap_qty = _sum_bom_qty(bom.items, "process_scrap")
-	end_piece_scrap_qty = _sum_bom_qty(bom.items, "end_piece_scrap")
+	process_scrap_qty = _sum_bom_qty(bom.scrap_items, "process_scrap")
+	end_piece_scrap_qty = _sum_bom_qty(bom.scrap_items, "end_piece_scrap")
 	expected_end_piece_scrap_qty = sum(
-		(end_piece.weight_kg * end_piece.qty_per_sheet) / layout_case.finished_part.parts_per_sheet
+		end_piece.weight_kg * end_piece.qty_per_sheet
 		for end_piece in layout_case.layout.end_pieces
+		if end_piece.disposition != "Scrap"
+	)
+	expected_scrap_end_piece_qty = sum(
+		end_piece.weight_kg * end_piece.qty_per_sheet
+		for end_piece in layout_case.layout.end_pieces
+		if end_piece.disposition == "Scrap"
 	)
 	total_scrap_qty = process_scrap_qty + end_piece_scrap_qty
-	derived_fg_qty = layout_case.finished_part.gross_weight_per_part_kg - total_scrap_qty
-
-	assert bom.quantity == 1
-	assert _sum_bom_qty(bom.items, "raw_material") == pytest.approx(
+	derived_fg_qty = (
 		layout_case.finished_part.gross_weight_per_part_kg
+		- layout_case.finished_part.scrap_weight_per_part_kg
+		- (
+			(expected_end_piece_scrap_qty + expected_scrap_end_piece_qty)
+			/ layout_case.finished_part.parts_per_sheet
+			if layout_case.finished_part.parts_per_sheet
+			else 0
+		)
 	)
-	assert process_scrap_qty == pytest.approx(layout_case.finished_part.scrap_weight_per_part_kg)
+
+	assert bom.quantity == layout_case.finished_part.parts_per_sheet
+	assert _sum_bom_qty(bom.items, "raw_material") == pytest.approx(
+		layout_case.layout.weight_per_sheet_kg
+	)
+	assert process_scrap_qty == pytest.approx(
+		layout_case.finished_part.scrap_weight_per_part_kg
+		* layout_case.finished_part.parts_per_sheet
+		+ expected_scrap_end_piece_qty
+	)
 	assert end_piece_scrap_qty == pytest.approx(expected_end_piece_scrap_qty)
 	assert total_scrap_qty == pytest.approx(
-		layout_case.finished_part.scrap_weight_per_part_kg + expected_end_piece_scrap_qty
+		layout_case.finished_part.scrap_weight_per_part_kg
+		* layout_case.finished_part.parts_per_sheet
+		+ expected_end_piece_scrap_qty
+		+ expected_scrap_end_piece_qty
 	)
 	assert derived_fg_qty == pytest.approx(layout_case.expected_derived_fg_weight_kg, rel=1e-6, abs=1e-6)
 

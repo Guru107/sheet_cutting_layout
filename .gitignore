@@ -8,3 +8,9 @@
 tags
 node_modules
 __pycache__
+cypress/screenshots/
+cypress/videos/
+cypress/results/
+.playwright-mcp/
+/001.png
+/Picture 1.png

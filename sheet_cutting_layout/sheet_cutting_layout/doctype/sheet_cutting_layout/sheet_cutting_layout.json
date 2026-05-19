@@ -2,36 +2,58 @@
  "actions": [],
  "allow_rename": 1,
  "autoname": "field:layout_code",
- "creation": "2026-04-27 00:00:00.000000",
+ "creation": "2026-04-27 00:00:00",
+ "default_view": "List",
  "doctype": "DocType",
  "engine": "InnoDB",
+ "is_submittable": 1,
  "field_order": [
+  "identity_section",
   "layout_code",
-  "layout_family",
+  "project",
+  "identity_column_break",
   "revision_no",
   "is_active",
+  "based_on_layout",
+  "material_section",
   "raw_material_item",
   "process_scrap_item",
   "sheet_thickness_mm",
+  "material_column_break",
   "sheet_width_mm",
   "sheet_length_mm",
   "weight_per_sheet_kg",
+  "consumption_section",
+  "consumed_weight_kg",
+  "leftover_weight_kg",
+  "consumption_column_break",
+  "consumption_status",
+  "strip_section",
   "strip_thickness_mm",
   "strip_width_mm",
   "strip_length_mm",
   "weight_of_strip_kg",
+  "strip_column_break",
   "parts_per_strip",
   "no_of_strips",
   "parts_per_sheet",
+  "workflow_section",
   "status",
+  "workflow_column_break",
   "project_manager_ok",
   "manufacturing_manager_ok",
+  "tables_section",
   "finished_parts",
   "end_pieces",
   "approval_snapshot",
   "impact_resolutions"
  ],
  "fields": [
+  {
+   "fieldname": "identity_section",
+   "fieldtype": "Section Break",
+   "label": "Layout Identity"
+  },
   {
    "fieldname": "layout_code",
    "fieldtype": "Data",
@@ -41,11 +63,16 @@
    "unique": 1
   },
   {
-   "fieldname": "layout_family",
-   "fieldtype": "Data",
+   "fieldname": "project",
+   "fieldtype": "Link",
    "in_list_view": 1,
-   "label": "Layout Family",
+   "label": "Project",
+   "options": "Project",
    "reqd": 1
+  },
+  {
+   "fieldname": "identity_column_break",
+   "fieldtype": "Column Break"
   },
   {
    "default": "0",
@@ -56,12 +83,25 @@
    "reqd": 1
   },
   {
+   "allow_on_submit": 1,
    "default": "0",
    "fieldname": "is_active",
    "fieldtype": "Check",
    "in_list_view": 1,
    "label": "Is Active",
    "read_only": 1
+  },
+  {
+   "fieldname": "based_on_layout",
+   "fieldtype": "Link",
+   "label": "Based On Layout",
+   "options": "Sheet Cutting Layout",
+   "read_only": 1
+  },
+  {
+   "fieldname": "material_section",
+   "fieldtype": "Section Break",
+   "label": "Material"
   },
   {
    "fieldname": "raw_material_item",
@@ -84,6 +124,10 @@
    "reqd": 1
   },
   {
+   "fieldname": "material_column_break",
+   "fieldtype": "Column Break"
+  },
+  {
    "fieldname": "sheet_width_mm",
    "fieldtype": "Float",
    "label": "Sheet Width Mm",
@@ -99,7 +143,43 @@
    "fieldname": "weight_per_sheet_kg",
    "fieldtype": "Float",
    "label": "Weight Per Sheet Kg",
+   "read_only": 1,
    "reqd": 1
+  },
+  {
+   "fieldname": "consumption_section",
+   "fieldtype": "Section Break",
+   "label": "Consumption"
+  },
+  {
+   "fieldname": "consumed_weight_kg",
+   "fieldtype": "Float",
+   "label": "Consumed Weight Kg",
+   "precision": "3",
+   "read_only": 1
+  },
+  {
+   "fieldname": "leftover_weight_kg",
+   "fieldtype": "Float",
+   "label": "Leftover Weight Kg",
+   "precision": "3",
+   "read_only": 1
+  },
+  {
+   "fieldname": "consumption_column_break",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "consumption_status",
+   "fieldtype": "Select",
+   "label": "Consumption Status",
+   "options": "Balanced\nShort\nExcess",
+   "read_only": 1
+  },
+  {
+   "fieldname": "strip_section",
+   "fieldtype": "Section Break",
+   "label": "Strip Layout"
   },
   {
    "fieldname": "strip_thickness_mm",
@@ -123,7 +203,12 @@
    "fieldname": "weight_of_strip_kg",
    "fieldtype": "Float",
    "label": "Weight Of Strip Kg",
+   "read_only": 1,
    "reqd": 1
+  },
+  {
+   "fieldname": "strip_column_break",
+   "fieldtype": "Column Break"
   },
   {
    "fieldname": "parts_per_strip",
@@ -141,9 +226,16 @@
    "fieldname": "parts_per_sheet",
    "fieldtype": "Int",
    "label": "Parts Per Sheet",
+   "read_only": 1,
    "reqd": 1
   },
   {
+   "fieldname": "workflow_section",
+   "fieldtype": "Section Break",
+   "label": "Workflow"
+  },
+  {
+   "allow_on_submit": 1,
    "default": "Draft",
    "fieldname": "status",
    "fieldtype": "Select",
@@ -153,11 +245,15 @@
    "reqd": 1
   },
   {
+   "fieldname": "workflow_column_break",
+   "fieldtype": "Column Break"
+  },
+  {
    "default": "0",
    "fieldname": "project_manager_ok",
    "fieldtype": "Check",
    "hidden": 1,
-   "label": "Project Manager OK",
+   "label": "Projects Manager OK",
    "read_only": 1
   },
   {
@@ -167,6 +263,11 @@
    "hidden": 1,
    "label": "Manufacturing Manager OK",
    "read_only": 1
+  },
+  {
+   "fieldname": "tables_section",
+   "fieldtype": "Section Break",
+   "label": "Details"
   },
   {
    "fieldname": "finished_parts",
@@ -196,7 +297,7 @@
  ],
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-04-27 00:00:00.000000",
+ "modified": "2026-05-15 17:15:36.702802",
  "modified_by": "Administrator",
  "module": "Sheet Cutting Layout",
  "name": "Sheet Cutting Layout",
@@ -215,6 +316,7 @@
    "write": 1
   }
  ],
+ "row_format": "Dynamic",
  "sort_field": "modified",
  "sort_order": "DESC",
  "states": [],

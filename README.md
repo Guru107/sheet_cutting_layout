@@ -16,8 +16,8 @@ Local bench roots used for development are `~/Workspace/bench15` and `~/Workspac
 ## Role Matrix
 
 - Project User: creates draft layouts and submits for check.
-- Project Manager: performs one parallel checker approval.
-- Manufacturing Manager: performs the second parallel checker approval.
+- Projects Manager: performs the first checker approval.
+- Manufacturing Manager: performs the second checker approval after Projects approval.
 - Purchase Manager: approves checked layouts for release.
 - MR Coordinator: releases approved layouts or finalizes impact releases.
 
@@ -27,11 +27,11 @@ Layouts move through `Draft -> Submitted for Check -> Checked -> Approved by Pur
 
 ## Validation Rules
 
-Finished part item codes must be alphanumeric and end with `SHR`. Each layout needs at least one finished part, positive `parts_per_sheet`, non-negative gross and scrap weights, and required end-piece item/weight/quantity values. Process scrap requires `process_scrap_item`.
+Finished part item codes must be alphanumeric and end with `SHR`. Each layout needs exactly one finished part, positive `parts_per_sheet`, non-negative gross and scrap weights, and required end-piece item/weight/quantity values. Process scrap requires `process_scrap_item`.
 
 ## BOM Mapping
 
-BOM quantity is always 1. Each finished-part row generates one BOM. Raw material quantity equals gross finished-part weight. Process scrap uses `process_scrap_item`. End-piece scrap is distributed as `(end_piece.weight_kg * qty_per_sheet) / parts_per_sheet`.
+MR Release creates one native ERPNext Shearing BOM for the finished part. BOM quantity equals `parts_per_sheet`, raw material quantity is the full sheet weight in Kg, process scrap uses `process_scrap_item`, reusable end pieces are separate scrap rows, and end pieces marked `Scrap` are folded into process scrap.
 
 ## Impact Resolution
 

@@ -25,7 +25,7 @@ class FinishedPart:
 @dataclass
 class RevisionLayout:
 	name: str
-	layout_family: str
+	project: str
 	revision_no: int
 	status: LayoutVersionStatus
 	is_active: bool
@@ -35,7 +35,7 @@ class RevisionLayout:
 	finished_parts: list[FinishedPart] = field(default_factory=list)
 
 
-def test_release_blocked_until_both_parallel_checkers_approve() -> None:
+def test_release_blocked_until_both_sequential_checkers_approve() -> None:
 	machine = LayoutWorkflowModel()
 
 	machine.submit()
@@ -60,10 +60,19 @@ def test_state_reaches_checked_only_after_both_checkers() -> None:
 	assert machine.state == "Checked"
 
 
-def test_checker_action_helper_sets_parallel_approval_flags() -> None:
+def test_manufacturing_manager_cannot_approve_before_projects_manager() -> None:
 	machine = LayoutWorkflowModel()
 
-	apply_checker_action(machine, "Project Manager Approves")
+	machine.submit()
+
+	with pytest.raises(AssertionError, match="Projects Manager approval"):
+		machine.manufacturing_manager_approves()
+
+
+def test_checker_action_helper_sets_approval_flags() -> None:
+	machine = LayoutWorkflowModel()
+
+	apply_checker_action(machine, "Projects Manager Approves")
 	apply_checker_action(machine, "Manufacturing Manager Approves")
 
 	assert machine.project_manager_ok is True
@@ -74,7 +83,7 @@ def test_checker_action_helper_flags_allow_model_to_reach_checked() -> None:
 	machine = LayoutWorkflowModel()
 
 	machine.submit()
-	apply_checker_action(machine, "Project Manager Approves")
+	apply_checker_action(machine, "Projects Manager Approves")
 	apply_checker_action(machine, "Manufacturing Manager Approves")
 	machine.mark_checked_if_ready()
 
@@ -159,7 +168,7 @@ class WorkflowStateMachine(RuleBasedStateMachine):
 
 	@rule()
 	def manufacturing_manager_approves(self) -> None:
-		valid = self.expected_state == "Submitted for Check"
+		valid = self.expected_state == "Submitted for Check" and self.expected_project_manager_ok
 
 		def update_expected() -> None:
 			self.expected_manufacturing_manager_ok = True
@@ -274,11 +283,11 @@ def test_state_machine_never_reaches_released_without_purchase_and_mr() -> None:
 class RevisionVersioningStateMachine(RuleBasedStateMachine):
 	def __init__(self) -> None:
 		super().__init__()
-		self.layout_family = "FAM-STATEFUL"
+		self.project = "FAM-STATEFUL"
 		self.layouts = [
 			RevisionLayout(
 				name="SCL-STATEFUL-001",
-				layout_family=self.layout_family,
+				project=self.project,
 				revision_no=1,
 				status="Released",
 				is_active=True,
@@ -305,7 +314,7 @@ class RevisionVersioningStateMachine(RuleBasedStateMachine):
 		assert new_layout.approval_snapshot == []
 		assert new_layout.impact_resolutions == []
 		assert [row.generated_bom for row in new_layout.finished_parts] == [None]
-		self.one_layout_family_has_at_most_one_active_released_layout()
+		self.one_project_has_at_most_one_active_released_layout()
 
 		finalize_new_revision_release(self.layouts, new_layout, [])
 
@@ -315,7 +324,7 @@ class RevisionVersioningStateMachine(RuleBasedStateMachine):
 		assert active_layout.is_active is False
 
 	@invariant()
-	def one_layout_family_has_at_most_one_active_released_layout(self) -> None:
+	def one_project_has_at_most_one_active_released_layout(self) -> None:
 		active_released_layouts = self._active_released_layouts()
 
 		assert len(active_released_layouts) <= 1
@@ -323,14 +332,14 @@ class RevisionVersioningStateMachine(RuleBasedStateMachine):
 	@invariant()
 	def every_active_layout_in_family_is_released(self) -> None:
 		for layout in self.layouts:
-			if layout.layout_family == self.layout_family and layout.is_active:
+			if layout.project == self.project and layout.is_active:
 				assert layout.status == "Released"
 
 	def _active_released_layouts(self) -> list[RevisionLayout]:
 		return [
 			layout
 			for layout in self.layouts
-			if layout.layout_family == self.layout_family and layout.status == "Released" and layout.is_active
+			if layout.project == self.project and layout.status == "Released" and layout.is_active
 		]
 
 
