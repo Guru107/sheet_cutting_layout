@@ -614,18 +614,14 @@ def test_bom_invariants_hold_for_random_valid_layouts(layout_case: LayoutCase) -
 	)
 
 	assert bom.quantity == layout_case.finished_part.parts_per_sheet
-	assert _sum_bom_qty(bom.items, "raw_material") == pytest.approx(
-		layout_case.layout.weight_per_sheet_kg
-	)
+	assert _sum_bom_qty(bom.items, "raw_material") == pytest.approx(layout_case.layout.weight_per_sheet_kg)
 	assert process_scrap_qty == pytest.approx(
-		layout_case.finished_part.scrap_weight_per_part_kg
-		* layout_case.finished_part.parts_per_sheet
+		layout_case.finished_part.scrap_weight_per_part_kg * layout_case.finished_part.parts_per_sheet
 		+ expected_scrap_end_piece_qty
 	)
 	assert end_piece_scrap_qty == pytest.approx(expected_end_piece_scrap_qty)
 	assert total_scrap_qty == pytest.approx(
-		layout_case.finished_part.scrap_weight_per_part_kg
-		* layout_case.finished_part.parts_per_sheet
+		layout_case.finished_part.scrap_weight_per_part_kg * layout_case.finished_part.parts_per_sheet
 		+ expected_end_piece_scrap_qty
 		+ expected_scrap_end_piece_qty
 	)

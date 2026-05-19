@@ -249,9 +249,7 @@ def _accounted_finished_parts(
 	finished_parts: Sequence[FinishedPartRow],
 ) -> list[FinishedPartRow]:
 	return [
-		finished_part
-		for finished_part in finished_parts
-		if not _is_missing(finished_part.finished_part_item)
+		finished_part for finished_part in finished_parts if not _is_missing(finished_part.finished_part_item)
 	]
 
 

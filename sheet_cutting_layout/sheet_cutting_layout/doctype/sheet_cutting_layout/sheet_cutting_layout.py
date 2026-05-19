@@ -105,6 +105,7 @@ class SheetCuttingLayout(Document):
 			if frappe is not None and result.status == "Release Pending Impact":
 				frappe.throw("Resolve all impact decisions before final release")
 
+
 def _get_selected_workflow_action() -> str | None:
 	if frappe is None:
 		return None

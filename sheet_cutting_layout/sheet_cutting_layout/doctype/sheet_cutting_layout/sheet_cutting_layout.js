@@ -88,7 +88,10 @@ frappe.provide("sheet_cutting_layout");
 	function scheduleSheetLayoutRedraw(frm) {
 		if (!frm.sheet_layout_redraw) {
 			frm.sheet_layout_redraw = window.SheetLayoutCanvas
-				? window.SheetLayoutCanvas.debounce(() => redrawSheetLayout(frm), SHEET_LAYOUT_REDRAW_MS)
+				? window.SheetLayoutCanvas.debounce(
+						() => redrawSheetLayout(frm),
+						SHEET_LAYOUT_REDRAW_MS
+				  )
 				: frappe.utils.debounce(() => redrawSheetLayout(frm), SHEET_LAYOUT_REDRAW_MS);
 		}
 		frm.sheet_layout_redraw();
@@ -123,7 +126,9 @@ frappe.provide("sheet_cutting_layout");
 		}
 
 		return Number(
-			((length * width * thickness * getSteelDensity()) / 1000000).toFixed(getCalculationPrecision())
+			((length * width * thickness * getSteelDensity()) / 1000000).toFixed(
+				getCalculationPrecision()
+			)
 		);
 	}
 
@@ -192,17 +197,29 @@ frappe.provide("sheet_cutting_layout");
 				return [];
 			}
 			const scrapWeight = Number(
-				(grossWeight - numberOrZero(row.net_weight_per_part_kg)).toFixed(getCalculationPrecision())
+				(grossWeight - numberOrZero(row.net_weight_per_part_kg)).toFixed(
+					getCalculationPrecision()
+				)
 			);
 			const rowUpdates = [];
 			if (row.gross_weight_per_part_kg !== grossWeight) {
 				rowUpdates.push(
-					frappe.model.set_value(row.doctype, row.name, "gross_weight_per_part_kg", grossWeight)
+					frappe.model.set_value(
+						row.doctype,
+						row.name,
+						"gross_weight_per_part_kg",
+						grossWeight
+					)
 				);
 			}
 			if (row.scrap_weight_per_part_kg !== scrapWeight) {
 				rowUpdates.push(
-					frappe.model.set_value(row.doctype, row.name, "scrap_weight_per_part_kg", scrapWeight)
+					frappe.model.set_value(
+						row.doctype,
+						row.name,
+						"scrap_weight_per_part_kg",
+						scrapWeight
+					)
 				);
 			}
 			return rowUpdates;
@@ -226,7 +243,9 @@ frappe.provide("sheet_cutting_layout");
 				return;
 			}
 			if (row.parts_per_sheet !== partsPerSheet) {
-				updates.push(frappe.model.set_value(row.doctype, row.name, "parts_per_sheet", partsPerSheet));
+				updates.push(
+					frappe.model.set_value(row.doctype, row.name, "parts_per_sheet", partsPerSheet)
+				);
 			}
 		});
 
@@ -254,7 +273,8 @@ frappe.provide("sheet_cutting_layout");
 					return total;
 				}
 				return (
-					total + numberOrZero(row.gross_weight_per_part_kg) * numberOrZero(row.parts_per_sheet)
+					total +
+					numberOrZero(row.gross_weight_per_part_kg) * numberOrZero(row.parts_per_sheet)
 				);
 			}, 0) +
 				endPieces.reduce(
@@ -360,8 +380,7 @@ frappe.provide("sheet_cutting_layout");
 			if (!frm.is_new() && ["Released", "Superseded"].includes(frm.doc.status)) {
 				frm.add_custom_button(__("New Version"), () => {
 					frappe.call({
-						method:
-							"sheet_cutting_layout.sheet_cutting_layout.doctype.sheet_cutting_layout.sheet_cutting_layout.create_sheet_cutting_layout_revision",
+						method: "sheet_cutting_layout.sheet_cutting_layout.doctype.sheet_cutting_layout.sheet_cutting_layout.create_sheet_cutting_layout_revision",
 						args: { name: frm.doc.name },
 						callback: (r) => {
 							if (r.message) {
@@ -379,7 +398,8 @@ frappe.provide("sheet_cutting_layout");
 		},
 
 		after_workflow_action(frm) {
-			const action = frm.sheet_cutting_layout_last_workflow_action || frm.selected_workflow_action;
+			const action =
+				frm.sheet_cutting_layout_last_workflow_action || frm.selected_workflow_action;
 			frm.sheet_cutting_layout_last_workflow_action = null;
 			const stepName = APPROVAL_SNAPSHOT_ACTIONS[action];
 			if (!stepName) {

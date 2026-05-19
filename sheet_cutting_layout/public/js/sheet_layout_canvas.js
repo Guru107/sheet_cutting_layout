@@ -118,13 +118,20 @@
 
 		const zones = [];
 		const rowsFromStrips = noOfStrips || 1;
-		const columns = partsPerStrip || Math.max(1, Math.ceil((partsPerSheet || 1) / rowsFromStrips));
+		const columns =
+			partsPerStrip || Math.max(1, Math.ceil((partsPerSheet || 1) / rowsFromStrips));
 		const defaultParts = (noOfStrips || 0) * (partsPerStrip || 0) || partsPerSheet || 1;
 
 		finishedParts.forEach((row, rowIndex) => {
 			const rowParts = positiveInteger(row.parts_per_sheet);
 			if (!rowParts) {
-				invalidMarkers.push(marker(`finished_parts[${rowIndex}].parts_per_sheet`, row.parts_per_sheet, "must be greater than zero"));
+				invalidMarkers.push(
+					marker(
+						`finished_parts[${rowIndex}].parts_per_sheet`,
+						row.parts_per_sheet,
+						"must be greater than zero"
+					)
+				);
 			}
 
 			const partCount = rowParts || defaultParts;
@@ -147,7 +154,14 @@
 		return zones;
 	}
 
-	function buildEndPieceZones(endPieces, sheetWidth, sheetLength, stripLength, noOfStrips, invalidMarkers) {
+	function buildEndPieceZones(
+		endPieces,
+		sheetWidth,
+		sheetLength,
+		stripLength,
+		noOfStrips,
+		invalidMarkers
+	) {
 		const width = sheetWidth || 1;
 		const length = sheetLength || 1;
 		const usedLength = stripLength && noOfStrips ? stripLength * noOfStrips : 0;
@@ -158,10 +172,18 @@
 			const weight = numberOrNull(row.weight_kg);
 			const qty = positiveNumber(row.qty_per_sheet);
 			if (weight === null || weight < 0) {
-				invalidMarkers.push(marker(`end_pieces[${index}].weight_kg`, row.weight_kg, "must be non-negative"));
+				invalidMarkers.push(
+					marker(`end_pieces[${index}].weight_kg`, row.weight_kg, "must be non-negative")
+				);
 			}
 			if (!qty) {
-				invalidMarkers.push(marker(`end_pieces[${index}].qty_per_sheet`, row.qty_per_sheet, "must be greater than zero"));
+				invalidMarkers.push(
+					marker(
+						`end_pieces[${index}].qty_per_sheet`,
+						row.qty_per_sheet,
+						"must be greater than zero"
+					)
+				);
 			}
 
 			return {
@@ -173,7 +195,8 @@
 				x_mm: index * zoneWidth,
 				y_mm: usedLength,
 				width_mm: zoneWidth,
-				length_mm: remnantLength > 0 ? remnantLength : length / Math.max(1, endPieces.length),
+				length_mm:
+					remnantLength > 0 ? remnantLength : length / Math.max(1, endPieces.length),
 			};
 		});
 	}
@@ -198,10 +221,22 @@
 
 			if (!parts || gross === null || gross < 0 || scrap === null || scrap < 0) {
 				if (gross === null || gross < 0) {
-					invalidMarkers.push(marker(`finished_parts[${rowIndex}].gross_weight_per_part_kg`, row.gross_weight_per_part_kg, "must be non-negative"));
+					invalidMarkers.push(
+						marker(
+							`finished_parts[${rowIndex}].gross_weight_per_part_kg`,
+							row.gross_weight_per_part_kg,
+							"must be non-negative"
+						)
+					);
 				}
 				if (scrap === null || scrap < 0) {
-					invalidMarkers.push(marker(`finished_parts[${rowIndex}].scrap_weight_per_part_kg`, row.scrap_weight_per_part_kg, "must be non-negative"));
+					invalidMarkers.push(
+						marker(
+							`finished_parts[${rowIndex}].scrap_weight_per_part_kg`,
+							row.scrap_weight_per_part_kg,
+							"must be non-negative"
+						)
+					);
 				}
 				return;
 			}
@@ -236,7 +271,10 @@
 		const cssWidth = canvas.clientWidth || DEFAULT_WIDTH;
 		const cssHeight = canvas.clientHeight || DEFAULT_HEIGHT;
 		const ratio = window.devicePixelRatio || 1;
-		if (canvas.width !== Math.floor(cssWidth * ratio) || canvas.height !== Math.floor(cssHeight * ratio)) {
+		if (
+			canvas.width !== Math.floor(cssWidth * ratio) ||
+			canvas.height !== Math.floor(cssHeight * ratio)
+		) {
 			canvas.width = Math.floor(cssWidth * ratio);
 			canvas.height = Math.floor(cssHeight * ratio);
 		}
@@ -248,15 +286,34 @@
 		const sheetLength = sheet.length_mm || 1;
 		const padding = 28;
 		const depth = 8;
-		const scale = Math.min((cssWidth - padding * 2 - depth) / sheetWidth, (cssHeight - padding * 2 - depth - 34) / sheetLength);
+		const scale = Math.min(
+			(cssWidth - padding * 2 - depth) / sheetWidth,
+			(cssHeight - padding * 2 - depth - 34) / sheetLength
+		);
 		const originX = padding;
 		const originY = padding + depth;
 		const width = sheetWidth * scale;
 		const length = sheetLength * scale;
 
 		drawSheetBase(context, originX, originY, width, length, depth);
-		drawZones(context, payload.strips || [], originX, originY, scale, "#7895b2", "rgba(120, 149, 178, 0.16)");
-		drawZones(context, payload.end_piece_zones || [], originX, originY, scale, "#b6633b", "rgba(182, 99, 59, 0.32)");
+		drawZones(
+			context,
+			payload.strips || [],
+			originX,
+			originY,
+			scale,
+			"#7895b2",
+			"rgba(120, 149, 178, 0.16)"
+		);
+		drawZones(
+			context,
+			payload.end_piece_zones || [],
+			originX,
+			originY,
+			scale,
+			"#b6633b",
+			"rgba(182, 99, 59, 0.32)"
+		);
 		drawDimensionMarkers(context, payload, originX, originY, width, length, scale);
 		drawInvalidMarkers(context, payload.invalid_markers || [], cssWidth, cssHeight);
 		drawSummary(context, payload.summary || {}, padding, cssHeight - 18);
@@ -366,7 +423,14 @@
 			const x = originX + (zone.x_mm || 0) * scale;
 			const zoneWidth = zone.width_mm * scale;
 			const y = originY + length + 12;
-			drawHorizontalDimension(context, x, x + zoneWidth, y, formatDimension(zone.width_mm), 8);
+			drawHorizontalDimension(
+				context,
+				x,
+				x + zoneWidth,
+				y,
+				formatDimension(zone.width_mm),
+				8
+			);
 		});
 
 		context.restore();

@@ -562,9 +562,7 @@ def test_release_supersedes_submitted_layouts_with_db_set(
 	assert old_layout.status == "Superseded"
 	assert old_layout.is_active is False
 	assert old_layout.save_calls == 0
-	assert old_layout.db_set_calls == [
-		({"status": "Superseded", "is_active": False}, True, False)
-	]
+	assert old_layout.db_set_calls == [({"status": "Superseded", "is_active": False}, True, False)]
 
 
 def test_controller_mr_release_action_calls_release_service_with_release_context(
@@ -1765,13 +1763,13 @@ def test_release_generates_one_bom_for_single_finished_part_and_supersedes_old()
 		status="Approved by Purchase",
 		is_active=False,
 		weight_per_sheet_kg=5.0,
-		finished_parts=[FinishedPart("PART001SHR", gross_weight_per_part_kg=5.0, scrap_weight_per_part_kg=0.2)],
+		finished_parts=[
+			FinishedPart("PART001SHR", gross_weight_per_part_kg=5.0, scrap_weight_per_part_kg=0.2)
+		],
 	)
 	old_bom = Bom("BOM-PART001SHR-OLD", item="PART001SHR")
 
-	result = release_layout(
-		new_layout, open_documents=[], layouts=[old_layout, new_layout], boms=[old_bom]
-	)
+	result = release_layout(new_layout, open_documents=[], layouts=[old_layout, new_layout], boms=[old_bom])
 
 	assert result.status == "Released"
 	assert len(result.generated_boms) == 1

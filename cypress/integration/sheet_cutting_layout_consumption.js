@@ -46,13 +46,24 @@ describe("Sheet Cutting Layout consumption tracking", () => {
 			const row =
 				frm.doc.finished_parts?.[0] ||
 				win.frappe.model.add_child(frm.doc, "Layout Finished Part", "finished_parts");
-			return win.frappe
-				.run_serially([
-					() => win.frappe.model.set_value(row.doctype, row.name, "finished_part_item", finishedPartItem),
-					() => win.frappe.model.set_value(row.doctype, row.name, "net_weight_per_part_kg", 0.288846),
-					() => frm.script_manager.trigger("net_weight_per_part_kg", row.doctype, row.name),
-					() => frm.refresh_field("finished_parts"),
-				]);
+			return win.frappe.run_serially([
+				() =>
+					win.frappe.model.set_value(
+						row.doctype,
+						row.name,
+						"finished_part_item",
+						finishedPartItem
+					),
+				() =>
+					win.frappe.model.set_value(
+						row.doctype,
+						row.name,
+						"net_weight_per_part_kg",
+						0.288846
+					),
+				() => frm.script_manager.trigger("net_weight_per_part_kg", row.doctype, row.name),
+				() => frm.refresh_field("finished_parts"),
+			]);
 		});
 	}
 
@@ -60,15 +71,20 @@ describe("Sheet Cutting Layout consumption tracking", () => {
 		cy.window().then((win) => {
 			const frm = win.cur_frm;
 			const row = win.frappe.model.add_child(frm.doc, "Layout End Piece", "end_pieces");
-			return win.frappe
-				.run_serially([
-					() => win.frappe.model.set_value(row.doctype, row.name, "end_piece_item", endPieceItem),
-					() => win.frappe.model.set_value(row.doctype, row.name, "width_mm", 1250),
-					() => win.frappe.model.set_value(row.doctype, row.name, "length_mm", 179),
-					() => win.frappe.model.set_value(row.doctype, row.name, "qty_per_sheet", 1),
-					() => frm.script_manager.trigger("qty_per_sheet", row.doctype, row.name),
-					() => frm.refresh_field("end_pieces"),
-				]);
+			return win.frappe.run_serially([
+				() =>
+					win.frappe.model.set_value(
+						row.doctype,
+						row.name,
+						"end_piece_item",
+						endPieceItem
+					),
+				() => win.frappe.model.set_value(row.doctype, row.name, "width_mm", 1250),
+				() => win.frappe.model.set_value(row.doctype, row.name, "length_mm", 179),
+				() => win.frappe.model.set_value(row.doctype, row.name, "qty_per_sheet", 1),
+				() => frm.script_manager.trigger("qty_per_sheet", row.doctype, row.name),
+				() => frm.refresh_field("end_pieces"),
+			]);
 		});
 	}
 

@@ -10,14 +10,16 @@ Cypress.Commands.add("login", () => {
 });
 
 Cypress.Commands.add("call", (method, args = {}) => {
-	return cy.request({
-		method: "POST",
-		url: `/api/method/${method}`,
-		body: args,
-	}).then((res) => {
-		expect(res.status).to.equal(200);
-		return res.body;
-	});
+	return cy
+		.request({
+			method: "POST",
+			url: `/api/method/${method}`,
+			body: args,
+		})
+		.then((res) => {
+			expect(res.status).to.equal(200);
+			return res.body;
+		});
 });
 
 Cypress.Commands.add("ensureHsnCode", (hsnCode) => {

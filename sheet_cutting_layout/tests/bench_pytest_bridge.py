@@ -8,7 +8,6 @@ import sys
 import unittest
 from pathlib import Path
 
-
 APP_ROOT = Path(__file__).resolve().parents[2]
 TEST_PATHS = (
 	"sheet_cutting_layout/tests/test_bom_overrides.py",

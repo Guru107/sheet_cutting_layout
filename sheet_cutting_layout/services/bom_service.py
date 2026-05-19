@@ -85,8 +85,7 @@ def build_bom_from_layout_row(
 		if _is_scrap_end_piece(end_piece)
 	)
 	process_scrap_weight = (
-		finished_part_row.scrap_weight_per_part_kg * finished_part_row.parts_per_sheet
-		+ scrap_endpiece_weight
+		finished_part_row.scrap_weight_per_part_kg * finished_part_row.parts_per_sheet + scrap_endpiece_weight
 	)
 	if process_scrap_weight > 0:
 		bom.scrap_items.append(

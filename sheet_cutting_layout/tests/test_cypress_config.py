@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
@@ -24,7 +23,7 @@ def test_cypress_seed_items_include_hsn_code_for_india_compliance() -> None:
 
 	assert 'Cypress.Commands.add("ensureHsnCode"' in support
 	assert 'doctype: "GST HSN Code"' in support
-	assert 'hsn_code: hsnCode' in support
+	assert "hsn_code: hsnCode" in support
 
 	for spec_path in (
 		REPO_ROOT / "cypress" / "integration" / "sheet_cutting_layout_consumption.js",

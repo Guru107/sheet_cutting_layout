@@ -8,14 +8,22 @@ describe("Sheet Cutting Layout release workflow", () => {
 	let projectName;
 
 	Cypress.on("uncaught:exception", (error) => {
-		if (error.message.includes("Cannot read properties of undefined (reading 'finished_parts')")) {
+		if (
+			error.message.includes(
+				"Cannot read properties of undefined (reading 'finished_parts')"
+			)
+		) {
 			return false;
 		}
 		return true;
 	});
 
 	function setField(fieldname, value) {
-		cy.get(`[data-fieldname="${fieldname}"]`).find("input, textarea").first().clear().type(`${value}`);
+		cy.get(`[data-fieldname="${fieldname}"]`)
+			.find("input, textarea")
+			.first()
+			.clear()
+			.type(`${value}`);
 	}
 
 	function runWorkflowAction(action, expectedStatus) {
@@ -85,66 +93,73 @@ describe("Sheet Cutting Layout release workflow", () => {
 		cy.login();
 	});
 
-	it("releases one finished part, creates a Shearing BOM, and allows a new version", { retries: 0 }, () => {
-		cy.call("frappe.client.insert", {
-			doc: {
-				doctype: "Sheet Cutting Layout",
-				layout_code: layoutCode,
-				project: projectName,
-				revision_no: 1,
-				is_active: 0,
-				status: "Draft",
-				raw_material_item: rawMaterialItem,
-				process_scrap_item: processScrapItem,
-				sheet_thickness_mm: 2,
-				sheet_width_mm: 1000,
-				sheet_length_mm: 2000,
-				weight_per_sheet_kg: 31.44,
-				strip_thickness_mm: 2,
-				strip_width_mm: 1000,
-				strip_length_mm: 1000,
-				weight_of_strip_kg: 15.72,
-				parts_per_strip: 1,
-				no_of_strips: 2,
-				parts_per_sheet: 2,
-				finished_parts: [
-					{
-						doctype: "Layout Finished Part",
-						finished_part_item: finishedPartItem,
-						parts_per_sheet: 2,
-						net_weight_per_part_kg: 15.52,
-						gross_weight_per_part_kg: 15.72,
-						scrap_weight_per_part_kg: 0.2,
-					},
-				],
-			},
-		});
-		cy.visit(`/app/sheet-cutting-layout/${layoutCode}`);
-		cy.contains('[data-fieldname="status"]', "Draft");
-
-		runWorkflowAction("Submit for Check", "Submitted for Check");
-		runWorkflowAction("Projects Manager Approves", "Submitted for Check");
-		runWorkflowAction("Manufacturing Manager Approves", "Checked");
-		runWorkflowAction("Purchase Approves", "Approved by Purchase");
-		runWorkflowAction("MR Release", "Released");
-
-		cy.contains('[data-fieldname="status"]', "Released");
-		fetchReleasedLayoutWithBom().then(({ bomName }) => {
-			cy.request("GET", `/api/method/frappe.client.get?doctype=BOM&name=${bomName}`).then(({ body: bomBody }) => {
-				const message = bomBody.message;
-				expect(message.name).to.equal(bomName);
-				expect(message.item).to.equal(finishedPartItem);
-				expect(message.quantity).to.equal(2);
-				expect(message.custom_operation).to.equal("Shearing");
-				expect(message.sheet_cutting_layout).to.equal(layoutCode);
-				expect(Boolean(message.is_active)).to.equal(true);
-				expect(message.items[0].item_code).to.equal(rawMaterialItem);
-				expect(Number(message.items[0].qty)).to.be.closeTo(31.44, 0.001);
+	it(
+		"releases one finished part, creates a Shearing BOM, and allows a new version",
+		{ retries: 0 },
+		() => {
+			cy.call("frappe.client.insert", {
+				doc: {
+					doctype: "Sheet Cutting Layout",
+					layout_code: layoutCode,
+					project: projectName,
+					revision_no: 1,
+					is_active: 0,
+					status: "Draft",
+					raw_material_item: rawMaterialItem,
+					process_scrap_item: processScrapItem,
+					sheet_thickness_mm: 2,
+					sheet_width_mm: 1000,
+					sheet_length_mm: 2000,
+					weight_per_sheet_kg: 31.44,
+					strip_thickness_mm: 2,
+					strip_width_mm: 1000,
+					strip_length_mm: 1000,
+					weight_of_strip_kg: 15.72,
+					parts_per_strip: 1,
+					no_of_strips: 2,
+					parts_per_sheet: 2,
+					finished_parts: [
+						{
+							doctype: "Layout Finished Part",
+							finished_part_item: finishedPartItem,
+							parts_per_sheet: 2,
+							net_weight_per_part_kg: 15.52,
+							gross_weight_per_part_kg: 15.72,
+							scrap_weight_per_part_kg: 0.2,
+						},
+					],
+				},
 			});
-		});
-		cy.contains("button", "New Version").click();
-		cy.contains('[data-fieldname="status"]', "Draft");
-		cy.get('[data-fieldname="project"] input').should("have.value", project);
-		cy.get('[data-fieldname="revision_no"] input').should("have.value", "2");
-	});
+			cy.visit(`/app/sheet-cutting-layout/${layoutCode}`);
+			cy.contains('[data-fieldname="status"]', "Draft");
+
+			runWorkflowAction("Submit for Check", "Submitted for Check");
+			runWorkflowAction("Projects Manager Approves", "Submitted for Check");
+			runWorkflowAction("Manufacturing Manager Approves", "Checked");
+			runWorkflowAction("Purchase Approves", "Approved by Purchase");
+			runWorkflowAction("MR Release", "Released");
+
+			cy.contains('[data-fieldname="status"]', "Released");
+			fetchReleasedLayoutWithBom().then(({ bomName }) => {
+				cy.request(
+					"GET",
+					`/api/method/frappe.client.get?doctype=BOM&name=${bomName}`
+				).then(({ body: bomBody }) => {
+					const message = bomBody.message;
+					expect(message.name).to.equal(bomName);
+					expect(message.item).to.equal(finishedPartItem);
+					expect(message.quantity).to.equal(2);
+					expect(message.custom_operation).to.equal("Shearing");
+					expect(message.sheet_cutting_layout).to.equal(layoutCode);
+					expect(Boolean(message.is_active)).to.equal(true);
+					expect(message.items[0].item_code).to.equal(rawMaterialItem);
+					expect(Number(message.items[0].qty)).to.be.closeTo(31.44, 0.001);
+				});
+			});
+			cy.contains("button", "New Version").click();
+			cy.contains('[data-fieldname="status"]', "Draft");
+			cy.get('[data-fieldname="project"] input').should("have.value", project);
+			cy.get('[data-fieldname="revision_no"] input').should("have.value", "2");
+		}
+	);
 });

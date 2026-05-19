@@ -257,7 +257,9 @@ def test_part_scrap_must_not_be_negative_after_net_weight_calculation(
 	with pytest.raises(ValidationError, match="Net weight per part cannot exceed gross weight"):
 		validators.validate_sheet_cutting_layout(
 			Layout(
-				finished_parts=[FinishedPart("AB12SHR", 10, gross_weight_per_part_kg=0, net_weight_per_part_kg=9)],
+				finished_parts=[
+					FinishedPart("AB12SHR", 10, gross_weight_per_part_kg=0, net_weight_per_part_kg=9)
+				],
 				parts_per_strip=5,
 			)
 		)
