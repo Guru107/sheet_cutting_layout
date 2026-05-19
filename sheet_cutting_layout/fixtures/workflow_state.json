@@ -29,13 +29,6 @@
  },
  {
   "doctype": "Workflow State",
-  "icon": "time",
-  "name": "Release Pending Impact",
-  "style": "Warning",
-  "workflow_state_name": "Release Pending Impact"
- },
- {
-  "doctype": "Workflow State",
   "icon": "ok",
   "name": "Released",
   "style": "Success",

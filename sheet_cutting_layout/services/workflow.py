@@ -9,7 +9,6 @@ LayoutWorkflowState = Literal[
 	"Submitted for Check",
 	"Checked",
 	"Approved by Purchase",
-	"Release Pending Impact",
 	"Released",
 	"Rejected",
 	"Superseded",
@@ -25,8 +24,6 @@ PROJECT_MANAGER_APPROVAL_ACTION = "Projects Manager Approves"
 MANUFACTURING_MANAGER_APPROVAL_ACTION = "Manufacturing Manager Approves"
 PURCHASE_APPROVAL_ACTION = "Purchase Approves"
 MR_RELEASE_ACTION = "MR Release"
-MR_RELEASE_WITH_IMPACT_ACTION = "MR Release With Impact"
-FINALIZE_IMPACT_RELEASE_ACTION = "Finalize Impact Release"
 SUBMIT_FOR_CHECK_ACTION = "Submit for Check"
 REJECT_ACTION = "Reject"
 
@@ -36,8 +33,6 @@ APPROVAL_SNAPSHOT_ACTIONS: dict[str, str] = {
 	MANUFACTURING_MANAGER_APPROVAL_ACTION: "Manufacturing Manager Approval",
 	PURCHASE_APPROVAL_ACTION: "Purchase Approval",
 	MR_RELEASE_ACTION: "MR Approval",
-	MR_RELEASE_WITH_IMPACT_ACTION: "MR Approval",
-	FINALIZE_IMPACT_RELEASE_ACTION: "MR Approval",
 	REJECT_ACTION: "Rejection",
 }
 
@@ -109,18 +104,17 @@ class LayoutWorkflowModel:
 		self._require_state("Checked")
 		self.state = "Approved by Purchase"
 
-	def release(self, *, has_impacts: bool = False) -> None:
+	def release(self) -> None:
 		self._require_checker_approvals()
 		if self.state != "Approved by Purchase":
 			raise AssertionError("Release requires purchase approval")
-		self.state = "Release Pending Impact" if has_impacts else "Released"
+		self.state = "Released"
 
 	def reject(self) -> None:
 		if self.state not in {
 			"Submitted for Check",
 			"Checked",
 			"Approved by Purchase",
-			"Release Pending Impact",
 		}:
 			raise AssertionError("Only in-review or pre-release layouts can be rejected")
 		self.state = "Rejected"

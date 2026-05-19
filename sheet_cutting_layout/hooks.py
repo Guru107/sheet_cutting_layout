@@ -17,7 +17,6 @@ fixtures = [
 					"Submitted for Check",
 					"Checked",
 					"Approved by Purchase",
-					"Release Pending Impact",
 					"Released",
 					"Rejected",
 					"Superseded",

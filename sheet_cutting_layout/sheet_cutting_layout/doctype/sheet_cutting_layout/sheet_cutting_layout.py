@@ -25,11 +25,7 @@ except ImportError:
 _ = getattr(frappe, "_", lambda message: message)
 
 
-from sheet_cutting_layout.services.release_service import (
-	finalize_release,
-	get_release_context,
-	release_layout,
-)
+from sheet_cutting_layout.services.release_service import get_release_context, release_layout
 from sheet_cutting_layout.services.validators import validate_sheet_cutting_layout
 from sheet_cutting_layout.services.versioning import create_revision
 from sheet_cutting_layout.services.workflow import apply_checker_action, record_approval_snapshot
@@ -83,30 +79,10 @@ class SheetCuttingLayout(Document):
 			approver=_get_session_user(),
 			decision_time=_get_now_datetime(),
 		)
-		context = (
-			get_release_context(self)
-			if action
-			in {
-				"MR Release",
-				"MR Release With Impact",
-				"Finalize Impact Release",
-			}
-			else None
-		)
-		if action in {"MR Release", "MR Release With Impact"}:
+		context = get_release_context(self) if action == "MR Release" else None
+		if action == "MR Release":
 			with _suppress_workflow_side_effects():
-				result = release_layout(self, release_context=context)
-			if frappe and action == "MR Release" and result.status == "Release Pending Impact":
-				frappe.throw(_("Use MR Release With Impact when open manufacturing documents are impacted"))
-			if frappe and action == "MR Release With Impact" and result.status == "Released":
-				frappe.throw(_("Use MR Release when no open manufacturing documents are impacted"))
-		if action == "Finalize Impact Release" and context is not None:
-			with _suppress_workflow_side_effects():
-				result = finalize_release(
-					self, layouts=context.layouts, boms=context.boms if context.boms is not None else ()
-				)
-			if frappe and result.status == "Release Pending Impact":
-				frappe.throw(_("Resolve all impact decisions before final release"))
+				release_layout(self, release_context=context)
 
 
 def _get_selected_workflow_action() -> str | None:

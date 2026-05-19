@@ -7,7 +7,6 @@ from typing import Literal, Protocol, TypeVar
 LayoutVersionStatus = Literal[
 	"Draft",
 	"Approved by Purchase",
-	"Release Pending Impact",
 	"Released",
 	"Superseded",
 ]
@@ -26,7 +25,6 @@ class RevisionLayoutDocument(Protocol):
 	based_on_layout: str | None
 	is_active: bool
 	approval_snapshot: list[object]
-	impact_resolutions: list[object]
 	finished_parts: list[FinishedPartRow]
 
 
@@ -57,7 +55,6 @@ def create_revision(old_layout: RevisionLayoutT) -> RevisionLayoutT:
 	new_layout.based_on_layout = old_layout.name
 	new_layout.is_active = False
 	new_layout.approval_snapshot = []
-	new_layout.impact_resolutions = []
 
 	for finished_part in new_layout.finished_parts:
 		_reset_child_row(finished_part)

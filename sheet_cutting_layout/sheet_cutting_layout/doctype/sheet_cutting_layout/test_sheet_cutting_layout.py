@@ -78,7 +78,7 @@ def test_sheet_cutting_layout_doctypes_define_normalized_model() -> None:
 	assert_table_field(parent_fields["finished_parts"], "Layout Finished Part")
 	assert_table_field(parent_fields["end_pieces"], "Layout End Piece")
 	assert_table_field(parent_fields["approval_snapshot"], "Layout Approval Snapshot")
-	assert_table_field(parent_fields["impact_resolutions"], "Layout Impact Resolution")
+	assert "impact_resolutions" not in parent_fields
 
 	assert_child_doctype_fields(
 		"layout_finished_part",
@@ -128,21 +128,6 @@ def test_sheet_cutting_layout_doctypes_define_normalized_model() -> None:
 	)
 	approval_snapshot = load_doctype("layout_approval_snapshot", "layout_approval_snapshot")
 	assert "Submitted" in str(fields_by_name(approval_snapshot)["decision"].get("options"))
-	assert_child_doctype_fields(
-		"layout_impact_resolution",
-		"layout_impact_resolution",
-		"Layout Impact Resolution",
-		{
-			"reference_doctype",
-			"reference_docname",
-			"old_bom",
-			"new_bom",
-			"decision",
-			"decided_by",
-			"decided_on",
-			"status",
-		},
-	)
 
 
 def test_workflow_fixture_uses_submitted_docstatus_only_for_released_layout() -> None:
@@ -381,7 +366,6 @@ def test_child_doctypes_have_controller_modules_for_frappe_sync() -> None:
 		("layout_finished_part", "layout_finished_part"),
 		("layout_end_piece", "layout_end_piece"),
 		("layout_approval_snapshot", "layout_approval_snapshot"),
-		("layout_impact_resolution", "layout_impact_resolution"),
 	):
 		controller_path = DOCTYPE_ROOT / directory / f"{filename}.py"
 		assert controller_path.exists(), f"Missing DocType controller: {controller_path}"

@@ -31,7 +31,6 @@ class RevisionLayout:
 	is_active: bool
 	based_on_layout: str | None = None
 	approval_snapshot: list[str] = field(default_factory=list)
-	impact_resolutions: list[str] = field(default_factory=list)
 	finished_parts: list[FinishedPart] = field(default_factory=list)
 
 
@@ -119,21 +118,9 @@ def test_purchase_and_mr_release_path_reaches_released() -> None:
 	machine.project_manager_approves()
 	machine.manufacturing_manager_approves()
 	machine.purchase_approves()
-	machine.release(has_impacts=False)
+	machine.release()
 
 	assert machine.state == "Released"
-
-
-def test_impacts_move_to_release_pending_impact() -> None:
-	machine = LayoutWorkflowModel()
-
-	machine.submit()
-	machine.project_manager_approves()
-	machine.manufacturing_manager_approves()
-	machine.purchase_approves()
-	machine.release(has_impacts=True)
-
-	assert machine.state == "Release Pending Impact"
 
 
 class WorkflowStateMachine(RuleBasedStateMachine):
@@ -186,18 +173,18 @@ class WorkflowStateMachine(RuleBasedStateMachine):
 
 		self._assert_transition(valid, self.machine.purchase_approves, update_expected)
 
-	@rule(has_impacts=st.booleans())
-	def mr_releases(self, has_impacts: bool) -> None:
+	@rule()
+	def mr_releases(self) -> None:
 		valid = self.expected_state == "Approved by Purchase" and self._both_checkers_approved()
 
 		def update_expected() -> None:
-			self.expected_state = "Release Pending Impact" if has_impacts else "Released"
+			self.expected_state = "Released"
 			self.mr_released = True
-			self.was_released = self.expected_state == "Released"
+			self.was_released = True
 
 		self._assert_transition(
 			valid,
-			lambda: self.machine.release(has_impacts=has_impacts),
+			self.machine.release,
 			update_expected,
 		)
 
@@ -207,7 +194,6 @@ class WorkflowStateMachine(RuleBasedStateMachine):
 			"Submitted for Check",
 			"Checked",
 			"Approved by Purchase",
-			"Release Pending Impact",
 		}
 
 		def update_expected() -> None:
@@ -292,7 +278,6 @@ class RevisionVersioningStateMachine(RuleBasedStateMachine):
 				status="Released",
 				is_active=True,
 				approval_snapshot=["purchase-approved"],
-				impact_resolutions=["WO-001"],
 				finished_parts=[FinishedPart("PART-001SHR", generated_bom="BOM-PART-001-001")],
 			)
 		]
@@ -312,7 +297,6 @@ class RevisionVersioningStateMachine(RuleBasedStateMachine):
 		assert new_layout.based_on_layout == active_layout.name
 		assert new_layout.revision_no == active_layout.revision_no + 1
 		assert new_layout.approval_snapshot == []
-		assert new_layout.impact_resolutions == []
 		assert [row.generated_bom for row in new_layout.finished_parts] == [None]
 		self.one_project_has_at_most_one_active_released_layout()
 

@@ -45,8 +45,7 @@
   "tables_section",
   "finished_parts",
   "end_pieces",
-  "approval_snapshot",
-  "impact_resolutions"
+  "approval_snapshot"
  ],
  "fields": [
   {
@@ -241,7 +240,7 @@
    "fieldtype": "Select",
    "in_list_view": 1,
    "label": "Status",
-   "options": "Draft\nSubmitted for Check\nChecked\nApproved by Purchase\nRelease Pending Impact\nReleased\nRejected\nSuperseded",
+   "options": "Draft\nSubmitted for Check\nChecked\nApproved by Purchase\nReleased\nRejected\nSuperseded",
    "reqd": 1
   },
   {
@@ -287,12 +286,6 @@
    "fieldtype": "Table",
    "label": "Approval Snapshot",
    "options": "Layout Approval Snapshot"
-  },
-  {
-   "fieldname": "impact_resolutions",
-   "fieldtype": "Table",
-   "label": "Impact Resolutions",
-   "options": "Layout Impact Resolution"
   }
  ],
  "index_web_pages_for_search": 1,

@@ -1,9 +1,8 @@
 from __future__ import annotations
 
 import sys
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
-from datetime import datetime
 from typing import Literal, Protocol
 
 from sheet_cutting_layout.services.bom_service import BomDocument, build_bom_from_layout_row
@@ -17,28 +16,7 @@ except ImportError:
 
 _ = getattr(frappe, "_", lambda message: message)
 
-LayoutReleaseStatus = Literal["Approved by Purchase", "Release Pending Impact", "Released"]
-ImpactReferenceDoctype = Literal["Work Order", "Production Plan"]
-ImpactDecision = Literal["Use Old BOM", "Use New BOM", "Cancel Reference"]
-ImpactStatus = Literal["Open", "Resolved"]
-
-IMPACT_REFERENCE_DOCTYPES: frozenset[str] = frozenset({"Work Order", "Production Plan"})
-OPEN_MANUFACTURING_STATUSES: frozenset[str] = frozenset(
-	{
-		"Draft",
-		"Not Started",
-		"In Process",
-		"Open",
-		"Submitted",
-	}
-)
-
-
-class ManufacturingDocument(Protocol):
-	doctype: str
-	name: str
-	bom_no: str
-	status: str
+LayoutReleaseStatus = Literal["Approved by Purchase", "Released"]
 
 
 class EndPieceRow(Protocol):
@@ -63,7 +41,6 @@ class ReleaseLayoutDocument(Protocol):
 	name: str
 	project: str
 	status: LayoutReleaseStatus
-	impact_resolutions: list[LayoutImpactResolution]
 	raw_material_item: str
 	weight_per_sheet_kg: float
 	end_pieces: Sequence[EndPieceRow]
@@ -81,36 +58,14 @@ class BomRecord(Protocol):
 
 
 @dataclass
-class FrappeManufacturingDocument:
-	doctype: ImpactReferenceDoctype
-	name: str
-	bom_no: str
-	status: str
-
-
-@dataclass
-class LayoutImpactResolution:
-	reference_doctype: ImpactReferenceDoctype
-	reference_docname: str
-	old_bom: str
-	new_bom: str
-	decision: ImpactDecision | None = None
-	decided_by: str | None = None
-	decided_on: datetime | None = None
-	status: ImpactStatus = "Open"
-
-
-@dataclass
 class ReleaseResult:
 	status: LayoutReleaseStatus
-	impact_rows: list[LayoutImpactResolution] = field(default_factory=list)
 	generated_boms: list[BomDocument] = field(default_factory=list)
 	superseded_layout: object | None = None
 
 
 @dataclass
 class ReleaseContext:
-	open_documents: Sequence[ManufacturingDocument]
 	layouts: Sequence[object] = ()
 	boms: list[BomRecord] | None = None
 
@@ -122,8 +77,6 @@ BomDocumentFactory = Callable[[ReleaseLayoutDocument, FinishedPartRow, int], Bom
 def release_layout(
 	layout: ReleaseLayoutDocument,
 	*,
-	open_documents: Sequence[ManufacturingDocument] | None = None,
-	bom_replacements: Mapping[str, str] | None = None,
 	layouts: Sequence[object] | None = None,
 	boms: list[BomRecord] | None = None,
 	release_context: ReleaseContext | None = None,
@@ -132,16 +85,13 @@ def release_layout(
 	bom_name_factory: Callable[[ReleaseLayoutDocument, FinishedPartRow, int], str] | None = None,
 	bom_document_factory: BomDocumentFactory | None = None,
 ) -> ReleaseResult:
-	if release_context is None and open_documents is None:
+	if release_context is None and layouts is None and boms is None:
 		provider = release_context_provider or get_release_context
 		release_context = provider(layout)
 	if release_context is not None:
-		open_documents = release_context.open_documents
 		layouts = release_context.layouts if layouts is None else layouts
 		boms = release_context.boms if boms is None else boms
 
-	if open_documents is None:
-		raise RuntimeError("Release requires open manufacturing documents or an explicit release context")
 	layouts = () if layouts is None else layouts
 
 	release_validators: Sequence[ReleaseValidator] = validators or (validate_sheet_cutting_layout,)
@@ -152,77 +102,16 @@ def release_layout(
 	if boms is not None:
 		boms.extend(generated_boms)
 
-	replacements = (
-		bom_replacements if bom_replacements is not None else _build_bom_replacements(layout, layouts)
-	)
-	impact_rows = [
-		LayoutImpactResolution(
-			reference_doctype=_impact_doctype(document.doctype),
-			reference_docname=document.name,
-			old_bom=document.bom_no,
-			new_bom=replacements[document.bom_no],
-		)
-		for document in open_documents
-		if _is_impacted_open_document(document, replacements)
-	]
-	_set_impact_rows(layout, impact_rows)
-
-	if impact_rows:
-		_mark_boms_pending_impact(generated_boms)
-		layout.status = "Release Pending Impact"
-		_save_bom_records(boms or generated_boms)
-	else:
-		_activate_boms(generated_boms)
-		layout.status = "Released"
-		if layouts:
-			finalize_new_revision_release(layouts, layout, boms or [])  # type: ignore[arg-type]
-			_save_layout_records(layouts)
-		_save_bom_records(boms or generated_boms)
+	_activate_boms(generated_boms)
+	layout.status = "Released"
+	if layouts:
+		finalize_new_revision_release(layouts, layout, boms or [])  # type: ignore[arg-type]
+		_save_layout_records(layouts)
+	_save_bom_records(boms or generated_boms)
 
 	return ReleaseResult(
 		status=layout.status,
-		impact_rows=list(impact_rows),
 		generated_boms=generated_boms,
-		superseded_layout=_superseded_layout(layout, layouts),
-	)
-
-
-def resolve_impact(
-	impact_row: LayoutImpactResolution,
-	*,
-	decision: ImpactDecision,
-	decided_by: str,
-	decided_on: datetime,
-) -> LayoutImpactResolution:
-	impact_row.decision = decision
-	impact_row.decided_by = decided_by
-	impact_row.decided_on = decided_on
-	impact_row.status = "Resolved"
-	return impact_row
-
-
-def finalize_release(
-	layout: ReleaseLayoutDocument,
-	*,
-	layouts: Sequence[object] = (),
-	boms: Sequence[BomRecord] = (),
-) -> ReleaseResult:
-	for impact_row in layout.impact_resolutions:
-		impact_row.status = "Resolved" if _has_complete_decision(impact_row) else "Open"
-
-	if all(_has_complete_decision(impact_row) for impact_row in layout.impact_resolutions):
-		layout.status = "Released"
-		_activate_generated_boms(layout, boms)
-		if layouts:
-			finalize_new_revision_release(layouts, layout, boms)  # type: ignore[arg-type]
-			_save_layout_records(layouts)
-		_save_bom_records(boms)
-	else:
-		layout.status = "Release Pending Impact"
-
-	return ReleaseResult(
-		status=layout.status,
-		impact_rows=list(layout.impact_resolutions),
 		superseded_layout=_superseded_layout(layout, layouts),
 	)
 
@@ -230,61 +119,12 @@ def finalize_release(
 def get_release_context(layout: ReleaseLayoutDocument) -> ReleaseContext:
 	if not frappe:
 		if _is_test_runtime():
-			return ReleaseContext(open_documents=(), layouts=(), boms=[])
+			return ReleaseContext(layouts=(), boms=[])
 		raise RuntimeError("Frappe is required to build Sheet Cutting Layout release context")
 
 	layouts = _get_same_project_layouts(layout)
 	boms = _get_finished_part_boms(layout)
-	return ReleaseContext(
-		open_documents=_get_open_manufacturing_documents(),
-		layouts=layouts,
-		boms=boms,
-	)
-
-
-def _is_impacted_open_document(document: ManufacturingDocument, replacements: Mapping[str, str]) -> bool:
-	return (
-		document.doctype in IMPACT_REFERENCE_DOCTYPES
-		and document.status in OPEN_MANUFACTURING_STATUSES
-		and document.bom_no in replacements
-	)
-
-
-def _impact_doctype(doctype: str) -> ImpactReferenceDoctype:
-	if doctype == "Work Order":
-		return "Work Order"
-	if doctype == "Production Plan":
-		return "Production Plan"
-	raise ValueError(f"Unsupported impact reference doctype: {doctype}")
-
-
-def _has_complete_decision(impact_row: LayoutImpactResolution) -> bool:
-	return bool(impact_row.decision and impact_row.decided_by and impact_row.decided_on)
-
-
-def _set_impact_rows(
-	layout: ReleaseLayoutDocument,
-	impact_rows: Sequence[LayoutImpactResolution],
-) -> None:
-	if hasattr(layout, "set") and hasattr(layout, "append"):
-		layout.set("impact_resolutions", [])
-		for impact_row in impact_rows:
-			layout.append(
-				"impact_resolutions",
-				{
-					"reference_doctype": impact_row.reference_doctype,
-					"reference_docname": impact_row.reference_docname,
-					"old_bom": impact_row.old_bom,
-					"new_bom": impact_row.new_bom,
-					"decision": impact_row.decision,
-					"decided_by": impact_row.decided_by,
-					"decided_on": impact_row.decided_on,
-					"status": impact_row.status,
-				},
-			)
-		return
-
-	layout.impact_resolutions = list(impact_rows)
+	return ReleaseContext(layouts=layouts, boms=boms)
 
 
 def _generate_boms(
@@ -305,31 +145,6 @@ def _generate_boms(
 		generated_boms.append(bom)
 
 	return generated_boms
-
-
-def _build_bom_replacements(
-	layout: ReleaseLayoutDocument,
-	layouts: Sequence[object],
-) -> Mapping[str, str]:
-	explicit_replacements = getattr(layout, "bom_replacements", None)
-	if explicit_replacements is not None:
-		return explicit_replacements
-
-	new_boms_by_item = {
-		row.finished_part_item: row.generated_bom
-		for row in getattr(layout, "finished_parts", [])
-		if row.generated_bom is not None
-	}
-	replacements: dict[str, str] = {}
-	for previous_layout in layouts:
-		if previous_layout is layout or not _is_previous_layout(previous_layout, layout):
-			continue
-		for row in getattr(previous_layout, "finished_parts", []):
-			new_bom = new_boms_by_item.get(row.finished_part_item)
-			if row.generated_bom is not None and new_bom is not None:
-				replacements[row.generated_bom] = new_bom
-
-	return replacements
 
 
 def _default_bom_name(layout: ReleaseLayoutDocument, finished_part: FinishedPartRow, index: int) -> str:
@@ -401,15 +216,8 @@ def _insert_frappe_bom(bom: BomDocument) -> BomDocument:
 	bom.name = bom_doc.name
 	bom.is_active = bool(getattr(bom_doc, "is_active", False))
 	bom.disabled = bool(getattr(bom_doc, "disabled", True))
-	bom.status = "Pending Impact"
+	bom.status = "Active"
 	return bom
-
-
-def _mark_boms_pending_impact(boms: Sequence[BomRecord]) -> None:
-	for bom in boms:
-		bom.is_active = False
-		bom.disabled = True
-		bom.status = "Pending Impact"
 
 
 def _activate_boms(boms: Sequence[BomRecord]) -> None:
@@ -419,29 +227,11 @@ def _activate_boms(boms: Sequence[BomRecord]) -> None:
 		bom.status = "Active"
 
 
-def _activate_generated_boms(
-	layout: ReleaseLayoutDocument,
-	boms: Sequence[BomRecord],
-) -> None:
-	generated_bom_names = {
-		row.generated_bom for row in getattr(layout, "finished_parts", []) if row.generated_bom is not None
-	}
-	_activate_boms([bom for bom in boms if bom.name in generated_bom_names])
-
-
 def _superseded_layout(layout: ReleaseLayoutDocument, layouts: Sequence[object]) -> object | None:
 	for previous_layout in layouts:
 		if _is_superseded_previous_layout(previous_layout, layout):
 			return previous_layout
 	return None
-
-
-def _is_previous_layout(previous_layout: object, layout: ReleaseLayoutDocument) -> bool:
-	return (
-		getattr(previous_layout, "project", None) == getattr(layout, "project", None)
-		and getattr(previous_layout, "status", None) == "Released"
-		and getattr(previous_layout, "is_active", False) is True
-	)
 
 
 def _is_superseded_previous_layout(previous_layout: object, layout: ReleaseLayoutDocument) -> bool:
@@ -451,71 +241,6 @@ def _is_superseded_previous_layout(previous_layout: object, layout: ReleaseLayou
 		and getattr(previous_layout, "status", None) == "Superseded"
 		and getattr(previous_layout, "is_active", True) is False
 	)
-
-
-def _get_open_manufacturing_documents() -> list[FrappeManufacturingDocument]:
-	if not frappe:
-		raise RuntimeError("Frappe is required to discover open manufacturing documents")
-
-	documents = _get_open_work_orders()
-	documents.extend(_get_open_production_plans())
-	return documents
-
-
-def _get_open_work_orders() -> list[FrappeManufacturingDocument]:
-	if not frappe:
-		raise RuntimeError("Frappe is required to discover open work orders")
-
-	documents: list[FrappeManufacturingDocument] = []
-	for row in frappe.get_all(
-		"Work Order",
-		filters={"status": ["in", sorted(OPEN_MANUFACTURING_STATUSES)]},
-		fields=["name", "bom_no", "status"],
-	):
-		bom_no = _row_value(row, "bom_no")
-		if bom_no:
-			documents.append(
-				FrappeManufacturingDocument(
-					doctype="Work Order",
-					name=_row_value(row, "name"),
-					bom_no=bom_no,
-					status=_row_value(row, "status"),
-				)
-			)
-	return documents
-
-
-def _get_open_production_plans() -> list[FrappeManufacturingDocument]:
-	if not frappe:
-		raise RuntimeError("Frappe is required to discover open production plans")
-
-	plan_rows = frappe.get_all(
-		"Production Plan",
-		filters={"status": ["in", sorted(OPEN_MANUFACTURING_STATUSES)]},
-		fields=["name", "status"],
-	)
-	status_by_plan = {_row_value(row, "name"): _row_value(row, "status") for row in plan_rows}
-	if not status_by_plan:
-		return []
-
-	documents: list[FrappeManufacturingDocument] = []
-	for row in frappe.get_all(
-		"Production Plan Item",
-		filters={"parent": ["in", sorted(status_by_plan)]},
-		fields=["parent", "bom_no"],
-	):
-		bom_no = _row_value(row, "bom_no")
-		parent = _row_value(row, "parent")
-		if bom_no:
-			documents.append(
-				FrappeManufacturingDocument(
-					doctype="Production Plan",
-					name=parent,
-					bom_no=bom_no,
-					status=status_by_plan[parent],
-				)
-			)
-	return documents
 
 
 def _get_same_project_layouts(layout: ReleaseLayoutDocument) -> list[object]:
@@ -553,16 +278,6 @@ def _get_finished_part_boms(layout: ReleaseLayoutDocument) -> list[BomRecord]:
 		pluck="name",
 	)
 	return [frappe.get_doc("BOM", name) for name in bom_names]
-
-
-def _get_same_family_layouts(layout: ReleaseLayoutDocument) -> list[object]:
-	return _get_same_project_layouts(layout)
-
-
-def _row_value(row: object, fieldname: str) -> str:
-	if isinstance(row, dict):
-		return row.get(fieldname, "")
-	return getattr(row, fieldname, "")
 
 
 def _save_bom_records(boms: Sequence[BomRecord]) -> None:

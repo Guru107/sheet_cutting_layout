@@ -19,11 +19,11 @@ Local bench roots used for development are `~/Workspace/bench15` and `~/Workspac
 - Projects Manager: performs the first checker approval.
 - Manufacturing Manager: performs the second checker approval after Projects approval.
 - Purchase Manager: approves checked layouts for release.
-- MR Coordinator: releases approved layouts or finalizes impact releases.
+- MR Coordinator: releases approved layouts.
 
 ## Workflow
 
-Layouts move through `Draft -> Submitted for Check -> Checked -> Approved by Purchase`. MR release moves to `Released` when no impacted manufacturing documents exist, or `Release Pending Impact` when open Work Orders or Production Plans still reference replaced BOMs. Use `Finalize Impact Release` only after every impact row has a decision.
+Layouts move through `Draft -> Submitted for Check -> Checked -> Approved by Purchase`. MR release moves layouts directly to `Released`.
 
 ## Validation Rules
 
@@ -33,13 +33,9 @@ Finished part item codes must be alphanumeric and end with `SHR`. Each layout ne
 
 MR Release creates one native ERPNext Shearing BOM for the finished part. BOM quantity equals `parts_per_sheet`, raw material quantity is the full sheet weight in Kg, process scrap uses `process_scrap_item`, reusable end pieces are separate scrap rows, and end pieces marked `Scrap` are folded into process scrap.
 
-## Impact Resolution
-
-When a new revision replaces active BOMs, the release service creates one impact row per open reference. Choose `Use Old BOM`, `Use New BOM`, or `Cancel Reference` for each row, then run `Finalize Impact Release`. The prior active layout is superseded and linked old BOMs are disabled.
-
 ## Recovery
 
-If release fails, keep the layout in `Approved by Purchase` or `Release Pending Impact`, fix validation or impact rows, and rerun the workflow action. If generated BOMs were created but not activated, keep them disabled until finalization or manually disable them before retrying.
+If release fails, keep the layout in `Approved by Purchase`, fix validation errors, and rerun the workflow action.
 
 ## Development
 

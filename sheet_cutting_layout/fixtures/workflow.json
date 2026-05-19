@@ -29,11 +29,6 @@
    },
    {
     "allow_edit": "System Manager",
-    "doc_status": "0",
-    "state": "Release Pending Impact"
-   },
-   {
-    "allow_edit": "System Manager",
     "doc_status": "1",
     "state": "Released"
    },
@@ -84,13 +79,6 @@
     "state": "Approved by Purchase"
    },
    {
-    "action": "MR Release With Impact",
-    "allowed": "MR Coordinator",
-    "condition": "doc.project_manager_ok and doc.manufacturing_manager_ok",
-    "next_state": "Release Pending Impact",
-    "state": "Approved by Purchase"
-   },
-   {
     "action": "Reject",
     "allowed": "System Manager",
     "next_state": "Rejected",
@@ -107,18 +95,6 @@
     "allowed": "System Manager",
     "next_state": "Rejected",
     "state": "Approved by Purchase"
-   },
-   {
-    "action": "Reject",
-    "allowed": "System Manager",
-    "next_state": "Rejected",
-    "state": "Release Pending Impact"
-   },
-   {
-    "action": "Finalize Impact Release",
-    "allowed": "MR Coordinator",
-    "next_state": "Released",
-    "state": "Release Pending Impact"
    },
    {
     "action": "Supersede",
