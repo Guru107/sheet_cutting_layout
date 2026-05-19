@@ -22,6 +22,9 @@ except ImportError:
 		pass
 
 
+_ = getattr(frappe, "_", lambda message: message)
+
+
 from sheet_cutting_layout.services.release_service import (
 	finalize_release,
 	get_release_context,
@@ -43,7 +46,7 @@ class SheetCuttingLayout(Document):
 		validate_sheet_cutting_layout(self)
 
 	def on_trash(self) -> None:
-		if getattr(self, "status", None) != "Rejected" or frappe is None:
+		if getattr(self, "status", None) != "Rejected" or not frappe:
 			return
 
 		doctype = getattr(self, "doctype", "Sheet Cutting Layout")
@@ -93,21 +96,21 @@ class SheetCuttingLayout(Document):
 		if action in {"MR Release", "MR Release With Impact"}:
 			with _suppress_workflow_side_effects():
 				result = release_layout(self, release_context=context)
-			if frappe is not None and action == "MR Release" and result.status == "Release Pending Impact":
-				frappe.throw("Use MR Release With Impact when open manufacturing documents are impacted")
-			if frappe is not None and action == "MR Release With Impact" and result.status == "Released":
-				frappe.throw("Use MR Release when no open manufacturing documents are impacted")
+			if frappe and action == "MR Release" and result.status == "Release Pending Impact":
+				frappe.throw(_("Use MR Release With Impact when open manufacturing documents are impacted"))
+			if frappe and action == "MR Release With Impact" and result.status == "Released":
+				frappe.throw(_("Use MR Release when no open manufacturing documents are impacted"))
 		if action == "Finalize Impact Release" and context is not None:
 			with _suppress_workflow_side_effects():
 				result = finalize_release(
 					self, layouts=context.layouts, boms=context.boms if context.boms is not None else ()
 				)
-			if frappe is not None and result.status == "Release Pending Impact":
-				frappe.throw("Resolve all impact decisions before final release")
+			if frappe and result.status == "Release Pending Impact":
+				frappe.throw(_("Resolve all impact decisions before final release"))
 
 
 def _get_selected_workflow_action() -> str | None:
-	if frappe is None:
+	if not frappe:
 		return None
 
 	flags = getattr(frappe, "flags", None)
@@ -127,7 +130,7 @@ def _get_selected_workflow_action() -> str | None:
 
 
 def _get_session_user() -> str | None:
-	if frappe is None:
+	if not frappe:
 		return None
 
 	session = getattr(frappe, "session", None)
@@ -136,7 +139,7 @@ def _get_session_user() -> str | None:
 
 
 def _get_now_datetime() -> datetime:
-	if frappe is not None:
+	if frappe:
 		now_datetime = getattr(frappe, "now_datetime", None)
 		if callable(now_datetime):
 			return now_datetime()
@@ -151,7 +154,7 @@ def _get_now_datetime() -> datetime:
 
 class _suppress_workflow_side_effects:
 	def __enter__(self) -> None:
-		self.flags = getattr(frappe, "flags", None) if frappe is not None else None
+		self.flags = getattr(frappe, "flags", None) if frappe else None
 		if self.flags is None:
 			self.previous_value = None
 			self.had_previous_value = False
@@ -172,7 +175,7 @@ class _suppress_workflow_side_effects:
 
 
 def _workflow_side_effects_are_suppressed() -> bool:
-	if frappe is None:
+	if not frappe:
 		return False
 
 	flags = getattr(frappe, "flags", None)
@@ -181,7 +184,7 @@ def _workflow_side_effects_are_suppressed() -> bool:
 
 @whitelist()
 def apply_sheet_cutting_layout_workflow(doc: object, action: str) -> object:
-	if frappe is None:
+	if not frappe:
 		raise RuntimeError("Frappe is required to apply Sheet Cutting Layout workflow")
 
 	frappe_workflow = import_module("frappe.model.workflow")
@@ -208,7 +211,7 @@ def apply_sheet_cutting_layout_workflow(doc: object, action: str) -> object:
 
 @whitelist()
 def create_sheet_cutting_layout_revision(name: str) -> str:
-	if frappe is None:
+	if not frappe:
 		raise RuntimeError("Frappe is required to create Sheet Cutting Layout revisions")
 
 	old_doc = frappe.get_doc("Sheet Cutting Layout", name)

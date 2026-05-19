@@ -16,10 +16,12 @@ except ImportError:
 
 	frappe = _FrappeCompat()
 
+_ = getattr(frappe, "_", lambda message: message)
+
 
 def validate_shearing_bom_source(doc: object, method: str | None = None) -> None:
 	if getattr(doc, "custom_operation", None) != "Shearing":
 		return
 	if getattr(doc, "sheet_cutting_layout", None):
 		return
-	frappe.throw("Create a Sheet Cutting Layout to generate a Shearing BOM.")
+	frappe.throw(_("Create a Sheet Cutting Layout to generate a Shearing BOM."))

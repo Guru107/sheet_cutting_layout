@@ -7,7 +7,7 @@ except ImportError:
 
 
 def execute() -> None:
-	if frappe is None:
+	if not frappe:
 		raise RuntimeError("Frappe is required to submit released Sheet Cutting Layouts")
 
 	frappe.db.set_value(

@@ -15,6 +15,8 @@ try:
 except ImportError:
 	frappe = None
 
+_ = getattr(frappe, "_", lambda message: message)
+
 LayoutReleaseStatus = Literal["Approved by Purchase", "Release Pending Impact", "Released"]
 ImpactReferenceDoctype = Literal["Work Order", "Production Plan"]
 ImpactDecision = Literal["Use Old BOM", "Use New BOM", "Cancel Reference"]
@@ -226,7 +228,7 @@ def finalize_release(
 
 
 def get_release_context(layout: ReleaseLayoutDocument) -> ReleaseContext:
-	if frappe is None:
+	if not frappe:
 		if _is_test_runtime():
 			return ReleaseContext(open_documents=(), layouts=(), boms=[])
 		raise RuntimeError("Frappe is required to build Sheet Cutting Layout release context")
@@ -350,7 +352,7 @@ def _default_bom_document_factory(
 	bom._layout = layout
 	bom.sheet_cutting_layout = getattr(layout, "name", None)
 
-	if frappe is None:
+	if not frappe:
 		if _is_test_runtime():
 			return bom
 		raise RuntimeError("Frappe is required to persist generated BOM documents")
@@ -359,7 +361,7 @@ def _default_bom_document_factory(
 
 
 def _insert_frappe_bom(bom: BomDocument) -> BomDocument:
-	if frappe is None:
+	if not frappe:
 		raise RuntimeError("Frappe is required to persist generated BOM documents")
 
 	bom_doc = frappe.new_doc("BOM")
@@ -452,7 +454,7 @@ def _is_superseded_previous_layout(previous_layout: object, layout: ReleaseLayou
 
 
 def _get_open_manufacturing_documents() -> list[FrappeManufacturingDocument]:
-	if frappe is None:
+	if not frappe:
 		raise RuntimeError("Frappe is required to discover open manufacturing documents")
 
 	documents = _get_open_work_orders()
@@ -461,7 +463,7 @@ def _get_open_manufacturing_documents() -> list[FrappeManufacturingDocument]:
 
 
 def _get_open_work_orders() -> list[FrappeManufacturingDocument]:
-	if frappe is None:
+	if not frappe:
 		raise RuntimeError("Frappe is required to discover open work orders")
 
 	documents: list[FrappeManufacturingDocument] = []
@@ -484,7 +486,7 @@ def _get_open_work_orders() -> list[FrappeManufacturingDocument]:
 
 
 def _get_open_production_plans() -> list[FrappeManufacturingDocument]:
-	if frappe is None:
+	if not frappe:
 		raise RuntimeError("Frappe is required to discover open production plans")
 
 	plan_rows = frappe.get_all(
@@ -517,7 +519,7 @@ def _get_open_production_plans() -> list[FrappeManufacturingDocument]:
 
 
 def _get_same_project_layouts(layout: ReleaseLayoutDocument) -> list[object]:
-	if frappe is None:
+	if not frappe:
 		raise RuntimeError("Frappe is required to discover same-project layouts")
 
 	project = getattr(layout, "project", None)
@@ -536,7 +538,7 @@ def _get_same_project_layouts(layout: ReleaseLayoutDocument) -> list[object]:
 
 
 def _get_finished_part_boms(layout: ReleaseLayoutDocument) -> list[BomRecord]:
-	if frappe is None:
+	if not frappe:
 		raise RuntimeError("Frappe is required to discover BOM records")
 
 	finished_part_items = [
@@ -564,7 +566,7 @@ def _row_value(row: object, fieldname: str) -> str:
 
 
 def _save_bom_records(boms: Sequence[BomRecord]) -> None:
-	if frappe is None:
+	if not frappe:
 		return
 
 	for bom in boms:
@@ -576,7 +578,7 @@ def _save_bom_records(boms: Sequence[BomRecord]) -> None:
 
 
 def _save_layout_records(layouts: Sequence[object]) -> None:
-	if frappe is None:
+	if not frappe:
 		return
 
 	for layout in layouts:
@@ -611,7 +613,7 @@ def _company_for_layout(layout: object | None) -> str:
 		if company:
 			return company
 
-	if frappe is None:
+	if not frappe:
 		raise RuntimeError("Frappe is required to resolve BOM company")
 
 	company = frappe.defaults.get_user_default("Company")
@@ -624,7 +626,7 @@ def _company_for_layout(layout: object | None) -> str:
 		if company:
 			return company
 
-	frappe.throw("Company is required to create generated BOMs")
+	frappe.throw(_("Company is required to create generated BOMs"))
 	raise RuntimeError("Company is required to create generated BOMs")
 
 

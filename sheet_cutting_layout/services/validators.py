@@ -20,6 +20,8 @@ except ImportError:
 
 	frappe = _FrappeCompat()
 
+_ = getattr(frappe, "_", lambda message: message)
+
 
 class FinishedPartRow(Protocol):
 	finished_part_item: str
@@ -66,9 +68,9 @@ SHEET_CONSUMPTION_TOLERANCE_KG = 0.005
 
 def validate_finished_part_code(code: str) -> None:
 	if not ALNUM_RE.fullmatch(code):
-		frappe.throw("Finished part item code must be alphanumeric only")
+		frappe.throw(_("Finished part item code must be alphanumeric only"))
 	if not code.endswith("SHR"):
-		frappe.throw("Finished part item code must end with SHR")
+		frappe.throw(_("Finished part item code must end with SHR"))
 
 
 def validate_sheet_cutting_layout(layout: SheetCuttingLayoutDocument) -> None:
@@ -82,7 +84,7 @@ def validate_sheet_cutting_layout(layout: SheetCuttingLayoutDocument) -> None:
 	accounted_finished_parts = _accounted_finished_parts(finished_parts)
 
 	if len(accounted_finished_parts) != 1:
-		frappe.throw("Sheet Cutting Layout requires exactly one finished part")
+		frappe.throw(_("Sheet Cutting Layout requires exactly one finished part"))
 
 	for finished_part in accounted_finished_parts:
 		validate_finished_part_code(finished_part.finished_part_item)
@@ -90,7 +92,7 @@ def validate_sheet_cutting_layout(layout: SheetCuttingLayoutDocument) -> None:
 		if finished_part.scrap_weight_per_part_kg > 0 and _is_missing(
 			getattr(layout, "process_scrap_item", None)
 		):
-			frappe.throw("Process scrap item is required when process scrap weight is positive")
+			frappe.throw(_("Process scrap item is required when process scrap weight is positive"))
 
 	for end_piece in end_pieces:
 		_validate_end_piece_required_fields(end_piece)
@@ -256,26 +258,26 @@ def _accounted_finished_parts(
 def _validate_finished_part_weights(finished_part: FinishedPartRow) -> None:
 	net_weight = getattr(finished_part, "net_weight_per_part_kg", None)
 	if net_weight is not None and net_weight < 0:
-		frappe.throw("Net weight per part must be non-negative")
+		frappe.throw(_("Net weight per part must be non-negative"))
 	if finished_part.gross_weight_per_part_kg < 0:
-		frappe.throw("Gross weight per part must be non-negative")
+		frappe.throw(_("Gross weight per part must be non-negative"))
 	if finished_part.scrap_weight_per_part_kg < 0:
 		if net_weight is None:
-			frappe.throw("Scrap weight per part must be non-negative")
-		frappe.throw("Net weight per part cannot exceed gross weight")
+			frappe.throw(_("Scrap weight per part must be non-negative"))
+		frappe.throw(_("Net weight per part cannot exceed gross weight"))
 
 
 def _validate_end_piece_required_fields(end_piece: EndPieceRow) -> None:
 	if _is_missing(end_piece.end_piece_item):
-		frappe.throw("End piece item is required")
+		frappe.throw(_("End piece item is required"))
 	if end_piece.width_mm is None:
-		frappe.throw("End piece width is required")
+		frappe.throw(_("End piece width is required"))
 	if end_piece.length_mm is None:
-		frappe.throw("End piece length is required")
+		frappe.throw(_("End piece length is required"))
 	if end_piece.weight_kg is None:
-		frappe.throw("End piece weight is required")
+		frappe.throw(_("End piece weight is required"))
 	if end_piece.qty_per_sheet is None:
-		frappe.throw("End piece quantity is required")
+		frappe.throw(_("End piece quantity is required"))
 
 
 def _validate_end_piece_distribution(
@@ -284,7 +286,7 @@ def _validate_end_piece_distribution(
 ) -> None:
 	for finished_part in finished_parts:
 		if finished_part.parts_per_sheet <= 0:
-			frappe.throw("Parts per sheet must be greater than zero for end-piece distribution")
+			frappe.throw(_("Parts per sheet must be greater than zero for end-piece distribution"))
 
 		end_piece_weight_per_part = sum(
 			(end_piece.weight_kg * end_piece.qty_per_sheet) / finished_part.parts_per_sheet
@@ -297,7 +299,7 @@ def _validate_end_piece_distribution(
 			- end_piece_weight_per_part
 		)
 		if derived_fg_weight < 0:
-			frappe.throw("Derived finished goods weight must be non-negative")
+			frappe.throw(_("Derived finished goods weight must be non-negative"))
 
 
 def _validate_complete_sheet_consumption(
@@ -314,11 +316,15 @@ def _validate_complete_sheet_consumption(
 
 	if unaccounted_weight > SHEET_CONSUMPTION_TOLERANCE_KG:
 		frappe.throw(
-			f"There is no accounting for {_format_sheet_consumption_weight(unaccounted_weight)} kg of sheet consumption"
+			_("There is no accounting for {0} kg of sheet consumption").format(
+				_format_sheet_consumption_weight(unaccounted_weight)
+			)
 		)
 	if unaccounted_weight < -SHEET_CONSUMPTION_TOLERANCE_KG:
 		frappe.throw(
-			f"Sheet consumption exceeds sheet weight by {_format_sheet_consumption_weight(abs(unaccounted_weight))} kg"
+			_("Sheet consumption exceeds sheet weight by {0} kg").format(
+				_format_sheet_consumption_weight(abs(unaccounted_weight))
+			)
 		)
 
 

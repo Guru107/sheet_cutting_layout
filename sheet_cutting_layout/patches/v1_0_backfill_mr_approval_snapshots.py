@@ -12,7 +12,7 @@ MR_APPROVAL_STEP = "MR Approval"
 
 
 def execute() -> None:
-	if frappe is None:
+	if not frappe:
 		raise RuntimeError("Frappe is required to backfill MR approval snapshots")
 
 	layouts = frappe.db.get_all(
