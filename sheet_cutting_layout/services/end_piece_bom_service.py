@@ -46,6 +46,7 @@ class EndPieceRow(Protocol):
 class LayoutDocument(Protocol):
 	name: str
 	status: str | None
+	company: str | None
 	raw_material_item: str | None
 	sheet_thickness_mm: float | None
 	process_scrap_item: str | None
@@ -77,9 +78,7 @@ def generate_end_piece_boms(layout: LayoutDocument) -> dict[str, list[str]]:
 
 	if generated_boms:
 		_apply_end_piece_bom_status(layout)
-		save = getattr(layout, "save", None)
-		if callable(save):
-			save(ignore_permissions=True)
+		_persist_generated_links(layout, pending_rows)
 
 	return {"items": generated_items, "boms": generated_boms}
 
@@ -126,6 +125,7 @@ def _ensure_end_piece_item(layout: LayoutDocument, row: EndPieceRow) -> str:
 def _create_end_piece_bom(layout: LayoutDocument, row: EndPieceRow, item_code: str) -> str:
 	bom = frappe.new_doc("BOM")
 	bom.item = _required_clean(row, "used_for_finished_part")
+	bom.company = _company_for_layout(layout)
 	bom.quantity = getattr(row, "bom_quantity", None)
 	bom.uom = "Kg"
 	bom.custom_operation = "Shearing"
@@ -199,6 +199,84 @@ def _apply_end_piece_bom_status(layout: LayoutDocument) -> None:
 		validators.apply_end_piece_bom_status(layout)
 	except TypeError:
 		validators.apply_end_piece_bom_status(layout, getattr(layout, "end_pieces", []) or [])
+
+
+def _persist_generated_links(layout: LayoutDocument, rows: Sequence[EndPieceRow]) -> None:
+	if _is_submitted_document(layout):
+		for row in rows:
+			_set_generated_row_links(row)
+		_db_set(layout, "end_piece_bom_status", getattr(layout, "end_piece_bom_status", None), update_modified=True)
+		return
+
+	save = getattr(layout, "save", None)
+	if callable(save):
+		save(ignore_permissions=True)
+
+
+def _set_generated_row_links(row: EndPieceRow) -> None:
+	_db_set(
+		row,
+		{
+			"generated_end_piece_item": getattr(row, "generated_end_piece_item", None),
+			"generated_end_piece_bom": getattr(row, "generated_end_piece_bom", None),
+		},
+		update_modified=False,
+	)
+
+
+def _db_set(
+	doc: object,
+	fieldname: object,
+	value: object = None,
+	*,
+	update_modified: bool,
+) -> None:
+	db_set = getattr(doc, "db_set", None)
+	if callable(db_set):
+		db_set(fieldname, value, update_modified=update_modified, notify=False)
+		return
+
+	db = getattr(frappe, "db", None)
+	set_value = getattr(db, "set_value", None)
+	doctype = getattr(doc, "doctype", None)
+	name = getattr(doc, "name", None)
+	if callable(set_value) and doctype and name:
+		set_value(doctype, name, fieldname, value, update_modified=update_modified)
+		return
+
+	_throw(_("Generated end-piece BOM links could not be persisted safely on a submitted layout"))
+
+
+def _is_submitted_document(doc: object) -> bool:
+	docstatus = getattr(doc, "docstatus", None)
+	if docstatus == 1:
+		return True
+	is_submitted = getattr(docstatus, "is_submitted", None)
+	return bool(callable(is_submitted) and is_submitted())
+
+
+def _company_for_layout(layout: LayoutDocument | None) -> str:
+	if layout is not None:
+		company = _clean(getattr(layout, "company", None))
+		if company:
+			return company
+
+	defaults = getattr(frappe, "defaults", None)
+	get_user_default = getattr(defaults, "get_user_default", None)
+	if callable(get_user_default):
+		company = _clean(get_user_default("Company"))
+		if company:
+			return company
+
+	db = getattr(frappe, "db", None)
+	get_default = getattr(db, "get_default", None)
+	if callable(get_default):
+		company = _clean(get_default("company"))
+		if company:
+			return company
+
+	_throw(_("Company is required to create generated BOMs"))
+	raise RuntimeError("Company is required to create generated BOMs")
 
 
 def _required_clean(row: EndPieceRow, fieldname: str) -> str:

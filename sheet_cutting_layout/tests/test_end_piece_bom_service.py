@@ -34,21 +34,38 @@ class EndPiece:
 	bom_scrap_quantity_kg: float | None = 0
 	generated_end_piece_item: str | None = None
 	generated_end_piece_bom: str | None = None
+	db_set_calls: list[tuple[object, object, dict[str, object]]] = field(default_factory=list)
+
+	def db_set(self, fieldname: object, value: object = None, **kwargs: object) -> None:
+		self.db_set_calls.append((fieldname, value, kwargs))
 
 
 @dataclass
 class Layout:
 	name: str = "SCL-001"
 	status: str = "Released"
+	company: str | None = "Test Company"
 	raw_material_item: str = "RAW-001"
 	sheet_thickness_mm: float = 2
 	process_scrap_item: str | None = "PROCESS-SCRAP"
 	end_piece_bom_status: str | None = None
 	end_pieces: list[EndPiece] = field(default_factory=list)
 	save_calls: list[dict[str, object]] = field(default_factory=list)
+	db_set_calls: list[tuple[object, object, dict[str, object]]] = field(default_factory=list)
 
 	def save(self, **kwargs: object) -> None:
 		self.save_calls.append(kwargs)
+
+	def db_set(self, fieldname: object, value: object = None, **kwargs: object) -> None:
+		self.db_set_calls.append((fieldname, value, kwargs))
+
+
+@dataclass
+class SubmittedLayout(Layout):
+	docstatus: int = 1
+
+	def save(self, **kwargs: object) -> None:
+		raise AssertionError("submitted layouts must persist generated BOM fields with db_set")
 
 
 class FakeDoc:
@@ -63,6 +80,8 @@ class FakeDoc:
 
 	def insert(self, ignore_permissions: bool = False) -> FakeDoc:
 		self.ignore_permissions = ignore_permissions
+		if self.doctype == "BOM" and not getattr(self, "company", None):
+			raise ValueError("BOM company is mandatory")
 		if not self.name:
 			self.name = f"{self.doctype}-{id(self)}"
 		return self
@@ -86,6 +105,11 @@ class FakeDB:
 			return self.raw_item_groups.get(name)
 		return None
 
+	def get_default(self, key: str) -> str | None:
+		if key == "company":
+			return "DB Default Company"
+		return None
+
 
 class FakeFrappe:
 	def __init__(
@@ -98,6 +122,7 @@ class FakeFrappe:
 		self.created_docs: list[FakeDoc] = []
 		self.ValidationError = ValueError
 		self._ = lambda message: message
+		self.defaults = types.SimpleNamespace(get_user_default=lambda _key: "")
 
 	def new_doc(self, doctype: str) -> FakeDoc:
 		doc = FakeDoc(doctype)
@@ -219,12 +244,58 @@ def test_generation_reuses_existing_item_and_creates_bom(
 	assert bom.item == "PART-SHR"
 	assert bom.quantity == 1
 	assert bom.uom == "Kg"
+	assert bom.company == "Test Company"
 	assert bom.custom_operation == "Shearing"
 	assert bom.sheet_cutting_layout == "SCL-001"
 	assert bom.items == [{"item_code": "END-001", "qty": 2.5, "uom": "Kg"}]
 	assert bom.scrap_items == []
 	assert layout.end_pieces[0].generated_end_piece_item == "END-001"
 	assert layout.save_calls == [{"ignore_permissions": True}]
+
+
+def test_generation_uses_default_company_when_layout_has_no_company(
+	service: types.ModuleType,
+	monkeypatch: pytest.MonkeyPatch,
+) -> None:
+	fake_frappe = install_fakes(monkeypatch, service, existing_items={"END-001"})
+	layout = Layout(company=None, end_pieces=[EndPiece()])
+
+	service.generate_end_piece_boms(layout)
+
+	bom = fake_frappe.created_docs[0]
+	assert bom.company == "DB Default Company"
+
+
+def test_generation_persists_submitted_layout_links_with_db_set(
+	service: types.ModuleType,
+	monkeypatch: pytest.MonkeyPatch,
+) -> None:
+	install_fakes(monkeypatch, service, existing_items={"END-001"})
+	row = EndPiece()
+	layout = SubmittedLayout(end_pieces=[row])
+
+	result = service.generate_end_piece_boms(layout)
+
+	assert row.generated_end_piece_item == "END-001"
+	assert row.generated_end_piece_bom == result["boms"][0]
+	assert layout.end_piece_bom_status == "Generated"
+	assert row.db_set_calls == [
+		(
+			{
+				"generated_end_piece_item": "END-001",
+				"generated_end_piece_bom": result["boms"][0],
+			},
+			None,
+			{"update_modified": False, "notify": False},
+		)
+	]
+	assert layout.db_set_calls == [
+		(
+			"end_piece_bom_status",
+			"Generated",
+			{"update_modified": True, "notify": False},
+		)
+	]
 
 
 def test_generation_creates_missing_item_from_raw_material_item_group(
