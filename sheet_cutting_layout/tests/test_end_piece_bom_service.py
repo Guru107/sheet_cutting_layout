@@ -6,7 +6,6 @@ from dataclasses import dataclass, field
 
 import pytest
 
-
 PREVIEW_ROW_KEYS = {
 	"idx",
 	"end_piece_item_code",
@@ -425,6 +424,4 @@ def test_generation_adds_positive_scrap_row(
 	service.generate_end_piece_boms(layout)
 
 	bom = fake_frappe.created_docs[0]
-	assert bom.scrap_items == [
-		{"item_code": "PROCESS-SCRAP", "qty": 0.75, "stock_qty": 0.75, "uom": "Kg"}
-	]
+	assert bom.scrap_items == [{"item_code": "PROCESS-SCRAP", "qty": 0.75, "stock_qty": 0.75, "uom": "Kg"}]

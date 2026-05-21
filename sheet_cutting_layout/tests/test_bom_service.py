@@ -87,9 +87,7 @@ def test_scrap_endpiece_creates_row_level_scrap_item_separate_from_process_scrap
 
 	bom = bom_service.build_bom_from_layout_row(
 		Layout(
-			end_pieces=[
-				EndPiece(weight_kg=8, qty_per_sheet=2, disposition="Scrap", scrap_item="EP-SCRAP")
-			]
+			end_pieces=[EndPiece(weight_kg=8, qty_per_sheet=2, disposition="Scrap", scrap_item="EP-SCRAP")]
 		),
 		FinishedPart(parts_per_sheet=4, scrap_weight_per_part_kg=1),
 	)

@@ -203,7 +203,11 @@ frappe.provide("sheet_cutting_layout");
 	}
 
 	function calculateEndPieceWeight(frm, row) {
-		const singleWeight = calculateWeight(frm.doc.sheet_thickness_mm, row.width_mm, row.length_mm);
+		const singleWeight = calculateWeight(
+			frm.doc.sheet_thickness_mm,
+			row.width_mm,
+			row.length_mm
+		);
 		if (singleWeight === null) {
 			return null;
 		}
@@ -226,15 +230,26 @@ frappe.provide("sheet_cutting_layout");
 	}
 
 	function suggestEndPieceItemCode(frm, row) {
-		if (!frm.doc.raw_material_item || !frm.doc.sheet_thickness_mm || !row.width_mm || !row.length_mm) {
+		if (
+			!frm.doc.raw_material_item ||
+			!frm.doc.sheet_thickness_mm ||
+			!row.width_mm ||
+			!row.length_mm
+		) {
 			return null;
 		}
-		return `${frm.doc.raw_material_item}-EP-${formatCodeNumber(frm.doc.sheet_thickness_mm)}x${formatCodeNumber(row.width_mm)}x${formatCodeNumber(row.length_mm)}`;
+		return `${frm.doc.raw_material_item}-EP-${formatCodeNumber(
+			frm.doc.sheet_thickness_mm
+		)}x${formatCodeNumber(row.width_mm)}x${formatCodeNumber(row.length_mm)}`;
 	}
 
 	function updateEndPieceItemCodes(frm) {
 		const updates = (frm.doc.end_pieces || []).flatMap((row) => {
-			if (row.disposition !== "Reuse" || row.generated_end_piece_item || row.generated_end_piece_bom) {
+			if (
+				row.disposition !== "Reuse" ||
+				row.generated_end_piece_item ||
+				row.generated_end_piece_bom
+			) {
 				return [];
 			}
 			if (row.end_piece_item_code) {
@@ -244,7 +259,9 @@ frappe.provide("sheet_cutting_layout");
 			if (!suggested) {
 				return [];
 			}
-			return [frappe.model.set_value(row.doctype, row.name, "end_piece_item_code", suggested)];
+			return [
+				frappe.model.set_value(row.doctype, row.name, "end_piece_item_code", suggested),
+			];
 		});
 
 		return Promise.all(updates);
@@ -346,11 +363,7 @@ frappe.provide("sheet_cutting_layout");
 					total +
 					numberOrZero(row.gross_weight_per_part_kg) * numberOrZero(row.parts_per_sheet)
 				);
-			}, 0) +
-				endPieces.reduce(
-					(total, row) => total + numberOrZero(row.weight_kg),
-					0
-				)
+			}, 0) + endPieces.reduce((total, row) => total + numberOrZero(row.weight_kg), 0)
 		);
 		const leftoverWeight = roundConsumptionWeight(
 			roundConsumptionWeight(frm.doc.weight_per_sheet_kg) - consumedWeight

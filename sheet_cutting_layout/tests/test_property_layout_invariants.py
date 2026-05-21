@@ -527,9 +527,7 @@ def layout_case_strategy(draw: st.DrawFn) -> LayoutCase:
 	process_scrap = draw(finite_weight_strategy())
 	derived_fg_weight = draw(finite_weight_strategy())
 	gross_weight = process_scrap + derived_fg_weight
-	weight_per_sheet = gross_weight * parts_per_sheet + sum(
-		end_piece.weight_kg for end_piece in end_pieces
-	)
+	weight_per_sheet = gross_weight * parts_per_sheet + sum(end_piece.weight_kg for end_piece in end_pieces)
 
 	return LayoutCase(
 		layout=Layout(
@@ -599,9 +597,7 @@ def test_bom_invariants_hold_for_random_valid_layouts(layout_case: LayoutCase) -
 	process_scrap_qty = _sum_bom_qty(bom.scrap_items, "process_scrap")
 	end_piece_scrap_qty = _sum_bom_qty(bom.scrap_items, "end_piece_scrap")
 	expected_end_piece_scrap_qty = sum(
-		end_piece.weight_kg
-		for end_piece in layout_case.layout.end_pieces
-		if end_piece.disposition == "Scrap"
+		end_piece.weight_kg for end_piece in layout_case.layout.end_pieces if end_piece.disposition == "Scrap"
 	)
 	total_scrap_qty = process_scrap_qty + end_piece_scrap_qty
 	derived_fg_qty = (

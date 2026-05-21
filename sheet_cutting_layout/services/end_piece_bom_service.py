@@ -205,7 +205,12 @@ def _persist_generated_links(layout: LayoutDocument, rows: Sequence[EndPieceRow]
 	if _is_submitted_document(layout):
 		for row in rows:
 			_set_generated_row_links(row)
-		_db_set(layout, "end_piece_bom_status", getattr(layout, "end_piece_bom_status", None), update_modified=True)
+		_db_set(
+			layout,
+			"end_piece_bom_status",
+			getattr(layout, "end_piece_bom_status", None),
+			update_modified=True,
+		)
 		return
 
 	save = getattr(layout, "save", None)

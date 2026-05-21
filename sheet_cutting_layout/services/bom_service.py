@@ -128,7 +128,6 @@ def _bom_quantity(layout_doc: LayoutDocument, finished_part_row: FinishedPartRow
 	return int(quantity)
 
 
-
 def _sheet_weight_kg(layout_doc: LayoutDocument, finished_part_row: FinishedPartRow) -> float:
 	weight_per_sheet_kg = getattr(layout_doc, "weight_per_sheet_kg", None)
 	if weight_per_sheet_kg is not None:

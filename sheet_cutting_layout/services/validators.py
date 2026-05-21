@@ -243,12 +243,7 @@ def suggest_end_piece_item_code(
 	width_mm: float | None,
 	length_mm: float | None,
 ) -> str | None:
-	if (
-		_is_missing(raw_material_item)
-		or thickness_mm is None
-		or width_mm is None
-		or length_mm is None
-	):
+	if _is_missing(raw_material_item) or thickness_mm is None or width_mm is None or length_mm is None:
 		return None
 	return (
 		f"{raw_material_item}-EP-"
@@ -315,11 +310,7 @@ def calculate_consumed_weight_kg(
 		for finished_part in finished_parts
 		if not _is_missing(finished_part.finished_part_item)
 	)
-	end_piece_weight = sum(
-		end_piece.weight_kg
-		for end_piece in end_pieces
-		if end_piece.weight_kg is not None
-	)
+	end_piece_weight = sum(end_piece.weight_kg for end_piece in end_pieces if end_piece.weight_kg is not None)
 	return _sheet_consumption_flt(part_gross_weight + end_piece_weight)
 
 
@@ -414,7 +405,9 @@ def apply_end_piece_bom_status(
 	if not reuse_end_pieces:
 		layout.end_piece_bom_status = "Not Required"
 		return
-	if all(not _is_missing(getattr(end_piece, "generated_end_piece_bom", None)) for end_piece in reuse_end_pieces):
+	if all(
+		not _is_missing(getattr(end_piece, "generated_end_piece_bom", None)) for end_piece in reuse_end_pieces
+	):
 		layout.end_piece_bom_status = "Generated"
 		return
 	layout.end_piece_bom_status = "Pending"
