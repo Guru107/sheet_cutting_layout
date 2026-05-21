@@ -51,6 +51,7 @@ class SheetCuttingLayoutDocument(Protocol):
 	strip_width_mm: float | None
 	strip_length_mm: float | None
 	weight_of_strip_kg: float | None
+	gross_weight_per_part_kg: float | None
 	parts_per_strip: int | None
 	no_of_strips: int | None
 	parts_per_sheet: int | None
@@ -76,6 +77,7 @@ def validate_finished_part_code(code: str) -> None:
 def validate_sheet_cutting_layout(layout: SheetCuttingLayoutDocument) -> None:
 	apply_sheet_weight_formula(layout)
 	apply_strip_weight_formula(layout)
+	apply_parent_gross_weight_per_part_formula(layout)
 	finished_parts = list(getattr(layout, "finished_parts", []) or [])
 	end_pieces = list(getattr(layout, "end_pieces", []) or [])
 	apply_parts_per_sheet_formula(layout, finished_parts)
@@ -121,6 +123,15 @@ def apply_strip_weight_formula(layout: SheetCuttingLayoutDocument) -> None:
 	)
 	if weight is not None:
 		layout.weight_of_strip_kg = weight
+
+
+def apply_parent_gross_weight_per_part_formula(layout: SheetCuttingLayoutDocument) -> None:
+	gross_weight = calculate_parent_gross_weight_per_part_kg(
+		weight_of_strip_kg=getattr(layout, "weight_of_strip_kg", None),
+		parts_per_strip=getattr(layout, "parts_per_strip", None),
+	)
+	if gross_weight is not None:
+		layout.gross_weight_per_part_kg = gross_weight
 
 
 def apply_finished_part_weight_formulas(
@@ -175,6 +186,16 @@ def calculate_parts_per_sheet(
 
 
 def calculate_gross_weight_per_part_kg(
+	*,
+	weight_of_strip_kg: float | None,
+	parts_per_strip: int | None,
+) -> float | None:
+	if weight_of_strip_kg is None or parts_per_strip is None or parts_per_strip <= 0:
+		return None
+	return _flt(weight_of_strip_kg / parts_per_strip)
+
+
+def calculate_parent_gross_weight_per_part_kg(
 	*,
 	weight_of_strip_kg: float | None,
 	parts_per_strip: int | None,

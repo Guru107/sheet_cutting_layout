@@ -33,6 +33,7 @@
   "strip_width_mm",
   "strip_length_mm",
   "weight_of_strip_kg",
+  "gross_weight_per_part_kg",
   "strip_column_break",
   "parts_per_strip",
   "no_of_strips",
@@ -204,6 +205,12 @@
    "label": "Weight Of Strip Kg",
    "read_only": 1,
    "reqd": 1
+  },
+  {
+   "fieldname": "gross_weight_per_part_kg",
+   "fieldtype": "Float",
+   "label": "Gross Weight Per Part (Kg)",
+   "read_only": 1
   },
   {
    "fieldname": "strip_column_break",

@@ -64,6 +64,7 @@ class Layout:
 	strip_width_mm: float = 1250
 	strip_length_mm: float = 242
 	weight_of_strip_kg: float = 0
+	gross_weight_per_part_kg: float = 0
 	parts_per_strip: int = 5
 	no_of_strips: int | None = None
 	parts_per_sheet: int = 0
@@ -215,6 +216,16 @@ def test_validation_overwrites_manual_strip_weight_with_formula(
 	validators.apply_finished_part_weight_formulas(layout, layout.finished_parts)
 
 	assert layout.weight_of_strip_kg == 2.37765
+
+
+def test_validation_calculates_parent_gross_weight_per_part_from_strip_weight_and_parts_per_strip(
+	validators: types.ModuleType,
+) -> None:
+	layout = Layout(weight_of_strip_kg=14, gross_weight_per_part_kg=999, parts_per_strip=7)
+
+	validators.apply_parent_gross_weight_per_part_formula(layout)
+
+	assert layout.gross_weight_per_part_kg == 2
 
 
 def test_validation_calculates_part_gross_and_scrap_from_strip_weight_and_net_weight(

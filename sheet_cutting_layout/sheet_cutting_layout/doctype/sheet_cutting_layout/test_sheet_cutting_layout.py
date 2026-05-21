@@ -38,6 +38,7 @@ def test_sheet_cutting_layout_doctypes_define_normalized_model() -> None:
 		"strip_width_mm",
 		"strip_length_mm",
 		"weight_of_strip_kg",
+		"gross_weight_per_part_kg",
 		"parts_per_strip",
 		"no_of_strips",
 		"parts_per_sheet",
@@ -52,6 +53,7 @@ def test_sheet_cutting_layout_doctypes_define_normalized_model() -> None:
 			"strip_width_mm",
 			"strip_length_mm",
 			"weight_of_strip_kg",
+			"gross_weight_per_part_kg",
 			"consumed_weight_kg",
 			"leftover_weight_kg",
 		},
@@ -67,6 +69,7 @@ def test_sheet_cutting_layout_doctypes_define_normalized_model() -> None:
 	assert "layout_family" not in parent_fields
 	assert parent_fields["weight_per_sheet_kg"].get("read_only") == 1
 	assert parent_fields["weight_of_strip_kg"].get("read_only") == 1
+	assert parent_fields["gross_weight_per_part_kg"].get("read_only") == 1
 	assert parent_fields["parts_per_sheet"].get("read_only") == 1
 	assert parent_fields["consumed_weight_kg"].get("read_only") == 1
 	assert parent_fields["consumed_weight_kg"].get("precision") == "3"

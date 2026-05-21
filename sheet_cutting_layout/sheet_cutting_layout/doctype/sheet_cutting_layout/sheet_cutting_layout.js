@@ -23,6 +23,7 @@ frappe.provide("sheet_cutting_layout");
 		"parts_per_sheet",
 		"weight_per_sheet_kg",
 		"weight_of_strip_kg",
+		"gross_weight_per_part_kg",
 		"consumed_weight_kg",
 		"leftover_weight_kg",
 		"consumption_status",
@@ -170,6 +171,25 @@ frappe.provide("sheet_cutting_layout");
 		}
 
 		return Number((stripWeight / partsPerStrip).toFixed(getCalculationPrecision()));
+	}
+
+	function calculateParentGrossWeightPerPart(frm) {
+		const stripWeight = Number(frm.doc.weight_of_strip_kg);
+		const partsPerStrip = Number(frm.doc.parts_per_strip);
+		if (!(stripWeight >= 0 && partsPerStrip > 0)) {
+			return null;
+		}
+
+		return Number((stripWeight / partsPerStrip).toFixed(getCalculationPrecision()));
+	}
+
+	function updateParentGrossWeightPerPart(frm) {
+		const grossWeight = calculateParentGrossWeightPerPart(frm);
+		if (grossWeight === null || frm.doc.gross_weight_per_part_kg === grossWeight) {
+			return Promise.resolve();
+		}
+
+		return frm.set_value("gross_weight_per_part_kg", grossWeight);
 	}
 
 	function calculatePartsPerSheet(frm) {
@@ -333,6 +353,7 @@ frappe.provide("sheet_cutting_layout");
 
 	function updateStripWeightAndRedraw(frm) {
 		updateStripWeight(frm)
+			.then(() => updateParentGrossWeightPerPart(frm))
 			.then(() => updateFinishedPartWeights(frm))
 			.then(() => updateConsumptionTracking(frm))
 			.then(() => {
@@ -356,6 +377,7 @@ frappe.provide("sheet_cutting_layout");
 
 	function updatePartsPerSheetAndRedraw(frm) {
 		updatePartsPerSheet(frm)
+			.then(() => updateParentGrossWeightPerPart(frm))
 			.then(() => updateFinishedPartWeights(frm))
 			.then(() => updateConsumptionTracking(frm))
 			.then(() => {
