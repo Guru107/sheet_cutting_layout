@@ -20,9 +20,10 @@ LayoutReleaseStatus = Literal["Approved by Purchase", "Released"]
 
 
 class EndPieceRow(Protocol):
-	end_piece_item: str
 	weight_kg: float
 	qty_per_sheet: float
+	disposition: str
+	scrap_item: str | None
 
 
 class ReleaseValidator(Protocol):
@@ -42,6 +43,8 @@ class ReleaseLayoutDocument(Protocol):
 	project: str
 	status: LayoutReleaseStatus
 	raw_material_item: str
+	process_scrap_item: str
+	no_of_strips: int
 	weight_per_sheet_kg: float
 	end_pieces: Sequence[EndPieceRow]
 	finished_parts: Sequence[FinishedPartRow]

@@ -26,6 +26,7 @@ class EndPiece:
 	weight_kg: float
 	qty_per_sheet: float
 	disposition: str = "Scrap"
+	scrap_item: str | None = None
 	used_for_finished_part: str | None = None
 
 
@@ -521,19 +522,21 @@ class LayoutCase:
 @st.composite
 def layout_case_strategy(draw: st.DrawFn) -> LayoutCase:
 	parts_per_sheet = draw(st.integers(min_value=1, max_value=200))
+	no_of_strips = draw(st.integers(min_value=1, max_value=20))
 	end_pieces = draw(end_pieces_strategy())
 	process_scrap = draw(finite_weight_strategy())
 	derived_fg_weight = draw(finite_weight_strategy())
-	distributed_end_piece_scrap = sum(
-		(end_piece.weight_kg * end_piece.qty_per_sheet) / parts_per_sheet for end_piece in end_pieces
-	)
-	gross_weight = process_scrap + distributed_end_piece_scrap + derived_fg_weight
+	gross_weight = process_scrap + derived_fg_weight
 	weight_per_sheet = gross_weight * parts_per_sheet + sum(
-		end_piece.weight_kg * end_piece.qty_per_sheet for end_piece in end_pieces
+		end_piece.weight_kg for end_piece in end_pieces
 	)
 
 	return LayoutCase(
-		layout=Layout(end_pieces=end_pieces, weight_per_sheet_kg=weight_per_sheet),
+		layout=Layout(
+			end_pieces=end_pieces,
+			no_of_strips=no_of_strips,
+			weight_per_sheet_kg=weight_per_sheet,
+		),
 		finished_part=FinishedPart(
 			finished_part_item=draw(finished_part_code_strategy()),
 			parts_per_sheet=parts_per_sheet,
@@ -557,6 +560,9 @@ def end_pieces_strategy() -> st.SearchStrategy[list[EndPiece]]:
 			),
 			weight_kg=finite_weight_strategy(),
 			qty_per_sheet=positive_finite_weight_strategy(),
+			scrap_item=st.text(alphabet=ascii_letters + digits, min_size=1, max_size=24).map(
+				lambda code: f"SCRAP{code}"
+			),
 		),
 		max_size=5,
 	)
@@ -592,12 +598,7 @@ def test_bom_invariants_hold_for_random_valid_layouts(layout_case: LayoutCase) -
 	process_scrap_qty = _sum_bom_qty(bom.scrap_items, "process_scrap")
 	end_piece_scrap_qty = _sum_bom_qty(bom.scrap_items, "end_piece_scrap")
 	expected_end_piece_scrap_qty = sum(
-		end_piece.weight_kg * end_piece.qty_per_sheet
-		for end_piece in layout_case.layout.end_pieces
-		if end_piece.disposition != "Scrap"
-	)
-	expected_scrap_end_piece_qty = sum(
-		end_piece.weight_kg * end_piece.qty_per_sheet
+		end_piece.weight_kg
 		for end_piece in layout_case.layout.end_pieces
 		if end_piece.disposition == "Scrap"
 	)
@@ -605,25 +606,17 @@ def test_bom_invariants_hold_for_random_valid_layouts(layout_case: LayoutCase) -
 	derived_fg_qty = (
 		layout_case.finished_part.gross_weight_per_part_kg
 		- layout_case.finished_part.scrap_weight_per_part_kg
-		- (
-			(expected_end_piece_scrap_qty + expected_scrap_end_piece_qty)
-			/ layout_case.finished_part.parts_per_sheet
-			if layout_case.finished_part.parts_per_sheet
-			else 0
-		)
 	)
 
-	assert bom.quantity == layout_case.finished_part.parts_per_sheet
+	assert bom.quantity == layout_case.layout.no_of_strips
 	assert _sum_bom_qty(bom.items, "raw_material") == pytest.approx(layout_case.layout.weight_per_sheet_kg)
 	assert process_scrap_qty == pytest.approx(
 		layout_case.finished_part.scrap_weight_per_part_kg * layout_case.finished_part.parts_per_sheet
-		+ expected_scrap_end_piece_qty
 	)
 	assert end_piece_scrap_qty == pytest.approx(expected_end_piece_scrap_qty)
 	assert total_scrap_qty == pytest.approx(
 		layout_case.finished_part.scrap_weight_per_part_kg * layout_case.finished_part.parts_per_sheet
 		+ expected_end_piece_scrap_qty
-		+ expected_scrap_end_piece_qty
 	)
 	assert derived_fg_qty == pytest.approx(layout_case.expected_derived_fg_weight_kg, rel=1e-6, abs=1e-6)
 

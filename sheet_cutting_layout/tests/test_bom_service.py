@@ -17,10 +17,10 @@ class FinishedPart:
 
 @dataclass
 class EndPiece:
-	end_piece_item: str
 	weight_kg: float
-	qty_per_sheet: float
+	qty_per_sheet: float = 1
 	disposition: str = "Reuse"
+	scrap_item: str | None = None
 
 
 @dataclass
@@ -28,6 +28,7 @@ class Layout:
 	raw_material_item: str = "RAW-SHEET"
 	process_scrap_item: str = "PROCESS-SCRAP"
 	weight_per_sheet_kg: float = 50
+	no_of_strips: int = 11
 	end_pieces: list[EndPiece] = field(default_factory=list)
 
 
@@ -44,7 +45,7 @@ def test_generated_bom_uses_parts_per_sheet_quantity_and_sheet_weight_raw_qty() 
 	bom = bom_service.build_bom_from_layout_row(Layout(), FinishedPart())
 
 	assert bom.item == "FINISHED-SHR"
-	assert bom.quantity == 4
+	assert bom.quantity == 11
 	assert bom.items[0].item_code == "RAW-SHEET"
 	assert bom.items[0].qty == pytest.approx(50)
 	assert bom.items[0].uom == "Kg"
@@ -65,47 +66,46 @@ def test_process_scrap_row_is_included_when_scrap_weight_is_positive() -> None:
 	assert bom.scrap_items[0].row_type == "process_scrap"
 
 
-def test_reusable_end_piece_scrap_rows_use_total_sheet_weight() -> None:
+def test_reuse_end_pieces_do_not_create_shearing_bom_scrap_rows() -> None:
 	bom_service = import_bom_service()
 
 	bom = bom_service.build_bom_from_layout_row(
 		Layout(
 			end_pieces=[
-				EndPiece("EP-1", weight_kg=3, qty_per_sheet=2),
-				EndPiece("EP-2", weight_kg=1.5, qty_per_sheet=4),
+				EndPiece(weight_kg=3, qty_per_sheet=2),
+				EndPiece(weight_kg=1.5, qty_per_sheet=4),
 			]
 		),
 		FinishedPart(parts_per_sheet=6),
 	)
 
-	assert bom.scrap_items[0].item_code == "EP-1"
-	assert bom.scrap_items[0].qty == pytest.approx(6)
-	assert bom.scrap_items[0].uom == "Kg"
-	assert bom.scrap_items[0].row_type == "end_piece_scrap"
-	assert bom.scrap_items[1].item_code == "EP-2"
-	assert bom.scrap_items[1].qty == pytest.approx(6)
-	assert bom.scrap_items[1].uom == "Kg"
-	assert bom.scrap_items[1].row_type == "end_piece_scrap"
+	assert bom.scrap_items == []
 
 
-def test_scrap_endpiece_weight_is_folded_into_process_scrap_total() -> None:
+def test_scrap_endpiece_creates_row_level_scrap_item_separate_from_process_scrap() -> None:
 	bom_service = import_bom_service()
 
 	bom = bom_service.build_bom_from_layout_row(
-		Layout(end_pieces=[EndPiece("EP-SCRAP", weight_kg=8, qty_per_sheet=1, disposition="Scrap")]),
+		Layout(
+			end_pieces=[
+				EndPiece(weight_kg=8, qty_per_sheet=2, disposition="Scrap", scrap_item="EP-SCRAP")
+			]
+		),
 		FinishedPart(parts_per_sheet=4, scrap_weight_per_part_kg=1),
 	)
 
 	assert [(row.item_code, row.qty, row.row_type) for row in bom.scrap_items] == [
-		("PROCESS-SCRAP", 12, "process_scrap")
+		("PROCESS-SCRAP", 4, "process_scrap"),
+		("EP-SCRAP", 8, "end_piece_scrap"),
 	]
 
 
-def test_parts_per_sheet_must_be_positive_for_end_piece_distribution() -> None:
+def test_bom_quantity_falls_back_to_parts_per_sheet_when_no_of_strips_is_zero() -> None:
 	bom_service = import_bom_service()
 
-	with pytest.raises(bom_service.ValidationError, match="Parts per sheet"):
-		bom_service.end_piece_per_part_kg(ep_weight_kg=3, qty_per_sheet=2, parts_per_sheet=0)
+	bom = bom_service.build_bom_from_layout_row(Layout(no_of_strips=0), FinishedPart(parts_per_sheet=4))
+
+	assert bom.quantity == 4
 
 
 def test_custom_bom_document_factory_is_used() -> None:

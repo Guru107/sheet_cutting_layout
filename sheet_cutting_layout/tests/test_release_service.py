@@ -19,6 +19,7 @@ class Layout:
 	status: LayoutReleaseStatus = "Approved by Purchase"
 	raw_material_item: str = "RMSHEET001"
 	process_scrap_item: str = "PROCESSSCRAP001"
+	no_of_strips: int = 11
 	weight_per_sheet_kg: float | None = None
 	consumed_weight_kg: float | None = None
 	leftover_weight_kg: float | None = None
@@ -38,10 +39,10 @@ class FinishedPart:
 
 @dataclass
 class EndPiece:
-	end_piece_item: str
 	weight_kg: float
-	qty_per_sheet: float
+	qty_per_sheet: float = 1
 	disposition: str = "Reuse"
+	scrap_item: str | None = None
 
 
 @dataclass
@@ -291,7 +292,14 @@ def test_release_generates_bom_for_one_sheet_in_kg_with_scrap_outputs() -> None:
 				scrap_weight_per_part_kg=0.25,
 			)
 		],
-		end_pieces=[EndPiece("ENDPIECE001", weight_kg=10.0, qty_per_sheet=2)],
+		end_pieces=[
+			EndPiece(
+				weight_kg=10.0,
+				qty_per_sheet=2,
+				disposition="Scrap",
+				scrap_item="ENDSCRAP001",
+			)
+		],
 	)
 
 	result = release_layout(
@@ -301,13 +309,13 @@ def test_release_generates_bom_for_one_sheet_in_kg_with_scrap_outputs() -> None:
 
 	bom = result.generated_boms[0]
 	assert bom.item == "PART001SHR"
-	assert bom.quantity == 80
+	assert bom.quantity == 11
 	assert [(row.item_code, row.qty, row.row_type) for row in bom.items] == [
 		("RMSHEET001", 100.0, "raw_material")
 	]
 	assert [(row.item_code, row.qty, row.row_type) for row in bom.scrap_items] == [
 		("PROCESSSCRAP001", 20.0, "process_scrap"),
-		("ENDPIECE001", 20.0, "end_piece_scrap"),
+		("ENDSCRAP001", 10.0, "end_piece_scrap"),
 	]
 
 
@@ -1328,8 +1336,8 @@ def test_release_generates_one_bom_for_single_finished_part_and_supersedes_old()
 	assert all(bom.status == "Active" for bom in result.generated_boms)
 
 
-def test_readme_mentions_release_gate_and_bom_qty_parts_per_sheet() -> None:
+def test_readme_mentions_release_gate_and_bom_qty_no_of_strips() -> None:
 	content = Path("README.md").read_text(encoding="utf-8")
 
-	assert "BOM quantity equals `parts_per_sheet`" in content
+	assert "BOM quantity equals `no_of_strips`" in content
 	assert "MR release moves layouts directly to `Released`" in content

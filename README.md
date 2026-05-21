@@ -31,7 +31,7 @@ Finished part item codes must be alphanumeric and end with `SHR`. Each layout ne
 
 ## BOM Mapping
 
-MR Release creates one native ERPNext Shearing BOM for the finished part. BOM quantity equals `parts_per_sheet`, raw material quantity is the full sheet weight in Kg, process scrap uses `process_scrap_item`, reusable end pieces are separate scrap rows, and end pieces marked `Scrap` are folded into process scrap.
+MR Release creates one native ERPNext Shearing BOM for the finished part. BOM quantity equals `no_of_strips`, raw material quantity is the full sheet weight in Kg, process scrap uses `process_scrap_item`, reusable end pieces do not create Shearing BOM scrap rows, and end pieces marked `Scrap` create separate rows using their row-level `scrap_item`.
 
 ## Recovery
 
