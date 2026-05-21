@@ -391,6 +391,19 @@ frappe.provide("sheet_cutting_layout");
 		return "Balanced";
 	}
 
+	function escapeHtml(value) {
+		return String(value ?? "").replace(/[&<>"']/g, (character) => {
+			const replacements = {
+				"&": "&amp;",
+				"<": "&lt;",
+				">": "&gt;",
+				'"': "&quot;",
+				"'": "&#39;",
+			};
+			return replacements[character];
+		});
+	}
+
 	function updateSheetWeightAndRedraw(frm) {
 		updateSheetWeight(frm)
 			.then(() => updateEndPieceWeights(frm))
@@ -507,15 +520,15 @@ frappe.provide("sheet_cutting_layout");
 		const body = rows
 			.map(
 				(row) => `<tr>
-					<td>${frappe.utils.escape_html(String(row.idx || ""))}</td>
-					<td>${frappe.utils.escape_html(row.end_piece_item_code || "")}</td>
-					<td>${frappe.utils.escape_html(row.suggested_item_code || "")}</td>
-					<td>${frappe.utils.escape_html(row.item_status || "")}</td>
-					<td>${frappe.utils.escape_html(row.used_for_finished_part || "")}</td>
-					<td>${frappe.utils.escape_html(String(row.bom_quantity ?? ""))}</td>
-					<td>${frappe.utils.escape_html(String(row.raw_material_qty_kg ?? ""))}</td>
-					<td>${frappe.utils.escape_html(String(row.bom_scrap_quantity_kg ?? ""))}</td>
-					<td>${frappe.utils.escape_html(row.bom_status || "")}</td>
+					<td>${escapeHtml(row.idx)}</td>
+					<td>${escapeHtml(row.end_piece_item_code)}</td>
+					<td>${escapeHtml(row.suggested_item_code)}</td>
+					<td>${escapeHtml(row.item_status)}</td>
+					<td>${escapeHtml(row.used_for_finished_part)}</td>
+					<td>${escapeHtml(row.bom_quantity)}</td>
+					<td>${escapeHtml(row.raw_material_qty_kg)}</td>
+					<td>${escapeHtml(row.bom_scrap_quantity_kg)}</td>
+					<td>${escapeHtml(row.bom_status)}</td>
 				</tr>`
 			)
 			.join("");

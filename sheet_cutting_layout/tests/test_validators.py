@@ -114,17 +114,62 @@ def test_controller_preview_end_piece_boms_delegates(monkeypatch: pytest.MonkeyP
 
 	calls: list[str] = []
 
+	class FakeDoc:
+		def check_permission(self, permission_type: str) -> None:
+			calls.append(f"check_permission:{permission_type}")
+
 	class FakeFrappe:
 		@staticmethod
-		def get_doc(doctype: str, name: str) -> object:
+		def get_doc(doctype: str, name: str) -> FakeDoc:
 			calls.append(f"{doctype}:{name}")
-			return object()
+			return FakeDoc()
 
 	monkeypatch.setattr(sheet_cutting_layout, "frappe", FakeFrappe)
-	monkeypatch.setattr(sheet_cutting_layout, "preview_end_piece_boms", lambda doc: [{"idx": 1}])
+
+	def fake_preview(doc: object) -> list[dict[str, int]]:
+		calls.append("preview")
+		return [{"idx": 1}]
+
+	monkeypatch.setattr(sheet_cutting_layout, "preview_end_piece_boms", fake_preview)
 
 	assert sheet_cutting_layout.preview_sheet_cutting_layout_end_piece_boms("SCL-001") == [{"idx": 1}]
-	assert calls == ["Sheet Cutting Layout:SCL-001"]
+	assert calls == ["Sheet Cutting Layout:SCL-001", "check_permission:read", "preview"]
+
+
+def test_controller_preview_end_piece_boms_stops_when_read_permission_fails(
+	monkeypatch: pytest.MonkeyPatch,
+) -> None:
+	from sheet_cutting_layout.sheet_cutting_layout.doctype.sheet_cutting_layout import (
+		sheet_cutting_layout,
+	)
+
+	calls: list[str] = []
+
+	class PermissionError(Exception):
+		pass
+
+	class FakeDoc:
+		def check_permission(self, permission_type: str) -> None:
+			calls.append(f"check_permission:{permission_type}")
+			raise PermissionError("no read")
+
+	class FakeFrappe:
+		@staticmethod
+		def get_doc(doctype: str, name: str) -> FakeDoc:
+			calls.append(f"{doctype}:{name}")
+			return FakeDoc()
+
+	def fake_preview(doc: object) -> list[dict[str, int]]:
+		calls.append("preview")
+		return [{"idx": 1}]
+
+	monkeypatch.setattr(sheet_cutting_layout, "frappe", FakeFrappe)
+	monkeypatch.setattr(sheet_cutting_layout, "preview_end_piece_boms", fake_preview)
+
+	with pytest.raises(PermissionError, match="no read"):
+		sheet_cutting_layout.preview_sheet_cutting_layout_end_piece_boms("SCL-001")
+
+	assert calls == ["Sheet Cutting Layout:SCL-001", "check_permission:read"]
 
 
 def test_controller_generate_end_piece_boms_delegates(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -134,23 +179,67 @@ def test_controller_generate_end_piece_boms_delegates(monkeypatch: pytest.Monkey
 
 	calls: list[str] = []
 
+	class FakeDoc:
+		def check_permission(self, permission_type: str) -> None:
+			calls.append(f"check_permission:{permission_type}")
+
 	class FakeFrappe:
 		@staticmethod
-		def get_doc(doctype: str, name: str) -> object:
+		def get_doc(doctype: str, name: str) -> FakeDoc:
 			calls.append(f"{doctype}:{name}")
-			return object()
+			return FakeDoc()
+
+	def fake_generate(doc: object) -> dict[str, list[str]]:
+		calls.append("generate")
+		return {"generated": ["BOM-1"]}
 
 	monkeypatch.setattr(sheet_cutting_layout, "frappe", FakeFrappe)
 	monkeypatch.setattr(
 		sheet_cutting_layout,
 		"generate_end_piece_boms",
-		lambda doc: {"generated": ["BOM-1"]},
+		fake_generate,
 	)
 
 	assert sheet_cutting_layout.generate_sheet_cutting_layout_end_piece_boms("SCL-001") == {
 		"generated": ["BOM-1"]
 	}
-	assert calls == ["Sheet Cutting Layout:SCL-001"]
+	assert calls == ["Sheet Cutting Layout:SCL-001", "check_permission:write", "generate"]
+
+
+def test_controller_generate_end_piece_boms_stops_when_write_permission_fails(
+	monkeypatch: pytest.MonkeyPatch,
+) -> None:
+	from sheet_cutting_layout.sheet_cutting_layout.doctype.sheet_cutting_layout import (
+		sheet_cutting_layout,
+	)
+
+	calls: list[str] = []
+
+	class PermissionError(Exception):
+		pass
+
+	class FakeDoc:
+		def check_permission(self, permission_type: str) -> None:
+			calls.append(f"check_permission:{permission_type}")
+			raise PermissionError("no write")
+
+	class FakeFrappe:
+		@staticmethod
+		def get_doc(doctype: str, name: str) -> FakeDoc:
+			calls.append(f"{doctype}:{name}")
+			return FakeDoc()
+
+	def fake_generate(doc: object) -> dict[str, list[str]]:
+		calls.append("generate")
+		return {"generated": ["BOM-1"]}
+
+	monkeypatch.setattr(sheet_cutting_layout, "frappe", FakeFrappe)
+	monkeypatch.setattr(sheet_cutting_layout, "generate_end_piece_boms", fake_generate)
+
+	with pytest.raises(PermissionError, match="no write"):
+		sheet_cutting_layout.generate_sheet_cutting_layout_end_piece_boms("SCL-001")
+
+	assert calls == ["Sheet Cutting Layout:SCL-001", "check_permission:write"]
 
 
 def test_layout_requires_exactly_one_finished_part(validators: types.ModuleType) -> None:

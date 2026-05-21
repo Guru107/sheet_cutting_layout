@@ -342,6 +342,19 @@ def test_client_updates_consumption_tracking_when_user_enters_dimensions_and_net
 	assert "qty_per_sheet: updateEndPieceWeightsAndRedraw" in client_script
 
 
+def test_client_preview_dialog_uses_local_escape_html_helper() -> None:
+	client_script = (DOCTYPE_ROOT / "sheet_cutting_layout" / "sheet_cutting_layout.js").read_text(
+		encoding="utf-8"
+	)
+	preview_start = client_script.index("function buildEndPiecePreviewHtml(rows)")
+	preview_end = client_script.index('frappe.ui.form.on("Sheet Cutting Layout"', preview_start)
+	preview_block = client_script[preview_start:preview_end]
+
+	assert "function escapeHtml(value)" in client_script
+	assert "frappe.utils.escape_html" not in client_script
+	assert "escapeHtml(" in preview_block
+
+
 def test_client_refresh_does_not_dirty_saved_documents_with_weight_recalculation() -> None:
 	client_script = (DOCTYPE_ROOT / "sheet_cutting_layout" / "sheet_cutting_layout.js").read_text(
 		encoding="utf-8"

@@ -206,6 +206,9 @@ def preview_sheet_cutting_layout_end_piece_boms(name: str) -> list[dict[str, obj
 		raise RuntimeError("Frappe is required to preview End Piece BOMs")
 
 	doc = frappe.get_doc("Sheet Cutting Layout", name)
+	check_permission = getattr(doc, "check_permission", None)
+	if callable(check_permission):
+		check_permission("read")
 	return preview_end_piece_boms(doc)
 
 
@@ -215,4 +218,7 @@ def generate_sheet_cutting_layout_end_piece_boms(name: str) -> dict[str, list[st
 		raise RuntimeError("Frappe is required to generate End Piece BOMs")
 
 	doc = frappe.get_doc("Sheet Cutting Layout", name)
+	check_permission = getattr(doc, "check_permission", None)
+	if callable(check_permission):
+		check_permission("write")
 	return generate_end_piece_boms(doc)
