@@ -14,3 +14,4 @@ cypress/results/
 .playwright-mcp/
 /001.png
 /Picture 1.png
+/outputs/
