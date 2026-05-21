@@ -76,7 +76,7 @@ describe("Sheet Cutting Layout consumption tracking", () => {
 					win.frappe.model.set_value(
 						row.doctype,
 						row.name,
-						"end_piece_item",
+						"end_piece_item_code",
 						endPieceItem
 					),
 				() => win.frappe.model.set_value(row.doctype, row.name, "width_mm", 1250),
