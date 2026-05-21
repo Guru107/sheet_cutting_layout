@@ -7,6 +7,20 @@ from dataclasses import dataclass, field
 import pytest
 
 
+PREVIEW_ROW_KEYS = {
+	"idx",
+	"end_piece_item_code",
+	"suggested_item_code",
+	"item_status",
+	"used_for_finished_part",
+	"bom_quantity",
+	"raw_material_qty_kg",
+	"bom_scrap_quantity_kg",
+	"bom_status",
+	"generated_end_piece_bom",
+}
+
+
 @dataclass
 class EndPiece:
 	idx: int = 1
@@ -133,19 +147,20 @@ def test_preview_existing_item_and_linked_bom_returns_exact_row_shape(
 	rows = service.preview_end_piece_boms(layout)
 
 	assert rows == [
-		service.PreviewRow(
-			idx=3,
-			end_piece_item_code="END-001",
-			suggested_item_code="RAW-001-EP-2x100x200",
-			item_status="Exists",
-			used_for_finished_part="PART-SHR",
-			bom_quantity=1,
-			raw_material_qty_kg=2.5,
-			bom_scrap_quantity_kg=0,
-			bom_status="Already linked",
-			generated_end_piece_bom="BOM-END-001",
-		)
+		{
+			"idx": 3,
+			"end_piece_item_code": "END-001",
+			"suggested_item_code": "RAW-001-EP-2x100x200",
+			"item_status": "Exists",
+			"used_for_finished_part": "PART-SHR",
+			"bom_quantity": 1,
+			"raw_material_qty_kg": 2.5,
+			"bom_scrap_quantity_kg": 0,
+			"bom_status": "Already linked",
+			"generated_end_piece_bom": "BOM-END-001",
+		}
 	]
+	assert set(rows[0]) == PREVIEW_ROW_KEYS
 	assert fake_frappe.created_docs == []
 
 
@@ -167,8 +182,8 @@ def test_preview_missing_item_reports_will_be_created(
 
 	row = service.preview_end_piece_boms(layout)[0]
 
-	assert row.item_status == "Will be created"
-	assert row.bom_status == "Will be created"
+	assert row["item_status"] == "Will be created"
+	assert row["bom_status"] == "Will be created"
 
 
 def test_preview_filters_only_reusable_end_piece_rows(
@@ -186,7 +201,7 @@ def test_preview_filters_only_reusable_end_piece_rows(
 
 	rows = service.preview_end_piece_boms(layout)
 
-	assert [row.idx for row in rows] == [2]
+	assert [row["idx"] for row in rows] == [2]
 
 
 def test_generation_reuses_existing_item_and_creates_bom(

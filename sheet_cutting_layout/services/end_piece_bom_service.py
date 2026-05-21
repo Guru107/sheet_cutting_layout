@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from dataclasses import dataclass
 from typing import Literal, Protocol
 
 from sheet_cutting_layout.services import validators
@@ -53,21 +52,7 @@ class LayoutDocument(Protocol):
 	end_pieces: Sequence[EndPieceRow]
 
 
-@dataclass(frozen=True)
-class PreviewRow:
-	idx: int
-	end_piece_item_code: str | None
-	suggested_item_code: str | None
-	item_status: ItemStatus
-	used_for_finished_part: str | None
-	bom_quantity: float | None
-	raw_material_qty_kg: float | None
-	bom_scrap_quantity_kg: float | None
-	bom_status: BomStatus
-	generated_end_piece_bom: str | None
-
-
-def preview_end_piece_boms(layout: LayoutDocument) -> list[PreviewRow]:
+def preview_end_piece_boms(layout: LayoutDocument) -> list[dict[str, object]]:
 	return [_preview_row(layout, row) for row in _reuse_end_pieces(layout)]
 
 
@@ -99,27 +84,27 @@ def generate_end_piece_boms(layout: LayoutDocument) -> dict[str, list[str]]:
 	return {"items": generated_items, "boms": generated_boms}
 
 
-def _preview_row(layout: LayoutDocument, row: EndPieceRow) -> PreviewRow:
+def _preview_row(layout: LayoutDocument, row: EndPieceRow) -> dict[str, object]:
 	item_code = _clean(getattr(row, "end_piece_item_code", None))
-	return PreviewRow(
-		idx=getattr(row, "idx", 0),
-		end_piece_item_code=item_code,
-		suggested_item_code=validators.suggest_end_piece_item_code(
+	return {
+		"idx": getattr(row, "idx", 0),
+		"end_piece_item_code": item_code,
+		"suggested_item_code": validators.suggest_end_piece_item_code(
 			raw_material_item=getattr(layout, "raw_material_item", None),
 			thickness_mm=getattr(layout, "sheet_thickness_mm", None),
 			width_mm=getattr(row, "width_mm", None),
 			length_mm=getattr(row, "length_mm", None),
 		),
-		item_status="Exists" if item_code and _item_exists(item_code) else "Will be created",
-		used_for_finished_part=_clean(getattr(row, "used_for_finished_part", None)),
-		bom_quantity=getattr(row, "bom_quantity", None),
-		raw_material_qty_kg=getattr(row, "weight_kg", None),
-		bom_scrap_quantity_kg=getattr(row, "bom_scrap_quantity_kg", None),
-		bom_status="Already linked"
+		"item_status": "Exists" if item_code and _item_exists(item_code) else "Will be created",
+		"used_for_finished_part": _clean(getattr(row, "used_for_finished_part", None)),
+		"bom_quantity": getattr(row, "bom_quantity", None),
+		"raw_material_qty_kg": getattr(row, "weight_kg", None),
+		"bom_scrap_quantity_kg": getattr(row, "bom_scrap_quantity_kg", None),
+		"bom_status": "Already linked"
 		if not _is_missing(getattr(row, "generated_end_piece_bom", None))
 		else "Will be created",
-		generated_end_piece_bom=_clean(getattr(row, "generated_end_piece_bom", None)),
-	)
+		"generated_end_piece_bom": _clean(getattr(row, "generated_end_piece_bom", None)),
+	}
 
 
 def _ensure_end_piece_item(layout: LayoutDocument, row: EndPieceRow) -> str:
