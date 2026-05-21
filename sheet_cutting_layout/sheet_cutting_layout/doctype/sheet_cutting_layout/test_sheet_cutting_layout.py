@@ -136,9 +136,14 @@ def test_sheet_cutting_layout_doctypes_define_normalized_model() -> None:
 	assert end_piece_fields["generated_end_piece_item"].get("read_only") == 1
 	assert end_piece_fields["width_mm"]["fieldtype"] == "Float"
 	assert end_piece_fields["length_mm"]["fieldtype"] == "Float"
+	assert end_piece_fields["weight_kg"]["fieldtype"] == "Float"
 	assert end_piece_fields["weight_kg"].get("read_only") == 1
+	assert end_piece_fields["qty_per_sheet"]["fieldtype"] == "Float"
+	assert end_piece_fields["disposition"]["fieldtype"] == "Select"
 	assert end_piece_fields["scrap_item"]["fieldtype"] == "Link"
 	assert end_piece_fields["scrap_item"]["options"] == "Item"
+	assert end_piece_fields["used_for_finished_part"]["fieldtype"] == "Link"
+	assert end_piece_fields["used_for_finished_part"]["options"] == "Item"
 	assert end_piece_fields["bom_quantity"]["fieldtype"] == "Float"
 	assert end_piece_fields["bom_scrap_quantity_kg"]["fieldtype"] == "Float"
 	assert end_piece_fields["generated_end_piece_bom"]["fieldtype"] == "Link"
