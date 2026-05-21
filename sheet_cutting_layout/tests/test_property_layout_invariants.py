@@ -560,6 +560,7 @@ def end_pieces_strategy() -> st.SearchStrategy[list[EndPiece]]:
 			),
 			weight_kg=finite_weight_strategy(),
 			qty_per_sheet=positive_finite_weight_strategy(),
+			disposition=st.sampled_from(["Reuse", "Hold", "Scrap"]),
 			scrap_item=st.text(alphabet=ascii_letters + digits, min_size=1, max_size=24).map(
 				lambda code: f"SCRAP{code}"
 			),

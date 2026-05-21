@@ -100,12 +100,41 @@ def test_scrap_endpiece_creates_row_level_scrap_item_separate_from_process_scrap
 	]
 
 
+def test_scrap_endpiece_requires_scrap_item_before_creating_bom_row() -> None:
+	bom_service = import_bom_service()
+
+	with pytest.raises(ValueError, match="Scrap end piece requires scrap_item"):
+		bom_service.build_bom_from_layout_row(
+			Layout(end_pieces=[EndPiece(weight_kg=8, disposition="Scrap", scrap_item=None)]),
+			FinishedPart(),
+		)
+
+
 def test_bom_quantity_falls_back_to_parts_per_sheet_when_no_of_strips_is_zero() -> None:
 	bom_service = import_bom_service()
 
 	bom = bom_service.build_bom_from_layout_row(Layout(no_of_strips=0), FinishedPart(parts_per_sheet=4))
 
 	assert bom.quantity == 4
+
+
+def test_bom_quantity_coerces_integer_like_no_of_strips() -> None:
+	bom_service = import_bom_service()
+
+	bom = bom_service.build_bom_from_layout_row(Layout(no_of_strips="11"), FinishedPart(parts_per_sheet=4))
+
+	assert bom.quantity == 11
+
+
+@pytest.mark.parametrize("no_of_strips", ["many", 1.5, -1])
+def test_bom_quantity_rejects_invalid_no_of_strips(no_of_strips: object) -> None:
+	bom_service = import_bom_service()
+
+	with pytest.raises(ValueError, match="no_of_strips must be a positive integer"):
+		bom_service.build_bom_from_layout_row(
+			Layout(no_of_strips=no_of_strips),
+			FinishedPart(parts_per_sheet=4),
+		)
 
 
 def test_custom_bom_document_factory_is_used() -> None:

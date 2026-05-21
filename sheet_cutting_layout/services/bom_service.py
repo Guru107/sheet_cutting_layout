@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
+from decimal import Decimal, InvalidOperation
 from typing import Literal, Protocol
 
 
@@ -82,9 +83,10 @@ def build_bom_from_layout_row(
 
 	for end_piece in layout_doc.end_pieces:
 		if _is_scrap_end_piece(end_piece):
+			scrap_item = _required_scrap_item(end_piece)
 			bom.scrap_items.append(
 				BomItemRow(
-					item_code=end_piece.scrap_item,
+					item_code=scrap_item,
 					qty=end_piece.weight_kg,
 					row_type="end_piece_scrap",
 				)
@@ -103,9 +105,28 @@ def _is_scrap_end_piece(end_piece: EndPieceRow) -> bool:
 	return str(getattr(end_piece, "disposition", "") or "").strip().lower() == "scrap"
 
 
+def _required_scrap_item(end_piece: EndPieceRow) -> str:
+	scrap_item = str(getattr(end_piece, "scrap_item", "") or "").strip()
+	if not scrap_item:
+		raise ValueError("Scrap end piece requires scrap_item before creating BOM scrap row")
+	return scrap_item
+
+
 def _bom_quantity(layout_doc: LayoutDocument, finished_part_row: FinishedPartRow) -> int:
 	no_of_strips = getattr(layout_doc, "no_of_strips", None)
-	return no_of_strips or finished_part_row.parts_per_sheet
+	if no_of_strips in (None, 0, "0"):
+		return finished_part_row.parts_per_sheet
+
+	try:
+		quantity = Decimal(str(no_of_strips).strip())
+	except (InvalidOperation, ValueError):
+		raise ValueError("no_of_strips must be a positive integer") from None
+
+	if quantity <= 0 or quantity != quantity.to_integral_value():
+		raise ValueError("no_of_strips must be a positive integer")
+
+	return int(quantity)
+
 
 
 def _sheet_weight_kg(layout_doc: LayoutDocument, finished_part_row: FinishedPartRow) -> float:
