@@ -15,7 +15,7 @@ class FinishedPartRow(Protocol):
 
 
 class EndPieceRow(Protocol):
-	end_piece_item: str | None
+	end_piece_item_code: str | None
 	weight_kg: float | None
 	qty_per_sheet: float | None
 	disposition: str | None
@@ -177,7 +177,7 @@ def _build_end_piece_zones(
 		qty = _row_positive_float(end_piece, "qty_per_sheet", f"end_pieces[{index}]", invalid_markers)
 		zones.append(
 			{
-				"end_piece_item": _optional_str(getattr(end_piece, "end_piece_item", None)),
+				"end_piece_item_code": _optional_str(getattr(end_piece, "end_piece_item_code", None)),
 				"weight_kg": weight,
 				"qty_per_sheet": qty,
 				"disposition": _optional_str(getattr(end_piece, "disposition", None)),
@@ -205,9 +205,8 @@ def _build_summary(
 
 	for end_piece in end_pieces:
 		weight = _as_float(getattr(end_piece, "weight_kg", None))
-		qty = _as_float(getattr(end_piece, "qty_per_sheet", None))
-		if weight is not None and qty is not None and weight >= 0 and qty > 0:
-			total_end_piece_weight += weight * qty
+		if weight is not None and weight >= 0:
+			total_end_piece_weight += weight
 
 	for index, finished_part in enumerate(finished_parts):
 		parts = _row_positive_int(

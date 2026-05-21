@@ -203,7 +203,57 @@ frappe.provide("sheet_cutting_layout");
 	}
 
 	function calculateEndPieceWeight(frm, row) {
-		return calculateWeight(frm.doc.sheet_thickness_mm, row.width_mm, row.length_mm);
+		const singleWeight = calculateWeight(frm.doc.sheet_thickness_mm, row.width_mm, row.length_mm);
+		if (singleWeight === null) {
+			return null;
+		}
+		return Number(
+			(singleWeight * numberOrZero(row.qty_per_sheet || 1)).toFixed(
+				getCalculationPrecision()
+			)
+		);
+	}
+
+	function formatCodeNumber(value) {
+		const number = Number(value);
+		if (!Number.isFinite(number)) {
+			return "";
+		}
+		if (Number.isInteger(number)) {
+			return String(number);
+		}
+		return number.toFixed(6).replace(/0+$/, "").replace(/\.$/, "");
+	}
+
+	function suggestEndPieceItemCode(frm, row) {
+		if (!frm.doc.raw_material_item || !frm.doc.sheet_thickness_mm || !row.width_mm || !row.length_mm) {
+			return null;
+		}
+		return `${frm.doc.raw_material_item}-EP-${formatCodeNumber(frm.doc.sheet_thickness_mm)}x${formatCodeNumber(row.width_mm)}x${formatCodeNumber(row.length_mm)}`;
+	}
+
+	function updateEndPieceItemCodes(frm) {
+		const updates = (frm.doc.end_pieces || []).flatMap((row) => {
+			if (row.disposition !== "Reuse" || row.generated_end_piece_item || row.generated_end_piece_bom) {
+				return [];
+			}
+			if (row.end_piece_item_code) {
+				return [];
+			}
+			const suggested = suggestEndPieceItemCode(frm, row);
+			if (!suggested) {
+				return [];
+			}
+			return [frappe.model.set_value(row.doctype, row.name, "end_piece_item_code", suggested)];
+		});
+
+		return Promise.all(updates);
+	}
+
+	function updateEndPieceItemCodesAndRedraw(frm) {
+		updateEndPieceItemCodes(frm).then(() => {
+			scheduleSheetLayoutRedraw(frm);
+		});
 	}
 
 	function updateFinishedPartWeights(frm) {
@@ -298,8 +348,7 @@ frappe.provide("sheet_cutting_layout");
 				);
 			}, 0) +
 				endPieces.reduce(
-					(total, row) =>
-						total + numberOrZero(row.weight_kg) * numberOrZero(row.qty_per_sheet),
+					(total, row) => total + numberOrZero(row.weight_kg),
 					0
 				)
 		);
@@ -345,6 +394,7 @@ frappe.provide("sheet_cutting_layout");
 	function updateSheetWeightAndRedraw(frm) {
 		updateSheetWeight(frm)
 			.then(() => updateEndPieceWeights(frm))
+			.then(() => updateEndPieceItemCodes(frm))
 			.then(() => updateConsumptionTracking(frm))
 			.then(() => {
 				scheduleSheetLayoutRedraw(frm);
@@ -387,10 +437,103 @@ frappe.provide("sheet_cutting_layout");
 
 	function updateEndPieceWeightsAndRedraw(frm) {
 		updateEndPieceWeights(frm)
+			.then(() => updateEndPieceItemCodes(frm))
 			.then(() => updateConsumptionTracking(frm))
 			.then(() => {
 				scheduleSheetLayoutRedraw(frm);
 			});
+	}
+
+	function hasRequiredEndPiecePreviewInputs(frm) {
+		return Boolean(frm.doc.raw_material_item && frm.doc.sheet_thickness_mm);
+	}
+
+	function addEndPieceBomButtons(frm) {
+		const hasReusableEndPieces = (frm.doc.end_pieces || []).some(
+			(row) => row.disposition === "Reuse"
+		);
+		if (!hasReusableEndPieces || frm.is_new() || !hasRequiredEndPiecePreviewInputs(frm)) {
+			return;
+		}
+
+		frm.add_custom_button(__("Preview End Piece Items"), () => previewEndPieceItems(frm));
+		if (frm.doc.status === "Released" && frm.doc.end_piece_bom_status === "Pending") {
+			frm.add_custom_button(__("Generate End Piece BOMs"), () => generateEndPieceBoms(frm));
+		}
+	}
+
+	function previewEndPieceItems(frm) {
+		frappe.call({
+			method: "sheet_cutting_layout.sheet_cutting_layout.doctype.sheet_cutting_layout.sheet_cutting_layout.preview_sheet_cutting_layout_end_piece_boms",
+			args: { name: frm.doc.name },
+			callback: (r) => {
+				showEndPiecePreviewDialog(r.message || []);
+			},
+		});
+	}
+
+	function generateEndPieceBoms(frm) {
+		frappe.call({
+			method: "sheet_cutting_layout.sheet_cutting_layout.doctype.sheet_cutting_layout.sheet_cutting_layout.generate_sheet_cutting_layout_end_piece_boms",
+			args: { name: frm.doc.name },
+			freeze: true,
+			freeze_message: __("Generating End Piece BOMs"),
+			callback: () => frm.reload_doc(),
+		});
+	}
+
+	function showEndPiecePreviewDialog(rows) {
+		const dialog = new frappe.ui.Dialog({
+			title: __("Preview End Piece Items"),
+			fields: [
+				{
+					fieldname: "preview",
+					fieldtype: "HTML",
+					options: buildEndPiecePreviewHtml(rows),
+				},
+			],
+			primary_action_label: __("Close"),
+			primary_action() {
+				dialog.hide();
+			},
+		});
+		dialog.show();
+	}
+
+	function buildEndPiecePreviewHtml(rows) {
+		if (!rows.length) {
+			return `<p>${__("No reusable end pieces found.")}</p>`;
+		}
+		const body = rows
+			.map(
+				(row) => `<tr>
+					<td>${frappe.utils.escape_html(String(row.idx || ""))}</td>
+					<td>${frappe.utils.escape_html(row.end_piece_item_code || "")}</td>
+					<td>${frappe.utils.escape_html(row.suggested_item_code || "")}</td>
+					<td>${frappe.utils.escape_html(row.item_status || "")}</td>
+					<td>${frappe.utils.escape_html(row.used_for_finished_part || "")}</td>
+					<td>${frappe.utils.escape_html(String(row.bom_quantity ?? ""))}</td>
+					<td>${frappe.utils.escape_html(String(row.raw_material_qty_kg ?? ""))}</td>
+					<td>${frappe.utils.escape_html(String(row.bom_scrap_quantity_kg ?? ""))}</td>
+					<td>${frappe.utils.escape_html(row.bom_status || "")}</td>
+				</tr>`
+			)
+			.join("");
+
+		return `<table class="table table-bordered">
+			<thead><tr>
+				<th>${__("Row")}</th>
+				<th>${__("Current Item Code")}</th>
+				<th>${__("Suggested Item Code")}</th>
+				<th>${__("Item Status")}</th>
+				<th>${__("Used For")}</th>
+				<th>${__("BOM Qty")}</th>
+				<th>${__("Raw Qty Kg")}</th>
+				<th>${__("Scrap Qty Kg")}</th>
+				<th>${__("BOM Status")}</th>
+			</tr></thead>
+			<tbody>${body}</tbody>
+		</table>`;
 	}
 
 	frappe.ui.form.on("Sheet Cutting Layout", {
@@ -399,6 +542,7 @@ frappe.provide("sheet_cutting_layout");
 				ensurePreviewCanvas(frm);
 				scheduleSheetLayoutRedraw(frm);
 			});
+			addEndPieceBomButtons(frm);
 			if (!frm.is_new() && ["Released", "Superseded"].includes(frm.doc.status)) {
 				frm.add_custom_button(__("New Version"), () => {
 					frappe.call({
@@ -446,6 +590,7 @@ frappe.provide("sheet_cutting_layout");
 		strip_length_mm: updateStripWeightAndRedraw,
 		parts_per_strip: updatePartsPerSheetAndRedraw,
 		no_of_strips: updatePartsPerSheetAndRedraw,
+		raw_material_item: updateEndPieceItemCodesAndRedraw,
 	});
 
 	SHEET_LAYOUT_FIELDS.forEach((fieldname) => {
@@ -461,12 +606,17 @@ frappe.provide("sheet_cutting_layout");
 	});
 
 	frappe.ui.form.on("Layout End Piece", {
-		end_piece_item: scheduleParentRedraw,
+		end_piece_item_code: scheduleParentRedraw,
 		width_mm: updateEndPieceWeightsAndRedraw,
 		length_mm: updateEndPieceWeightsAndRedraw,
 		weight_kg: updateConsumptionTrackingAndRedraw,
-		qty_per_sheet: updateConsumptionTrackingAndRedraw,
+		qty_per_sheet: updateEndPieceWeightsAndRedraw,
 		disposition: scheduleParentRedraw,
+		scrap_item: scheduleParentRedraw,
 		used_for_finished_part: scheduleParentRedraw,
+		bom_quantity: scheduleParentRedraw,
+		bom_scrap_quantity_kg: scheduleParentRedraw,
+		generated_end_piece_item: scheduleParentRedraw,
+		generated_end_piece_bom: scheduleParentRedraw,
 	});
 })();

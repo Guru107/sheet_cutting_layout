@@ -107,6 +107,52 @@ def test_finished_part_item_must_end_with_shr_and_be_alnum(validators: types.Mod
 	validators.validate_finished_part_code("AB12SHR")
 
 
+def test_controller_preview_end_piece_boms_delegates(monkeypatch: pytest.MonkeyPatch) -> None:
+	from sheet_cutting_layout.sheet_cutting_layout.doctype.sheet_cutting_layout import (
+		sheet_cutting_layout,
+	)
+
+	calls: list[str] = []
+
+	class FakeFrappe:
+		@staticmethod
+		def get_doc(doctype: str, name: str) -> object:
+			calls.append(f"{doctype}:{name}")
+			return object()
+
+	monkeypatch.setattr(sheet_cutting_layout, "frappe", FakeFrappe)
+	monkeypatch.setattr(sheet_cutting_layout, "preview_end_piece_boms", lambda doc: [{"idx": 1}])
+
+	assert sheet_cutting_layout.preview_sheet_cutting_layout_end_piece_boms("SCL-001") == [{"idx": 1}]
+	assert calls == ["Sheet Cutting Layout:SCL-001"]
+
+
+def test_controller_generate_end_piece_boms_delegates(monkeypatch: pytest.MonkeyPatch) -> None:
+	from sheet_cutting_layout.sheet_cutting_layout.doctype.sheet_cutting_layout import (
+		sheet_cutting_layout,
+	)
+
+	calls: list[str] = []
+
+	class FakeFrappe:
+		@staticmethod
+		def get_doc(doctype: str, name: str) -> object:
+			calls.append(f"{doctype}:{name}")
+			return object()
+
+	monkeypatch.setattr(sheet_cutting_layout, "frappe", FakeFrappe)
+	monkeypatch.setattr(
+		sheet_cutting_layout,
+		"generate_end_piece_boms",
+		lambda doc: {"generated": ["BOM-1"]},
+	)
+
+	assert sheet_cutting_layout.generate_sheet_cutting_layout_end_piece_boms("SCL-001") == {
+		"generated": ["BOM-1"]
+	}
+	assert calls == ["Sheet Cutting Layout:SCL-001"]
+
+
 def test_layout_requires_exactly_one_finished_part(validators: types.ModuleType) -> None:
 	with pytest.raises(ValidationError, match="exactly one finished part"):
 		validators.validate_sheet_cutting_layout(Layout())

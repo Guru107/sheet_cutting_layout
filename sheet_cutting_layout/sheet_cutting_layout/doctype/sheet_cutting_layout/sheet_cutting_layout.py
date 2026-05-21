@@ -26,6 +26,10 @@ _ = getattr(frappe, "_", lambda message: message)
 
 
 from sheet_cutting_layout.services.release_service import get_release_context, release_layout
+from sheet_cutting_layout.services.end_piece_bom_service import (
+	generate_end_piece_boms,
+	preview_end_piece_boms,
+)
 from sheet_cutting_layout.services.validators import validate_sheet_cutting_layout
 from sheet_cutting_layout.services.versioning import create_revision
 from sheet_cutting_layout.services.workflow import apply_checker_action, record_approval_snapshot
@@ -194,3 +198,21 @@ def create_sheet_cutting_layout_revision(name: str) -> str:
 	new_doc = create_revision(old_doc)
 	new_doc.insert()
 	return new_doc.name
+
+
+@whitelist()
+def preview_sheet_cutting_layout_end_piece_boms(name: str) -> list[dict[str, object]]:
+	if not frappe:
+		raise RuntimeError("Frappe is required to preview End Piece BOMs")
+
+	doc = frappe.get_doc("Sheet Cutting Layout", name)
+	return preview_end_piece_boms(doc)
+
+
+@whitelist()
+def generate_sheet_cutting_layout_end_piece_boms(name: str) -> dict[str, list[str]]:
+	if not frappe:
+		raise RuntimeError("Frappe is required to generate End Piece BOMs")
+
+	doc = frappe.get_doc("Sheet Cutting Layout", name)
+	return generate_end_piece_boms(doc)

@@ -22,7 +22,7 @@ class FinishedPart:
 
 @dataclass
 class EndPiece:
-	end_piece_item: str
+	end_piece_item_code: str
 	weight_kg: float
 	qty_per_sheet: float
 	disposition: str = "Scrap"
@@ -107,7 +107,7 @@ def test_canvas_payload_places_full_width_strips_down_sheet_length() -> None:
 
 	assert end_piece_zones == [
 		{
-			"end_piece_item": "HSLA34016MM",
+			"end_piece_item_code": "HSLA34016MM",
 			"weight_kg": 2.81,
 			"qty_per_sheet": 1.0,
 			"disposition": "Reuse",
@@ -149,7 +149,7 @@ const payload = context.window.SheetLayoutCanvas.buildPayloadFromDoc({{
   ],
   end_pieces: [
     {{
-      end_piece_item: "HSLA34016MM",
+      end_piece_item_code: "HSLA34016MM",
       weight_kg: 2.81,
       qty_per_sheet: 1,
       disposition: "Reuse",
@@ -249,7 +249,7 @@ const payload = context.window.SheetLayoutCanvas.buildPayloadFromDoc({{
   ],
   end_pieces: [
     {{
-      end_piece_item: "HSLA34016MM",
+      end_piece_item_code: "HSLA34016MM",
       weight_kg: 2.81,
       qty_per_sheet: 1,
       disposition: "Reuse",
@@ -321,7 +321,7 @@ const payload = context.window.SheetLayoutCanvas.buildPayloadFromDoc({{
   parts_per_strip: 8,
   parts_per_sheet: 80,
   finished_parts: [],
-  end_pieces: [{{ end_piece_item: "RM1", weight_kg: 2.814, qty_per_sheet: 1, disposition: "Reuse" }}],
+  end_pieces: [{{ end_piece_item_code: "RM1", weight_kg: 2.814, qty_per_sheet: 1, disposition: "Reuse" }}],
 }});
 context.window.SheetLayoutCanvas.render(canvas, payload);
 const sheetFaceIndex = calls.findIndex((call) => call.type === "fillRect");
@@ -390,7 +390,7 @@ const payload = context.window.SheetLayoutCanvas.buildPayloadFromDoc({{
   parts_per_strip: 8,
   parts_per_sheet: 80,
   finished_parts: [{{ finished_part_item: "FG001SHR", parts_per_sheet: 80, gross_weight_per_part_kg: 0.474, scrap_weight_per_part_kg: 0.185 }}],
-  end_pieces: [{{ end_piece_item: "RM1", weight_kg: 2.814, qty_per_sheet: 1, disposition: "Reuse" }}],
+  end_pieces: [{{ end_piece_item_code: "RM1", weight_kg: 2.814, qty_per_sheet: 1, disposition: "Reuse" }}],
 }});
 context.window.SheetLayoutCanvas.render(canvas, payload);
 console.log(JSON.stringify({{ labels }}));
@@ -555,7 +555,7 @@ def end_pieces_strategy() -> st.SearchStrategy[list[EndPiece]]:
 	return st.lists(
 		st.builds(
 			EndPiece,
-			end_piece_item=st.text(alphabet=ascii_letters + digits, min_size=1, max_size=24).map(
+			end_piece_item_code=st.text(alphabet=ascii_letters + digits, min_size=1, max_size=24).map(
 				lambda code: f"END{code}"
 			),
 			weight_kg=finite_weight_strategy(),
@@ -635,9 +635,9 @@ def test_canvas_payload_summary_distributes_gross_scrap_and_end_pieces_consisten
 
 	assert summary["total_gross_weight_kg"] == 40
 	assert summary["total_process_scrap_weight_kg"] == 4
-	assert summary["total_end_piece_weight_kg"] == 3
-	assert summary["total_scrap_weight_kg"] == 7
-	assert summary["derived_fg_estimate_kg"] == 33
+	assert summary["total_end_piece_weight_kg"] == 1.5
+	assert summary["total_scrap_weight_kg"] == 5.5
+	assert summary["derived_fg_estimate_kg"] == 34.5
 
 
 def _sum_bom_qty(items: list[object], row_type: str) -> float:

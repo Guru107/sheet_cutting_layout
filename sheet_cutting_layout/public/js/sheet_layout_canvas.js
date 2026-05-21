@@ -187,7 +187,7 @@
 			}
 
 			return {
-				end_piece_item: row.end_piece_item || null,
+				end_piece_item_code: row.end_piece_item_code || null,
 				weight_kg: weight !== null && weight >= 0 ? weight : null,
 				qty_per_sheet: qty,
 				disposition: row.disposition || null,
@@ -208,9 +208,8 @@
 
 		endPieces.forEach((row) => {
 			const weight = numberOrNull(row.weight_kg);
-			const qty = numberOrNull(row.qty_per_sheet);
-			if (weight !== null && qty !== null && weight >= 0 && qty > 0) {
-				totalEndPiece += weight * qty;
+			if (weight !== null && weight >= 0) {
+				totalEndPiece += weight;
 			}
 		});
 

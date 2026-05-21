@@ -316,6 +316,19 @@ def test_client_updates_consumption_tracking_when_user_enters_dimensions_and_net
 	assert "updateFinishedPartWeights" in client_script
 	assert "updateEndPieceWeights" in client_script
 	assert "updatePartsPerSheet" in client_script
+	assert "preview_sheet_cutting_layout_end_piece_boms" in client_script
+	assert "generate_sheet_cutting_layout_end_piece_boms" in client_script
+	assert "Preview End Piece Items" in client_script
+	assert "Generate End Piece BOMs" in client_script
+	assert "end_piece_item_code" in client_script
+	assert "suggested_item_code" in client_script
+	assert "Current Item Code" in client_script
+	assert "Suggested Item Code" in client_script
+	assert "generated_end_piece_bom" in client_script
+	assert "hasRequiredEndPiecePreviewInputs" in client_script
+	assert "raw_material_item: updateEndPieceItemCodesAndRedraw" in client_script
+	assert "numberOrZero(row.weight_kg)" in client_script
+	assert "numberOrZero(row.weight_kg) * numberOrZero(row.qty_per_sheet)" not in client_script
 	assert "row.finished_part_item" in client_script
 	assert "consumed_weight_kg" in client_script
 	assert "leftover_weight_kg" in client_script
@@ -326,7 +339,7 @@ def test_client_updates_consumption_tracking_when_user_enters_dimensions_and_net
 	assert "no_of_strips: updatePartsPerSheetAndRedraw" in client_script
 	assert "width_mm: updateEndPieceWeightsAndRedraw" in client_script
 	assert "length_mm: updateEndPieceWeightsAndRedraw" in client_script
-	assert "qty_per_sheet: updateConsumptionTrackingAndRedraw" in client_script
+	assert "qty_per_sheet: updateEndPieceWeightsAndRedraw" in client_script
 
 
 def test_client_refresh_does_not_dirty_saved_documents_with_weight_recalculation() -> None:
