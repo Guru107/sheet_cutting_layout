@@ -104,8 +104,9 @@ Add:
 4. `bom_scrap_quantity_kg` (Float)
    - User-entered scrap output quantity for the generated reuse BOM.
    - Required when `disposition = Reuse`.
+   - `0` is valid when the reuse BOM has no scrap output.
 5. `generated_end_piece_bom` (Link BOM, read-only)
-   - Set after the reuse BOM is created or identified.
+   - Set after the reuse BOM is created or was already linked on the row.
 6. `scrap_item` (Link Item)
    - Required when `disposition = Scrap`.
    - Used in the shearing BOM scrap table for the end-piece scrap output.
@@ -149,6 +150,8 @@ Rules:
 6. If the user edits `end_piece_item_code`, generation uses the edited value exactly.
 7. After `generated_end_piece_item` or `generated_end_piece_bom` is set, lock
    `end_piece_item_code`.
+8. Numeric segments use the displayed document values without trailing `.0` for whole numbers.
+   Example: `1.6x1250x179`, not `1.600000x1250.0x179.0`.
 
 Trade-off: a deterministic code keeps item reuse simple and avoids duplicate Items for the same raw
 material/dimensions. It relies on users choosing a meaningful override when they need a different
@@ -164,6 +167,8 @@ Calculation:
 single_end_piece_weight_kg = thickness_mm * width_mm * length_mm * steel_density / 1_000_000
 weight_kg = single_end_piece_weight_kg * qty_per_sheet
 ```
+
+`steel_density` is the existing app constant `STEEL_DENSITY_G_PER_CM3 = 7.86`, in g/cm3.
 
 The same stored `weight_kg` is used:
 
@@ -193,7 +198,10 @@ Preview output per reusable row:
 6. `bom_quantity`.
 7. Raw material quantity in kg (`weight_kg`).
 8. `bom_scrap_quantity_kg`.
-9. BOM status: `Exists`, `Will be created`, or `Already linked`.
+9. BOM status: `Already linked` or `Will be created`.
+
+Preview does not search for reusable unlinked BOMs. The generated BOM is considered complete only
+when the end-piece row has `generated_end_piece_bom`.
 
 Trade-off: preview adds a small server method and dialog, but it prevents surprise Item/BOM creation.
 
@@ -229,7 +237,26 @@ For each pending reusable row:
 8. Link the generated Item and BOM back to the end-piece row.
 9. Recalculate parent `end_piece_bom_status`.
 
-The action should be idempotent: rows with `generated_end_piece_bom` are skipped.
+The action is idempotent at the row-link level: rows with `generated_end_piece_bom` are skipped.
+It does not search for or reuse unlinked BOMs because matching by item, generated end-piece raw
+material, quantities, and scrap rows can be ambiguous.
+
+### 8.1 Generated Item Fields
+
+When the generated end-piece Item does not exist, create it with:
+
+1. `item_code`: `end_piece_item_code`
+2. `item_name`: `end_piece_item_code`
+3. `item_group`: copied from `raw_material_item`
+4. `stock_uom`: `Kg`
+5. `is_stock_item`: `1`
+6. disabled: `0`
+
+Do not copy valuation rate, opening stock, default warehouses, taxes, or supplier data from the raw
+material Item. Those remain ERPNext master-data concerns outside this action.
+
+Trade-off: copying only the item group keeps generated Items classified consistently with the raw
+material while avoiding accidental duplication of commercial or inventory defaults.
 
 ## 9. Shearing BOM Behavior
 
@@ -257,10 +284,11 @@ Server-side validation:
    - `end_piece_item_code`
    - positive `bom_quantity`
    - non-negative `bom_scrap_quantity_kg`
-4. For `Scrap`, require `scrap_item`.
-5. Prevent editing `end_piece_item_code` after generated links exist.
-6. Do not allow `Generate End Piece BOMs` before release.
-7. Throw clear row-specific validation errors for missing reuse data.
+4. If any reuse row has `bom_scrap_quantity_kg > 0`, require parent `process_scrap_item`.
+5. For `Scrap`, require `scrap_item`.
+6. Prevent editing `end_piece_item_code` after generated links exist.
+7. Do not allow `Generate End Piece BOMs` before release.
+8. Throw clear row-specific validation errors for missing reuse data.
 
 Client-side behavior:
 
@@ -278,15 +306,17 @@ Unit tests:
 3. Validation no longer requires `end_piece_item`.
 4. Reuse rows require `used_for_finished_part`, `end_piece_item_code`, `bom_quantity`, and
    `bom_scrap_quantity_kg`.
-5. Scrap rows require `scrap_item`.
-6. Generated Item code is deterministic and based on raw material item code.
-7. Preview reports existing versus missing Items/BOMs without creating records.
-8. Generation reuses an existing end-piece Item.
-9. Generation creates a missing end-piece Item.
-10. Generation creates a BOM with user-entered BOM quantity, raw material qty equal to end-piece
+5. Reuse rows with positive `bom_scrap_quantity_kg` require parent `process_scrap_item`.
+6. Scrap rows require `scrap_item`.
+7. Generated Item code is deterministic and based on raw material item code.
+8. Preview reports existing versus missing Items without creating records.
+9. Preview reports BOM state as linked or will-create without searching for unlinked BOMs.
+10. Generation reuses an existing end-piece Item.
+11. Generation creates a missing end-piece Item with raw-material item group and `Kg` stock UOM.
+12. Generation creates a BOM with user-entered BOM quantity, raw material qty equal to end-piece
    `weight_kg`, and scrap qty equal to user-entered scrap quantity.
-11. Generation skips rows that already have `generated_end_piece_bom`.
-12. Shearing BOM uses row-level `scrap_item` for scrap-disposition end pieces.
+13. Generation skips rows that already have `generated_end_piece_bom`.
+14. Shearing BOM uses row-level `scrap_item` for scrap-disposition end pieces.
 
 Frappe/bench tests:
 
