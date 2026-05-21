@@ -508,7 +508,6 @@ def test_reuse_end_piece_rows_require_reuse_bom_fields(
 			Layout(
 				finished_parts=[FinishedPart("AB12SHR", 2, 11, 1)],
 				end_pieces=[end_piece],
-				raw_material_item="",
 			)
 		)
 

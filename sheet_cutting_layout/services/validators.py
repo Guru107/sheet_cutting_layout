@@ -92,7 +92,6 @@ def validate_sheet_cutting_layout(layout: SheetCuttingLayoutDocument) -> None:
 	apply_parts_per_sheet_formula(layout, finished_parts)
 	apply_finished_part_weight_formulas(layout, finished_parts)
 	apply_end_piece_weight_formulas(layout, end_pieces)
-	apply_end_piece_item_code_suggestions(layout, end_pieces)
 	accounted_finished_parts = _accounted_finished_parts(finished_parts)
 
 	if len(accounted_finished_parts) != 1:
