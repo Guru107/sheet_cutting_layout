@@ -489,6 +489,28 @@ def test_end_piece_rows_require_item_dimensions_and_qty(validators: types.Module
 		)
 
 
+@pytest.mark.parametrize("qty_per_sheet", [0, -1])
+def test_end_piece_quantity_must_be_greater_than_zero(
+	validators: types.ModuleType,
+	qty_per_sheet: float,
+) -> None:
+	with pytest.raises(ValidationError, match="End piece quantity must be greater than zero"):
+		validators.validate_sheet_cutting_layout(
+			Layout(
+				finished_parts=[FinishedPart("AB12SHR", 2, 11, 1)],
+				end_pieces=[
+					EndPiece(
+						end_piece_item_code="EP1",
+						weight_kg=2.5625,
+						qty_per_sheet=qty_per_sheet,
+						width_mm=None,
+						length_mm=None,
+					)
+				],
+			)
+		)
+
+
 @pytest.mark.parametrize(
 	"end_piece, message",
 	[

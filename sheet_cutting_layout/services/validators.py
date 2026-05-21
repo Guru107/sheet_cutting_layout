@@ -352,6 +352,8 @@ def _validate_end_piece_required_fields(end_piece: EndPieceRow) -> None:
 		frappe.throw(_("End piece weight is required"))
 	if end_piece.qty_per_sheet is None:
 		frappe.throw(_("End piece quantity is required"))
+	if end_piece.qty_per_sheet <= 0:
+		frappe.throw(_("End piece quantity must be greater than zero"))
 	if _is_reuse_end_piece(end_piece):
 		if _is_missing(getattr(end_piece, "used_for_finished_part", None)):
 			frappe.throw(_("Used for finished part is required for reuse end pieces"))
