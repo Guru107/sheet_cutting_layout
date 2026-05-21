@@ -13,6 +13,7 @@ TEST_PATHS = (
 	"sheet_cutting_layout/tests/test_bom_overrides.py",
 	"sheet_cutting_layout/tests/test_bom_service.py",
 	"sheet_cutting_layout/tests/test_cypress_config.py",
+	"sheet_cutting_layout/tests/test_end_piece_bom_service.py",
 	"sheet_cutting_layout/tests/test_model_workflow_state_machine.py",
 	"sheet_cutting_layout/tests/test_property_layout_invariants.py",
 	"sheet_cutting_layout/tests/test_release_service.py",
