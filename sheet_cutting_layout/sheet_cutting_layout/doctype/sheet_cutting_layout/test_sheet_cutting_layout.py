@@ -34,6 +34,7 @@ def test_sheet_cutting_layout_doctypes_define_normalized_model() -> None:
 		"consumed_weight_kg",
 		"leftover_weight_kg",
 		"consumption_status",
+		"end_piece_bom_status",
 		"strip_thickness_mm",
 		"strip_width_mm",
 		"strip_length_mm",
@@ -77,6 +78,9 @@ def test_sheet_cutting_layout_doctypes_define_normalized_model() -> None:
 	assert parent_fields["leftover_weight_kg"].get("precision") == "3"
 	assert parent_fields["consumption_status"].get("read_only") == 1
 	assert parent_fields["consumption_status"].get("options") == "Balanced\nShort\nExcess"
+	assert parent_fields["end_piece_bom_status"]["fieldtype"] == "Select"
+	assert parent_fields["end_piece_bom_status"].get("read_only") == 1
+	assert parent_fields["end_piece_bom_status"].get("options") == "Not Required\nPending\nGenerated"
 
 	assert_table_field(parent_fields["finished_parts"], "Layout Finished Part")
 	assert_table_field(parent_fields["end_pieces"], "Layout End Piece")
@@ -108,20 +112,38 @@ def test_sheet_cutting_layout_doctypes_define_normalized_model() -> None:
 		"layout_end_piece",
 		"Layout End Piece",
 		{
-			"end_piece_item",
+			"end_piece_item_code",
+			"generated_end_piece_item",
 			"width_mm",
 			"length_mm",
 			"weight_kg",
 			"qty_per_sheet",
 			"disposition",
+			"scrap_item",
 			"used_for_finished_part",
+			"bom_quantity",
+			"bom_scrap_quantity_kg",
+			"generated_end_piece_bom",
 		},
 	)
 	end_piece = load_doctype("layout_end_piece", "layout_end_piece")
 	end_piece_fields = fields_by_name(end_piece)
+	assert "end_piece_item" not in end_piece_fields
+	assert end_piece_fields["end_piece_item_code"]["fieldtype"] == "Data"
+	assert end_piece_fields["end_piece_item_code"].get("in_list_view") == 1
+	assert end_piece_fields["generated_end_piece_item"]["fieldtype"] == "Link"
+	assert end_piece_fields["generated_end_piece_item"]["options"] == "Item"
+	assert end_piece_fields["generated_end_piece_item"].get("read_only") == 1
 	assert end_piece_fields["width_mm"]["fieldtype"] == "Float"
 	assert end_piece_fields["length_mm"]["fieldtype"] == "Float"
 	assert end_piece_fields["weight_kg"].get("read_only") == 1
+	assert end_piece_fields["scrap_item"]["fieldtype"] == "Link"
+	assert end_piece_fields["scrap_item"]["options"] == "Item"
+	assert end_piece_fields["bom_quantity"]["fieldtype"] == "Float"
+	assert end_piece_fields["bom_scrap_quantity_kg"]["fieldtype"] == "Float"
+	assert end_piece_fields["generated_end_piece_bom"]["fieldtype"] == "Link"
+	assert end_piece_fields["generated_end_piece_bom"]["options"] == "BOM"
+	assert end_piece_fields["generated_end_piece_bom"].get("read_only") == 1
 	assert "thickness" not in end_piece_fields
 	assert_child_doctype_fields(
 		"layout_approval_snapshot",

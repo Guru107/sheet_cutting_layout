@@ -28,6 +28,7 @@
   "leftover_weight_kg",
   "consumption_column_break",
   "consumption_status",
+  "end_piece_bom_status",
   "strip_section",
   "strip_thickness_mm",
   "strip_width_mm",
@@ -174,6 +175,13 @@
    "fieldtype": "Select",
    "label": "Consumption Status",
    "options": "Balanced\nShort\nExcess",
+   "read_only": 1
+  },
+  {
+   "fieldname": "end_piece_bom_status",
+   "fieldtype": "Select",
+   "label": "End Piece BOM Status",
+   "options": "Not Required\nPending\nGenerated",
    "read_only": 1
   },
   {
