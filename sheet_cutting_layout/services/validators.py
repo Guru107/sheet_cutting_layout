@@ -32,17 +32,26 @@ class FinishedPartRow(Protocol):
 
 
 class EndPieceRow(Protocol):
-	end_piece_item: str | None
+	end_piece_item_code: str | None
 	width_mm: float | None
 	length_mm: float | None
 	weight_kg: float | None
 	qty_per_sheet: float | None
+	disposition: str | None
+	used_for_finished_part: str | None
+	bom_quantity: float | None
+	bom_scrap_quantity_kg: float | None
+	generated_end_piece_item: str | None
+	generated_end_piece_bom: str | None
+	scrap_item: str | None
 
 
 class SheetCuttingLayoutDocument(Protocol):
 	finished_parts: Sequence[FinishedPartRow]
 	end_pieces: Sequence[EndPieceRow]
+	raw_material_item: str | None
 	process_scrap_item: str | None
+	end_piece_bom_status: str | None
 	sheet_thickness_mm: float | None
 	sheet_width_mm: float | None
 	sheet_length_mm: float | None
@@ -83,6 +92,7 @@ def validate_sheet_cutting_layout(layout: SheetCuttingLayoutDocument) -> None:
 	apply_parts_per_sheet_formula(layout, finished_parts)
 	apply_finished_part_weight_formulas(layout, finished_parts)
 	apply_end_piece_weight_formulas(layout, end_pieces)
+	apply_end_piece_item_code_suggestions(layout, end_pieces)
 	accounted_finished_parts = _accounted_finished_parts(finished_parts)
 
 	if len(accounted_finished_parts) != 1:
@@ -97,11 +107,18 @@ def validate_sheet_cutting_layout(layout: SheetCuttingLayoutDocument) -> None:
 			frappe.throw(_("Process scrap item is required when process scrap weight is positive"))
 
 	for end_piece in end_pieces:
+		_validate_generated_end_piece_item_code_is_locked(end_piece)
 		_validate_end_piece_required_fields(end_piece)
+
+	if _requires_process_scrap_item_for_reuse_bom(end_pieces) and _is_missing(
+		getattr(layout, "process_scrap_item", None)
+	):
+		frappe.throw(_("Process scrap item is required when reuse BOM scrap weight is positive"))
 
 	if end_pieces:
 		_validate_end_piece_distribution(accounted_finished_parts, end_pieces)
 	apply_consumption_tracking(layout, accounted_finished_parts, end_pieces)
+	apply_end_piece_bom_status(layout, end_pieces)
 	_validate_complete_sheet_consumption(layout, accounted_finished_parts, end_pieces)
 
 
@@ -215,8 +232,47 @@ def apply_end_piece_weight_formulas(
 			width_mm=getattr(end_piece, "width_mm", None),
 			length_mm=getattr(end_piece, "length_mm", None),
 		)
-		if weight is not None:
-			end_piece.weight_kg = weight
+		qty_per_sheet = getattr(end_piece, "qty_per_sheet", None)
+		if weight is not None and qty_per_sheet is not None and qty_per_sheet > 0:
+			end_piece.weight_kg = _flt(weight * qty_per_sheet)
+
+
+def suggest_end_piece_item_code(
+	*,
+	raw_material_item: str | None,
+	thickness_mm: float | None,
+	width_mm: float | None,
+	length_mm: float | None,
+) -> str | None:
+	if (
+		_is_missing(raw_material_item)
+		or thickness_mm is None
+		or width_mm is None
+		or length_mm is None
+	):
+		return None
+	return (
+		f"{raw_material_item}-EP-"
+		f"{_format_code_number(thickness_mm)}x{_format_code_number(width_mm)}x{_format_code_number(length_mm)}"
+	)
+
+
+def apply_end_piece_item_code_suggestions(
+	layout: SheetCuttingLayoutDocument,
+	end_pieces: Sequence[EndPieceRow],
+) -> None:
+	for end_piece in end_pieces:
+		if not _is_missing(getattr(end_piece, "end_piece_item_code", None)):
+			continue
+
+		suggested_code = suggest_end_piece_item_code(
+			raw_material_item=getattr(layout, "raw_material_item", None),
+			thickness_mm=getattr(layout, "sheet_thickness_mm", None),
+			width_mm=getattr(end_piece, "width_mm", None),
+			length_mm=getattr(end_piece, "length_mm", None),
+		)
+		if suggested_code is not None:
+			end_piece.end_piece_item_code = suggested_code
 
 
 def calculate_sheet_weight_kg(
@@ -261,9 +317,9 @@ def calculate_consumed_weight_kg(
 		if not _is_missing(finished_part.finished_part_item)
 	)
 	end_piece_weight = sum(
-		end_piece.weight_kg * end_piece.qty_per_sheet
+		end_piece.weight_kg
 		for end_piece in end_pieces
-		if end_piece.weight_kg is not None and end_piece.qty_per_sheet is not None
+		if end_piece.weight_kg is not None
 	)
 	return _sheet_consumption_flt(part_gross_weight + end_piece_weight)
 
@@ -289,8 +345,6 @@ def _validate_finished_part_weights(finished_part: FinishedPartRow) -> None:
 
 
 def _validate_end_piece_required_fields(end_piece: EndPieceRow) -> None:
-	if _is_missing(end_piece.end_piece_item):
-		frappe.throw(_("End piece item is required"))
 	if end_piece.width_mm is None:
 		frappe.throw(_("End piece width is required"))
 	if end_piece.length_mm is None:
@@ -299,6 +353,17 @@ def _validate_end_piece_required_fields(end_piece: EndPieceRow) -> None:
 		frappe.throw(_("End piece weight is required"))
 	if end_piece.qty_per_sheet is None:
 		frappe.throw(_("End piece quantity is required"))
+	if _is_reuse_end_piece(end_piece):
+		if _is_missing(getattr(end_piece, "used_for_finished_part", None)):
+			frappe.throw(_("Used for finished part is required for reuse end pieces"))
+		if _is_missing(getattr(end_piece, "end_piece_item_code", None)):
+			frappe.throw(_("End piece item code is required for reuse end pieces"))
+		if getattr(end_piece, "bom_quantity", None) is None or end_piece.bom_quantity <= 0:
+			frappe.throw(_("BOM quantity must be greater than zero for reuse end pieces"))
+		if getattr(end_piece, "bom_scrap_quantity_kg", None) is None or end_piece.bom_scrap_quantity_kg < 0:
+			frappe.throw(_("BOM scrap quantity must be non-negative for reuse end pieces"))
+	if _is_scrap_end_piece(end_piece) and _is_missing(getattr(end_piece, "scrap_item", None)):
+		frappe.throw(_("Scrap item is required for scrap end pieces"))
 
 
 def _validate_end_piece_distribution(
@@ -310,9 +375,9 @@ def _validate_end_piece_distribution(
 			frappe.throw(_("Parts per sheet must be greater than zero for end-piece distribution"))
 
 		end_piece_weight_per_part = sum(
-			(end_piece.weight_kg * end_piece.qty_per_sheet) / finished_part.parts_per_sheet
+			end_piece.weight_kg / finished_part.parts_per_sheet
 			for end_piece in end_pieces
-			if end_piece.weight_kg is not None and end_piece.qty_per_sheet is not None
+			if end_piece.weight_kg is not None
 		)
 		derived_fg_weight = (
 			finished_part.gross_weight_per_part_kg
@@ -321,6 +386,47 @@ def _validate_end_piece_distribution(
 		)
 		if derived_fg_weight < 0:
 			frappe.throw(_("Derived finished goods weight must be non-negative"))
+
+
+def _is_reuse_end_piece(end_piece: EndPieceRow) -> bool:
+	return getattr(end_piece, "disposition", None) == "Reuse"
+
+
+def _is_scrap_end_piece(end_piece: EndPieceRow) -> bool:
+	return getattr(end_piece, "disposition", None) == "Scrap"
+
+
+def _requires_process_scrap_item_for_reuse_bom(end_pieces: Sequence[EndPieceRow]) -> bool:
+	return any(
+		_is_reuse_end_piece(end_piece)
+		and getattr(end_piece, "bom_scrap_quantity_kg", None) is not None
+		and end_piece.bom_scrap_quantity_kg > 0
+		for end_piece in end_pieces
+	)
+
+
+def apply_end_piece_bom_status(
+	layout: SheetCuttingLayoutDocument,
+	end_pieces: Sequence[EndPieceRow],
+) -> None:
+	reuse_end_pieces = [end_piece for end_piece in end_pieces if _is_reuse_end_piece(end_piece)]
+	if not reuse_end_pieces:
+		layout.end_piece_bom_status = "Not Required"
+		return
+	if all(not _is_missing(getattr(end_piece, "generated_end_piece_bom", None)) for end_piece in reuse_end_pieces):
+		layout.end_piece_bom_status = "Generated"
+		return
+	layout.end_piece_bom_status = "Pending"
+
+
+def _validate_generated_end_piece_item_code_is_locked(end_piece: EndPieceRow) -> None:
+	has_value_changed = getattr(end_piece, "has_value_changed", None)
+	if not callable(has_value_changed) or not has_value_changed("end_piece_item_code"):
+		return
+	if not _is_missing(getattr(end_piece, "generated_end_piece_item", None)) or not _is_missing(
+		getattr(end_piece, "generated_end_piece_bom", None)
+	):
+		frappe.throw(_("End piece item code cannot be changed after generated records exist"))
 
 
 def _validate_complete_sheet_consumption(
@@ -380,6 +486,10 @@ def _sheet_consumption_flt(value: float | int | str | None) -> float:
 
 def _format_sheet_consumption_weight(value: float) -> str:
 	return f"{_sheet_consumption_flt(value):.{SHEET_CONSUMPTION_PRECISION}f}"
+
+
+def _format_code_number(value: float | int | str) -> str:
+	return f"{float(value):.6f}".rstrip("0").rstrip(".")
 
 
 def _consumption_status(leftover_weight: float) -> str:
