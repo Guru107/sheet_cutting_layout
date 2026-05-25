@@ -3,31 +3,10 @@ frappe.provide("sheet_cutting_layout");
 (() => {
 	"use strict";
 
-	const SHEET_LAYOUT_CANVAS_ASSET = "/assets/sheet_cutting_layout/js/sheet_layout_canvas.js";
-	const SHEET_LAYOUT_PREVIEW_ID = "sheet-layout-canvas-preview";
-	const SHEET_LAYOUT_REDRAW_MS = 200;
 	const STEEL_DENSITY_G_PER_CM3 = 7.86;
 	const DEFAULT_FLOAT_PRECISION = 6;
 	const SHEET_CONSUMPTION_PRECISION = 3;
 	const SHEET_CONSUMPTION_TOLERANCE_KG = 0.005;
-
-	const SHEET_LAYOUT_FIELDS = [
-		"sheet_thickness_mm",
-		"sheet_width_mm",
-		"sheet_length_mm",
-		"strip_thickness_mm",
-		"strip_width_mm",
-		"strip_length_mm",
-		"parts_per_strip",
-		"no_of_strips",
-		"parts_per_sheet",
-		"weight_per_sheet_kg",
-		"weight_of_strip_kg",
-		"gross_weight_per_part_kg",
-		"consumed_weight_kg",
-		"leftover_weight_kg",
-		"consumption_status",
-	];
 
 	const APPROVAL_SNAPSHOT_ACTIONS = {
 		"Projects Manager Approves": "Projects Manager Approval",
@@ -35,72 +14,6 @@ frappe.provide("sheet_cutting_layout");
 		"Purchase Approves": "Purchase Approval",
 		Reject: "Rejection",
 	};
-
-	function loadSheetLayoutCanvas() {
-		if (window.SheetLayoutCanvas) {
-			return Promise.resolve();
-		}
-
-		return new Promise((resolve) => {
-			frappe.require(SHEET_LAYOUT_CANVAS_ASSET, resolve);
-		});
-	}
-
-	function ensurePreviewCanvas(frm) {
-		if (frm.sheet_layout_canvas) {
-			return frm.sheet_layout_canvas;
-		}
-
-		const wrapper = document.createElement("div");
-		wrapper.id = SHEET_LAYOUT_PREVIEW_ID;
-		wrapper.className = "sheet-layout-canvas-preview";
-		wrapper.style.margin = "16px 0";
-		wrapper.style.padding = "12px";
-		wrapper.style.border = "1px solid var(--border-color, #d1d8dd)";
-		wrapper.style.background = "var(--fg-color, #ffffff)";
-
-		const canvas = document.createElement("canvas");
-		canvas.style.display = "block";
-		canvas.style.width = "100%";
-		canvas.style.height = "420px";
-		canvas.style.minHeight = "320px";
-		canvas.setAttribute("aria-label", __("Sheet cutting layout preview"));
-		wrapper.appendChild(canvas);
-
-		const anchor = frm.fields_dict.finished_parts?.wrapper || frm.layout?.wrapper;
-		if (anchor && anchor.parentNode) {
-			anchor.parentNode.insertBefore(wrapper, anchor);
-		} else {
-			frm.wrapper.find(".form-layout").first().prepend(wrapper);
-		}
-
-		frm.sheet_layout_canvas = canvas;
-		return canvas;
-	}
-
-	function redrawSheetLayout(frm) {
-		loadSheetLayoutCanvas().then(() => {
-			const canvas = ensurePreviewCanvas(frm);
-			const payload = window.SheetLayoutCanvas.buildPayloadFromDoc(frm.doc || {});
-			window.SheetLayoutCanvas.render(canvas, payload);
-		});
-	}
-
-	function scheduleSheetLayoutRedraw(frm) {
-		if (!frm.sheet_layout_redraw) {
-			frm.sheet_layout_redraw = window.SheetLayoutCanvas
-				? window.SheetLayoutCanvas.debounce(
-						() => redrawSheetLayout(frm),
-						SHEET_LAYOUT_REDRAW_MS
-				  )
-				: frappe.utils.debounce(() => redrawSheetLayout(frm), SHEET_LAYOUT_REDRAW_MS);
-		}
-		frm.sheet_layout_redraw();
-	}
-
-	function scheduleParentRedraw(frm) {
-		scheduleSheetLayoutRedraw(frm);
-	}
 
 	function calculateSheetWeight(frm) {
 		return calculateWeight(
@@ -267,10 +180,8 @@ frappe.provide("sheet_cutting_layout");
 		return Promise.all(updates);
 	}
 
-	function updateEndPieceItemCodesAndRedraw(frm) {
-		updateEndPieceItemCodes(frm).then(() => {
-			scheduleSheetLayoutRedraw(frm);
-		});
+	function updateEndPieceItemCodesFromRawMaterial(frm) {
+		return updateEndPieceItemCodes(frm);
 	}
 
 	function updateFinishedPartWeights(frm) {
@@ -417,57 +328,39 @@ frappe.provide("sheet_cutting_layout");
 		});
 	}
 
-	function updateSheetWeightAndRedraw(frm) {
-		updateSheetWeight(frm)
+	function updateSheetWeightAndDerivedFields(frm) {
+		return updateSheetWeight(frm)
 			.then(() => updateEndPieceWeights(frm))
 			.then(() => updateEndPieceItemCodes(frm))
-			.then(() => updateConsumptionTracking(frm))
-			.then(() => {
-				scheduleSheetLayoutRedraw(frm);
-			});
+			.then(() => updateConsumptionTracking(frm));
 	}
 
-	function updateStripWeightAndRedraw(frm) {
-		updateStripWeight(frm)
+	function updateStripWeightAndDerivedFields(frm) {
+		return updateStripWeight(frm)
 			.then(() => updateParentGrossWeightPerPart(frm))
 			.then(() => updateFinishedPartWeights(frm))
-			.then(() => updateConsumptionTracking(frm))
-			.then(() => {
-				scheduleSheetLayoutRedraw(frm);
-			});
+			.then(() => updateConsumptionTracking(frm));
 	}
 
-	function updateConsumptionTrackingAndRedraw(frm) {
-		updateConsumptionTracking(frm).then(() => {
-			scheduleSheetLayoutRedraw(frm);
-		});
+	function updateConsumptionTrackingFields(frm) {
+		return updateConsumptionTracking(frm);
 	}
 
-	function updateFinishedPartWeightsAndRedraw(frm) {
-		updateFinishedPartWeights(frm)
-			.then(() => updateConsumptionTracking(frm))
-			.then(() => {
-				scheduleSheetLayoutRedraw(frm);
-			});
+	function updateFinishedPartWeightsAndConsumption(frm) {
+		return updateFinishedPartWeights(frm).then(() => updateConsumptionTracking(frm));
 	}
 
-	function updatePartsPerSheetAndRedraw(frm) {
-		updatePartsPerSheet(frm)
+	function updatePartsPerSheetAndDerivedFields(frm) {
+		return updatePartsPerSheet(frm)
 			.then(() => updateParentGrossWeightPerPart(frm))
 			.then(() => updateFinishedPartWeights(frm))
-			.then(() => updateConsumptionTracking(frm))
-			.then(() => {
-				scheduleSheetLayoutRedraw(frm);
-			});
+			.then(() => updateConsumptionTracking(frm));
 	}
 
-	function updateEndPieceWeightsAndRedraw(frm) {
-		updateEndPieceWeights(frm)
+	function updateEndPieceWeightsAndConsumption(frm) {
+		return updateEndPieceWeights(frm)
 			.then(() => updateEndPieceItemCodes(frm))
-			.then(() => updateConsumptionTracking(frm))
-			.then(() => {
-				scheduleSheetLayoutRedraw(frm);
-			});
+			.then(() => updateConsumptionTracking(frm));
 	}
 
 	function hasRequiredEndPiecePreviewInputs(frm) {
@@ -564,10 +457,6 @@ frappe.provide("sheet_cutting_layout");
 
 	frappe.ui.form.on("Sheet Cutting Layout", {
 		refresh(frm) {
-			loadSheetLayoutCanvas().then(() => {
-				ensurePreviewCanvas(frm);
-				scheduleSheetLayoutRedraw(frm);
-			});
 			addEndPieceBomButtons(frm);
 			if (!frm.is_new() && ["Released", "Superseded"].includes(frm.doc.status)) {
 				frm.add_custom_button(__("New Version"), () => {
@@ -601,48 +490,36 @@ frappe.provide("sheet_cutting_layout");
 			return frm.reload_doc();
 		},
 
-		finished_parts_add: updatePartsPerSheetAndRedraw,
-		finished_parts_remove: updateConsumptionTrackingAndRedraw,
-		end_pieces_add: updateEndPieceWeightsAndRedraw,
-		end_pieces_remove: updateConsumptionTrackingAndRedraw,
+		finished_parts_add: updatePartsPerSheetAndDerivedFields,
+		finished_parts_remove: updateConsumptionTrackingFields,
+		end_pieces_add: updateEndPieceWeightsAndConsumption,
+		end_pieces_remove: updateConsumptionTrackingFields,
 	});
 
 	frappe.ui.form.on("Sheet Cutting Layout", {
-		sheet_thickness_mm: updateSheetWeightAndRedraw,
-		sheet_width_mm: updateSheetWeightAndRedraw,
-		sheet_length_mm: updateSheetWeightAndRedraw,
-		strip_thickness_mm: updateStripWeightAndRedraw,
-		strip_width_mm: updateStripWeightAndRedraw,
-		strip_length_mm: updateStripWeightAndRedraw,
-		parts_per_strip: updatePartsPerSheetAndRedraw,
-		no_of_strips: updatePartsPerSheetAndRedraw,
-		raw_material_item: updateEndPieceItemCodesAndRedraw,
-	});
-
-	SHEET_LAYOUT_FIELDS.forEach((fieldname) => {
-		frappe.ui.form.on("Sheet Cutting Layout", fieldname, scheduleSheetLayoutRedraw);
+		sheet_thickness_mm: updateSheetWeightAndDerivedFields,
+		sheet_width_mm: updateSheetWeightAndDerivedFields,
+		sheet_length_mm: updateSheetWeightAndDerivedFields,
+		strip_thickness_mm: updateStripWeightAndDerivedFields,
+		strip_width_mm: updateStripWeightAndDerivedFields,
+		strip_length_mm: updateStripWeightAndDerivedFields,
+		parts_per_strip: updatePartsPerSheetAndDerivedFields,
+		no_of_strips: updatePartsPerSheetAndDerivedFields,
+		raw_material_item: updateEndPieceItemCodesFromRawMaterial,
 	});
 
 	frappe.ui.form.on("Layout Finished Part", {
-		finished_part_item: updatePartsPerSheetAndRedraw,
-		parts_per_sheet: updateConsumptionTrackingAndRedraw,
-		net_weight_per_part_kg: updateFinishedPartWeightsAndRedraw,
-		gross_weight_per_part_kg: updateConsumptionTrackingAndRedraw,
-		scrap_weight_per_part_kg: scheduleParentRedraw,
+		finished_part_item: updatePartsPerSheetAndDerivedFields,
+		parts_per_sheet: updateConsumptionTrackingFields,
+		net_weight_per_part_kg: updateFinishedPartWeightsAndConsumption,
+		gross_weight_per_part_kg: updateConsumptionTrackingFields,
 	});
 
 	frappe.ui.form.on("Layout End Piece", {
-		end_piece_item_code: scheduleParentRedraw,
-		width_mm: updateEndPieceWeightsAndRedraw,
-		length_mm: updateEndPieceWeightsAndRedraw,
-		weight_kg: updateConsumptionTrackingAndRedraw,
-		qty_per_sheet: updateEndPieceWeightsAndRedraw,
-		disposition: scheduleParentRedraw,
-		scrap_item: scheduleParentRedraw,
-		used_for_finished_part: scheduleParentRedraw,
-		bom_quantity: scheduleParentRedraw,
-		bom_scrap_quantity_kg: scheduleParentRedraw,
-		generated_end_piece_item: scheduleParentRedraw,
-		generated_end_piece_bom: scheduleParentRedraw,
+		width_mm: updateEndPieceWeightsAndConsumption,
+		length_mm: updateEndPieceWeightsAndConsumption,
+		weight_kg: updateConsumptionTrackingFields,
+		qty_per_sheet: updateEndPieceWeightsAndConsumption,
+		disposition: updateEndPieceItemCodesFromRawMaterial,
 	});
 })();

@@ -1,6 +1,6 @@
 # Sheet Cutting Layout
 
-Frappe/ERPNext app for controlled sheet cutting layout releases for press parts. The app stores layout parameters, validates finished-part and scrap rules, renders a form-driven canvas preview, and generates ERPNext BOMs only after approval.
+Frappe/ERPNext app for controlled sheet cutting layout releases for press parts. The app stores layout parameters, validates finished-part and scrap rules, tracks sheet consumption, and generates ERPNext BOMs only after approval.
 
 ## Installation
 

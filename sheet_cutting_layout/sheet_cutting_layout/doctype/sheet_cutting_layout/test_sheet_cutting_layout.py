@@ -326,20 +326,35 @@ def test_client_updates_consumption_tracking_when_user_enters_dimensions_and_net
 	assert "Suggested Item Code" in client_script
 	assert "generated_end_piece_bom" in client_script
 	assert "hasRequiredEndPiecePreviewInputs" in client_script
-	assert "raw_material_item: updateEndPieceItemCodesAndRedraw" in client_script
+	assert "raw_material_item: updateEndPieceItemCodesFromRawMaterial" in client_script
 	assert "numberOrZero(row.weight_kg)" in client_script
 	assert "numberOrZero(row.weight_kg) * numberOrZero(row.qty_per_sheet)" not in client_script
 	assert "row.finished_part_item" in client_script
 	assert "consumed_weight_kg" in client_script
 	assert "leftover_weight_kg" in client_script
 	assert "consumption_status" in client_script
-	assert "net_weight_per_part_kg: updateFinishedPartWeightsAndRedraw" in client_script
-	assert "finished_part_item: updatePartsPerSheetAndRedraw" in client_script
-	assert "parts_per_strip: updatePartsPerSheetAndRedraw" in client_script
-	assert "no_of_strips: updatePartsPerSheetAndRedraw" in client_script
-	assert "width_mm: updateEndPieceWeightsAndRedraw" in client_script
-	assert "length_mm: updateEndPieceWeightsAndRedraw" in client_script
-	assert "qty_per_sheet: updateEndPieceWeightsAndRedraw" in client_script
+	assert "net_weight_per_part_kg: updateFinishedPartWeightsAndConsumption" in client_script
+	assert "finished_part_item: updatePartsPerSheetAndDerivedFields" in client_script
+	assert "parts_per_strip: updatePartsPerSheetAndDerivedFields" in client_script
+	assert "no_of_strips: updatePartsPerSheetAndDerivedFields" in client_script
+	assert "width_mm: updateEndPieceWeightsAndConsumption" in client_script
+	assert "length_mm: updateEndPieceWeightsAndConsumption" in client_script
+	assert "qty_per_sheet: updateEndPieceWeightsAndConsumption" in client_script
+	assert "disposition: updateEndPieceItemCodesFromRawMaterial" in client_script
+
+
+def test_client_has_no_sheet_layout_canvas_dependency() -> None:
+	client_script = (DOCTYPE_ROOT / "sheet_cutting_layout" / "sheet_cutting_layout.js").read_text(
+		encoding="utf-8"
+	)
+
+	assert "sheet_layout_canvas.js" not in client_script
+	assert "SheetLayoutCanvas" not in client_script
+	assert "sheet-layout-canvas-preview" not in client_script
+	assert "ensurePreviewCanvas" not in client_script
+	assert "redrawSheetLayout" not in client_script
+	assert "scheduleSheetLayoutRedraw" not in client_script
+	assert "frappe.require" not in client_script
 
 
 def test_client_preview_dialog_uses_local_escape_html_helper() -> None:
