@@ -4,6 +4,9 @@ import json
 from pathlib import Path
 from typing import TypeAlias
 
+from sheet_cutting_layout.tests.base import SheetCuttingLayoutTestCase
+from sheet_cutting_layout.tests.unittest_adapter import add_pytest_style_tests
+
 JSONValue: TypeAlias = None | bool | int | float | str | list["JSONValue"] | dict[str, "JSONValue"]
 DocTypeJSON: TypeAlias = dict[str, JSONValue]
 FieldJSON: TypeAlias = dict[str, JSONValue]
@@ -517,3 +520,10 @@ def assert_child_doctype_fields(directory: str, filename: str, name: str, requir
 	assert doctype["module"] == "Sheet Cutting Layout"
 	assert doctype["istable"] == 1
 	assert required_fields.issubset(fields_by_name(doctype))
+
+
+class TestSheetCuttingLayoutSourceContract(SheetCuttingLayoutTestCase):
+	pass
+
+
+add_pytest_style_tests(globals(), TestSheetCuttingLayoutSourceContract)

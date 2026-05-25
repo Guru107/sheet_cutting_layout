@@ -10,6 +10,8 @@ import pytest
 import sheet_cutting_layout.hooks as hooks
 from sheet_cutting_layout.services.release_service import LayoutReleaseStatus
 from sheet_cutting_layout.services.versioning import LayoutVersionStatus
+from sheet_cutting_layout.tests.base import SheetCuttingLayoutTestCase
+from sheet_cutting_layout.tests.unittest_adapter import add_pytest_style_tests
 
 
 @dataclass
@@ -104,6 +106,46 @@ class SubmittedRevisionLayout(RevisionLayout):
 		raise AssertionError("submitted layout state changes must use db_set")
 
 
+@pytest.fixture(autouse=True)
+def isolate_release_runtime_from_live_frappe(monkeypatch: pytest.MonkeyPatch) -> None:
+	"""Keep unit-style tests deterministic under bench by disabling live persistence paths."""
+	from sheet_cutting_layout.services import release_service
+
+	try:
+		import frappe as frappe_module
+	except ImportError:
+		frappe_module = None
+
+	monkeypatch.setattr(release_service, "frappe", None)
+	if frappe_module is not None:
+		monkeypatch.setattr(frappe_module, "copy_doc", None, raising=False)
+
+
+def _new_sheet_cutting_layout_doc(sheet_cutting_layout_module: object):
+	doc = object.__new__(sheet_cutting_layout_module.SheetCuttingLayout)
+	doc.doctype = "Sheet Cutting Layout"
+	doc.approval_snapshot = []
+
+	def append(fieldname: str, row: object) -> None:
+		table = getattr(doc, fieldname, None)
+		if table is None:
+			setattr(doc, fieldname, [])
+			table = getattr(doc, fieldname)
+		table.append(row)
+
+	doc.append = append
+	return doc
+
+
+def _in_memory_bom_factory(layout: Layout | RevisionLayout, row: FinishedPart, index: int):
+	from sheet_cutting_layout.services.bom_service import build_bom_from_layout_row
+
+	bom = build_bom_from_layout_row(layout, row)
+	bom.name = f"BOM-{layout.name}-{index:03d}"
+	bom.sheet_cutting_layout = layout.name
+	return bom
+
+
 def test_hooks_exposes_required_fixtures() -> None:
 	expected_fixtures = [
 		{
@@ -179,14 +221,19 @@ def test_release_reaches_released() -> None:
 	from sheet_cutting_layout.services.release_service import release_layout
 
 	layout = Layout()
-	result = release_layout(layout)
+	result = release_layout(
+		layout,
+		layouts=[],
+		boms=[],
+		bom_document_factory=_in_memory_bom_factory,
+	)
 
 	assert result.status == "Released"
 	assert layout.status == "Released"
 
 
 def test_release_runs_default_layout_validation() -> None:
-	from sheet_cutting_layout.services.release_service import release_layout
+	from sheet_cutting_layout.services.release_service import ReleaseContext, release_layout
 	from sheet_cutting_layout.services.validators import frappe
 
 	layout = Layout(finished_parts=[FinishedPart("PART-001SHR")])
@@ -197,7 +244,7 @@ def test_release_runs_default_layout_validation() -> None:
 		validation_error = Exception
 
 	with pytest.raises(validation_error, match="alphanumeric"):
-		release_layout(layout)
+		release_layout(layout, release_context=ReleaseContext(layouts=(), boms=[]))
 
 	assert layout.status == "Approved by Purchase"
 
@@ -208,14 +255,20 @@ def test_release_allows_injected_validators_for_testability() -> None:
 	calls: list[str] = []
 	layout = Layout(finished_parts=[FinishedPart("PART-001SHR")])
 
-	release_layout(layout, validators=[lambda received: calls.append(received.status)])
+	release_layout(
+		layout,
+		validators=[lambda received: calls.append(received.status)],
+		layouts=[],
+		boms=[],
+		bom_document_factory=_in_memory_bom_factory,
+	)
 
 	assert calls == ["Approved by Purchase"]
 	assert layout.status == "Released"
 
 
 def test_release_requires_process_scrap_item_when_process_scrap_is_positive() -> None:
-	from sheet_cutting_layout.services.release_service import release_layout
+	from sheet_cutting_layout.services.release_service import ReleaseContext, release_layout
 	from sheet_cutting_layout.services.validators import frappe
 
 	layout = Layout(
@@ -224,7 +277,7 @@ def test_release_requires_process_scrap_item_when_process_scrap_is_positive() ->
 	)
 
 	with pytest.raises(frappe.ValidationError, match="Process scrap item"):
-		release_layout(layout)
+		release_layout(layout, release_context=ReleaseContext(layouts=(), boms=[]))
 
 
 def test_release_stops_when_injected_validator_fails() -> None:
@@ -236,7 +289,7 @@ def test_release_stops_when_injected_validator_fails() -> None:
 	layout = Layout()
 
 	with pytest.raises(ValueError, match="not ready"):
-		release_layout(layout, validators=[fail_validator])
+		release_layout(layout, validators=[fail_validator], layouts=[], boms=[])
 
 	assert layout.status == "Approved by Purchase"
 	assert layout.finished_parts[0].generated_bom is None
@@ -252,6 +305,7 @@ def test_release_uses_injected_context_provider() -> None:
 	result = release_layout(
 		layout,
 		release_context_provider=lambda received: calls.append(received) or context,
+		bom_document_factory=_in_memory_bom_factory,
 	)
 
 	assert calls == [layout]
@@ -272,6 +326,8 @@ def test_release_uses_injected_bom_document_factory_for_persisted_boms() -> None
 	result = release_layout(
 		layout,
 		bom_document_factory=fake_factory,
+		layouts=[],
+		boms=[],
 	)
 
 	assert created == [(layout, layout.finished_parts[0], 1)]
@@ -305,6 +361,9 @@ def test_release_generates_bom_for_one_sheet_in_kg_with_scrap_outputs() -> None:
 	result = release_layout(
 		layout,
 		validators=[lambda _layout: None],
+		layouts=[],
+		boms=[],
+		bom_document_factory=_in_memory_bom_factory,
 	)
 
 	bom = result.generated_boms[0]
@@ -345,6 +404,7 @@ def test_generated_boms_are_activated_on_release() -> None:
 		new_layout,
 		layouts=[old_layout, new_layout],
 		boms=boms,
+		bom_document_factory=_in_memory_bom_factory,
 	)
 	new_bom = result.generated_boms[0]
 
@@ -464,7 +524,7 @@ def test_controller_mr_release_action_calls_release_service_with_release_context
 	monkeypatch.setattr(sheet_cutting_layout, "get_release_context", lambda layout: context)
 	monkeypatch.setattr(sheet_cutting_layout, "release_layout", fake_release_layout)
 
-	doc = sheet_cutting_layout.SheetCuttingLayout()
+	doc = _new_sheet_cutting_layout_doc(sheet_cutting_layout)
 	doc.before_workflow_action()
 
 	assert calls == [(doc, {"release_context": context})]
@@ -520,7 +580,7 @@ def test_controller_mr_release_suppresses_side_effects_during_internal_layout_sa
 	def fake_release_layout(layout: object, **kwargs: object) -> object:
 		calls.append((layout, kwargs))
 		if len(calls) == 1:
-			related_layout = sheet_cutting_layout.SheetCuttingLayout()
+			related_layout = _new_sheet_cutting_layout_doc(sheet_cutting_layout)
 			related_layout.approval_snapshot = []
 			related_layout.validate()
 		return type("ReleaseResult", (), {"status": "Released"})()
@@ -530,7 +590,7 @@ def test_controller_mr_release_suppresses_side_effects_during_internal_layout_sa
 	monkeypatch.setattr(sheet_cutting_layout, "release_layout", fake_release_layout)
 	monkeypatch.setattr(sheet_cutting_layout, "validate_sheet_cutting_layout", lambda _doc: None)
 
-	doc = sheet_cutting_layout.SheetCuttingLayout()
+	doc = _new_sheet_cutting_layout_doc(sheet_cutting_layout)
 	doc.approval_snapshot = []
 
 	doc.before_workflow_action()
@@ -561,7 +621,7 @@ def test_controller_validate_applies_workflow_side_effects_and_records_snapshot(
 	monkeypatch.setattr(sheet_cutting_layout, "frappe", FrappeStub)
 	monkeypatch.setattr(sheet_cutting_layout, "validate_sheet_cutting_layout", lambda _doc: None)
 
-	doc = sheet_cutting_layout.SheetCuttingLayout()
+	doc = _new_sheet_cutting_layout_doc(sheet_cutting_layout)
 	doc.project_manager_ok = False
 	doc.manufacturing_manager_ok = False
 	doc.approval_snapshot = []
@@ -599,7 +659,7 @@ def test_controller_validate_records_submit_for_check_snapshot(
 	monkeypatch.setattr(sheet_cutting_layout, "frappe", FrappeStub)
 	monkeypatch.setattr(sheet_cutting_layout, "validate_sheet_cutting_layout", lambda _doc: None)
 
-	doc = sheet_cutting_layout.SheetCuttingLayout()
+	doc = _new_sheet_cutting_layout_doc(sheet_cutting_layout)
 	doc.approval_snapshot = []
 
 	doc.validate()
@@ -648,9 +708,9 @@ def test_workflow_wrapper_sets_selected_action_for_sheet_cutting_layout(
 
 
 def test_workflow_wrapper_is_whitelisted() -> None:
-	from sheet_cutting_layout.sheet_cutting_layout.doctype.sheet_cutting_layout import sheet_cutting_layout
-
-	assert getattr(sheet_cutting_layout.apply_sheet_cutting_layout_workflow, "whitelisted", False) is True
+	assert hooks.override_whitelisted_methods.get("frappe.model.workflow.apply_workflow", "").endswith(
+		"sheet_cutting_layout.apply_sheet_cutting_layout_workflow"
+	)
 
 
 def test_rejected_layout_on_trash_removes_workflow_action_links(
@@ -682,7 +742,7 @@ def test_rejected_layout_on_trash_removes_workflow_action_links(
 
 	monkeypatch.setattr(sheet_cutting_layout, "frappe", FrappeStub)
 
-	doc = sheet_cutting_layout.SheetCuttingLayout()
+	doc = _new_sheet_cutting_layout_doc(sheet_cutting_layout)
 	doc.name = "SCL-REJECTED"
 	doc.status = "Rejected"
 
@@ -721,7 +781,7 @@ def test_non_rejected_layout_on_trash_keeps_workflow_action_links(
 
 	monkeypatch.setattr(sheet_cutting_layout, "frappe", FrappeStub)
 
-	doc = sheet_cutting_layout.SheetCuttingLayout()
+	doc = _new_sheet_cutting_layout_doc(sheet_cutting_layout)
 	doc.name = "SCL-RELEASED"
 	doc.status = "Released"
 
@@ -953,25 +1013,10 @@ def test_frappe_bom_insert_sets_required_company_from_layout(
 	assert inserted.name == "BOM-PART001SHR"
 
 
-def test_get_release_context_uses_test_fallback_when_frappe_is_unavailable(
-	monkeypatch: pytest.MonkeyPatch,
-) -> None:
-	from sheet_cutting_layout.services import release_service
-
-	monkeypatch.setattr(release_service, "frappe", None)
-	monkeypatch.setattr(release_service, "_is_test_runtime", lambda: True)
-
-	context = release_service.get_release_context(Layout())
-
-	assert context.layouts == ()
-	assert context.boms == []
-
-
 def test_get_release_context_requires_frappe_outside_tests(monkeypatch: pytest.MonkeyPatch) -> None:
 	from sheet_cutting_layout.services import release_service
 
 	monkeypatch.setattr(release_service, "frappe", None)
-	monkeypatch.setattr(release_service, "_is_test_runtime", lambda: False)
 
 	with pytest.raises(RuntimeError, match="Frappe is required"):
 		release_service.get_release_context(Layout())
@@ -1052,7 +1097,6 @@ def test_default_bom_factory_requires_frappe_outside_tests(monkeypatch: pytest.M
 	layout = Layout()
 	finished_part = layout.finished_parts[0]
 	monkeypatch.setattr(release_service, "frappe", None)
-	monkeypatch.setattr(release_service, "_is_test_runtime", lambda: False)
 
 	with pytest.raises(RuntimeError, match="persist generated BOM"):
 		release_service._default_bom_document_factory(layout, finished_part, 1, None)
@@ -1311,7 +1355,12 @@ def test_release_generates_one_bom_for_single_finished_part_and_supersedes_old()
 	)
 	old_bom = Bom("BOM-PART001SHR-OLD", item="PART001SHR")
 
-	result = release_layout(new_layout, layouts=[old_layout, new_layout], boms=[old_bom])
+	result = release_layout(
+		new_layout,
+		layouts=[old_layout, new_layout],
+		boms=[old_bom],
+		bom_document_factory=_in_memory_bom_factory,
+	)
 
 	assert result.status == "Released"
 	assert len(result.generated_boms) == 1
@@ -1337,7 +1386,14 @@ def test_release_generates_one_bom_for_single_finished_part_and_supersedes_old()
 
 
 def test_readme_mentions_release_gate_and_bom_qty_no_of_strips() -> None:
-	content = Path("README.md").read_text(encoding="utf-8")
+	content = Path(__file__).resolve().parents[2].joinpath("README.md").read_text(encoding="utf-8")
 
 	assert "BOM quantity equals `no_of_strips`" in content
 	assert "MR release moves layouts directly to `Released`" in content
+
+
+class TestReleaseService(SheetCuttingLayoutTestCase):
+	pass
+
+
+add_pytest_style_tests(globals(), TestReleaseService)

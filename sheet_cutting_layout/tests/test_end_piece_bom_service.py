@@ -6,6 +6,9 @@ from dataclasses import dataclass, field
 
 import pytest
 
+from sheet_cutting_layout.tests.base import SheetCuttingLayoutTestCase
+from sheet_cutting_layout.tests.unittest_adapter import add_pytest_style_tests
+
 PREVIEW_ROW_KEYS = {
 	"idx",
 	"end_piece_item_code",
@@ -425,3 +428,10 @@ def test_generation_adds_positive_scrap_row(
 
 	bom = fake_frappe.created_docs[0]
 	assert bom.scrap_items == [{"item_code": "PROCESS-SCRAP", "qty": 0.75, "stock_qty": 0.75, "uom": "Kg"}]
+
+
+class TestEndPieceBomService(SheetCuttingLayoutTestCase):
+	pass
+
+
+add_pytest_style_tests(globals(), TestEndPieceBomService)

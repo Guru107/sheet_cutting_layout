@@ -14,6 +14,17 @@ from sheet_cutting_layout.services.versioning import (
 	finalize_new_revision_release,
 )
 from sheet_cutting_layout.services.workflow import LayoutWorkflowModel, apply_checker_action
+from sheet_cutting_layout.tests.base import SheetCuttingLayoutTestCase
+from sheet_cutting_layout.tests.unittest_adapter import add_pytest_style_tests
+
+
+@pytest.fixture(autouse=True)
+def isolate_state_tests_from_frappe_copy_doc(monkeypatch: pytest.MonkeyPatch) -> None:
+	try:
+		import frappe as frappe_module
+	except ImportError:
+		return
+	monkeypatch.setattr(frappe_module, "copy_doc", None, raising=False)
 
 
 @dataclass
@@ -337,3 +348,10 @@ RevisionVersioningStateMachine.TestCase.settings = settings(
 def test_state_machine_keeps_single_active_released_layout_per_family() -> None:
 	machine = RevisionVersioningStateMachine.TestCase()
 	machine.runTest()
+
+
+class TestModelWorkflowStateMachine(SheetCuttingLayoutTestCase):
+	pass
+
+
+add_pytest_style_tests(globals(), TestModelWorkflowStateMachine)
