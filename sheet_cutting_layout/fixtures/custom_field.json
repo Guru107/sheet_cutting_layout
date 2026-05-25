@@ -1,0 +1,24 @@
+[
+ {
+  "doctype": "Custom Field",
+  "dt": "BOM",
+  "fieldname": "custom_operation",
+  "fieldtype": "Data",
+  "insert_after": "with_operations",
+  "label": "Custom Operation",
+  "name": "BOM-custom_operation"
+ },
+ {
+  "doctype": "Custom Field",
+  "dt": "BOM",
+  "fieldname": "sheet_cutting_layout",
+  "fieldtype": "Link",
+  "hidden": 1,
+  "insert_after": "custom_operation",
+  "label": "Sheet Cutting Layout",
+  "name": "BOM-sheet_cutting_layout",
+  "no_copy": 1,
+  "options": "Sheet Cutting Layout",
+  "read_only": 1
+ }
+]

@@ -1,0 +1,109 @@
+[
+ {
+  "doctype": "Workflow",
+  "document_type": "Sheet Cutting Layout",
+  "is_active": 1,
+  "name": "Sheet Cutting Layout Approval Workflow",
+  "override_status": 0,
+  "send_email_alert": 0,
+  "states": [
+   {
+    "allow_edit": "System Manager",
+    "doc_status": "0",
+    "state": "Draft"
+   },
+   {
+    "allow_edit": "System Manager",
+    "doc_status": "0",
+    "state": "Submitted for Check"
+   },
+   {
+    "allow_edit": "System Manager",
+    "doc_status": "0",
+    "state": "Checked"
+   },
+   {
+    "allow_edit": "System Manager",
+    "doc_status": "0",
+    "state": "Approved by Purchase"
+   },
+   {
+    "allow_edit": "System Manager",
+    "doc_status": "1",
+    "state": "Released"
+   },
+   {
+    "allow_edit": "System Manager",
+    "doc_status": "0",
+    "state": "Rejected"
+   },
+   {
+    "allow_edit": "System Manager",
+    "doc_status": "1",
+    "state": "Superseded"
+   }
+  ],
+  "transitions": [
+   {
+    "action": "Submit for Check",
+    "allowed": "System Manager",
+    "next_state": "Submitted for Check",
+    "state": "Draft"
+   },
+   {
+    "action": "Projects Manager Approves",
+    "allowed": "Projects Manager",
+    "condition": "not doc.project_manager_ok and not doc.manufacturing_manager_ok",
+    "next_state": "Submitted for Check",
+    "state": "Submitted for Check"
+   },
+   {
+    "action": "Manufacturing Manager Approves",
+    "allowed": "Manufacturing Manager",
+    "condition": "doc.project_manager_ok and not doc.manufacturing_manager_ok",
+    "next_state": "Checked",
+    "state": "Submitted for Check"
+   },
+   {
+    "action": "Purchase Approves",
+    "allowed": "Purchase Manager",
+    "condition": "doc.project_manager_ok and doc.manufacturing_manager_ok",
+    "next_state": "Approved by Purchase",
+    "state": "Checked"
+   },
+   {
+    "action": "MR Release",
+    "allowed": "MR Coordinator",
+    "condition": "doc.project_manager_ok and doc.manufacturing_manager_ok",
+    "next_state": "Released",
+    "state": "Approved by Purchase"
+   },
+   {
+    "action": "Reject",
+    "allowed": "System Manager",
+    "next_state": "Rejected",
+    "state": "Submitted for Check"
+   },
+   {
+    "action": "Reject",
+    "allowed": "System Manager",
+    "next_state": "Rejected",
+    "state": "Checked"
+   },
+   {
+    "action": "Reject",
+    "allowed": "System Manager",
+    "next_state": "Rejected",
+    "state": "Approved by Purchase"
+   },
+   {
+    "action": "Supersede",
+    "allowed": "System Manager",
+    "next_state": "Superseded",
+    "state": "Released"
+   }
+  ],
+  "workflow_name": "Sheet Cutting Layout Approval Workflow",
+  "workflow_state_field": "status"
+ }
+]

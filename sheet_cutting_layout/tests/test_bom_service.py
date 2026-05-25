@@ -1,0 +1,147 @@
+from __future__ import annotations
+
+import importlib
+import types
+from dataclasses import dataclass, field
+
+import pytest
+
+
+@dataclass
+class FinishedPart:
+	finished_part_item: str = "FINISHED-SHR"
+	parts_per_sheet: int = 4
+	gross_weight_per_part_kg: float = 12.5
+	scrap_weight_per_part_kg: float = 0
+
+
+@dataclass
+class EndPiece:
+	weight_kg: float
+	qty_per_sheet: float = 1
+	disposition: str = "Reuse"
+	scrap_item: str | None = None
+
+
+@dataclass
+class Layout:
+	raw_material_item: str = "RAW-SHEET"
+	process_scrap_item: str = "PROCESS-SCRAP"
+	weight_per_sheet_kg: float = 50
+	no_of_strips: int = 11
+	end_pieces: list[EndPiece] = field(default_factory=list)
+
+
+def import_bom_service() -> types.ModuleType:
+	try:
+		return importlib.import_module("sheet_cutting_layout.services.bom_service")
+	except ModuleNotFoundError as error:
+		pytest.fail(f"BOM service module is not implemented: {error}")
+
+
+def test_generated_bom_uses_parts_per_sheet_quantity_and_sheet_weight_raw_qty() -> None:
+	bom_service = import_bom_service()
+
+	bom = bom_service.build_bom_from_layout_row(Layout(), FinishedPart())
+
+	assert bom.item == "FINISHED-SHR"
+	assert bom.quantity == 11
+	assert bom.items[0].item_code == "RAW-SHEET"
+	assert bom.items[0].qty == pytest.approx(50)
+	assert bom.items[0].uom == "Kg"
+	assert bom.items[0].row_type == "raw_material"
+
+
+def test_process_scrap_row_is_included_when_scrap_weight_is_positive() -> None:
+	bom_service = import_bom_service()
+
+	bom = bom_service.build_bom_from_layout_row(
+		Layout(),
+		FinishedPart(scrap_weight_per_part_kg=1.25),
+	)
+
+	assert bom.scrap_items[0].item_code == "PROCESS-SCRAP"
+	assert bom.scrap_items[0].qty == pytest.approx(5)
+	assert bom.scrap_items[0].uom == "Kg"
+	assert bom.scrap_items[0].row_type == "process_scrap"
+
+
+def test_reuse_end_pieces_do_not_create_shearing_bom_scrap_rows() -> None:
+	bom_service = import_bom_service()
+
+	bom = bom_service.build_bom_from_layout_row(
+		Layout(
+			end_pieces=[
+				EndPiece(weight_kg=3, qty_per_sheet=2),
+				EndPiece(weight_kg=1.5, qty_per_sheet=4),
+			]
+		),
+		FinishedPart(parts_per_sheet=6),
+	)
+
+	assert bom.scrap_items == []
+
+
+def test_scrap_endpiece_creates_row_level_scrap_item_separate_from_process_scrap() -> None:
+	bom_service = import_bom_service()
+
+	bom = bom_service.build_bom_from_layout_row(
+		Layout(
+			end_pieces=[EndPiece(weight_kg=8, qty_per_sheet=2, disposition="Scrap", scrap_item="EP-SCRAP")]
+		),
+		FinishedPart(parts_per_sheet=4, scrap_weight_per_part_kg=1),
+	)
+
+	assert [(row.item_code, row.qty, row.row_type) for row in bom.scrap_items] == [
+		("PROCESS-SCRAP", 4, "process_scrap"),
+		("EP-SCRAP", 8, "end_piece_scrap"),
+	]
+
+
+def test_scrap_endpiece_requires_scrap_item_before_creating_bom_row() -> None:
+	bom_service = import_bom_service()
+
+	with pytest.raises(ValueError, match="Scrap end piece requires scrap_item"):
+		bom_service.build_bom_from_layout_row(
+			Layout(end_pieces=[EndPiece(weight_kg=8, disposition="Scrap", scrap_item=None)]),
+			FinishedPart(),
+		)
+
+
+def test_bom_quantity_falls_back_to_parts_per_sheet_when_no_of_strips_is_zero() -> None:
+	bom_service = import_bom_service()
+
+	bom = bom_service.build_bom_from_layout_row(Layout(no_of_strips=0), FinishedPart(parts_per_sheet=4))
+
+	assert bom.quantity == 4
+
+
+def test_bom_quantity_coerces_integer_like_no_of_strips() -> None:
+	bom_service = import_bom_service()
+
+	bom = bom_service.build_bom_from_layout_row(Layout(no_of_strips="11"), FinishedPart(parts_per_sheet=4))
+
+	assert bom.quantity == 11
+
+
+@pytest.mark.parametrize("no_of_strips", ["many", 1.5, -1])
+def test_bom_quantity_rejects_invalid_no_of_strips(no_of_strips: object) -> None:
+	bom_service = import_bom_service()
+
+	with pytest.raises(ValueError, match="no_of_strips must be a positive integer"):
+		bom_service.build_bom_from_layout_row(
+			Layout(no_of_strips=no_of_strips),
+			FinishedPart(parts_per_sheet=4),
+		)
+
+
+def test_custom_bom_document_factory_is_used() -> None:
+	bom_service = import_bom_service()
+
+	bom = bom_service.build_bom_from_layout_row(
+		Layout(),
+		FinishedPart(),
+		document_factory=lambda item: bom_service.BomDocument(item=item, name="CUSTOM-BOM"),
+	)
+
+	assert bom.name == "CUSTOM-BOM"
