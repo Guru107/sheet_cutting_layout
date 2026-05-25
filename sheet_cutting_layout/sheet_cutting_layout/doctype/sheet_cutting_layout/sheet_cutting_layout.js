@@ -180,7 +180,7 @@ frappe.provide("sheet_cutting_layout");
 		return Promise.all(updates);
 	}
 
-	function updateEndPieceItemCodesFromRawMaterial(frm) {
+	function updateEndPieceItemCodesFromForm(frm) {
 		return updateEndPieceItemCodes(frm);
 	}
 
@@ -505,7 +505,7 @@ frappe.provide("sheet_cutting_layout");
 		strip_length_mm: updateStripWeightAndDerivedFields,
 		parts_per_strip: updatePartsPerSheetAndDerivedFields,
 		no_of_strips: updatePartsPerSheetAndDerivedFields,
-		raw_material_item: updateEndPieceItemCodesFromRawMaterial,
+		raw_material_item: updateEndPieceItemCodesFromForm,
 	});
 
 	frappe.ui.form.on("Layout Finished Part", {
@@ -520,6 +520,6 @@ frappe.provide("sheet_cutting_layout");
 		length_mm: updateEndPieceWeightsAndConsumption,
 		weight_kg: updateConsumptionTrackingFields,
 		qty_per_sheet: updateEndPieceWeightsAndConsumption,
-		disposition: updateEndPieceItemCodesFromRawMaterial,
+		disposition: updateEndPieceItemCodesFromForm,
 	});
 })();

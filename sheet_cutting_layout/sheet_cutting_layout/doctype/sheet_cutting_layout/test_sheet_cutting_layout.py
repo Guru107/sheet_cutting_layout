@@ -326,7 +326,7 @@ def test_client_updates_consumption_tracking_when_user_enters_dimensions_and_net
 	assert "Suggested Item Code" in client_script
 	assert "generated_end_piece_bom" in client_script
 	assert "hasRequiredEndPiecePreviewInputs" in client_script
-	assert "raw_material_item: updateEndPieceItemCodesFromRawMaterial" in client_script
+	assert "raw_material_item: updateEndPieceItemCodesFromForm" in client_script
 	assert "numberOrZero(row.weight_kg)" in client_script
 	assert "numberOrZero(row.weight_kg) * numberOrZero(row.qty_per_sheet)" not in client_script
 	assert "row.finished_part_item" in client_script
@@ -340,7 +340,7 @@ def test_client_updates_consumption_tracking_when_user_enters_dimensions_and_net
 	assert "width_mm: updateEndPieceWeightsAndConsumption" in client_script
 	assert "length_mm: updateEndPieceWeightsAndConsumption" in client_script
 	assert "qty_per_sheet: updateEndPieceWeightsAndConsumption" in client_script
-	assert "disposition: updateEndPieceItemCodesFromRawMaterial" in client_script
+	assert "disposition: updateEndPieceItemCodesFromForm" in client_script
 
 
 def test_client_has_no_sheet_layout_canvas_dependency() -> None:
