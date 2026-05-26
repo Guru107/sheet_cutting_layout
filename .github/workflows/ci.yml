@@ -82,7 +82,6 @@ jobs:
       - name: Setup
         run: |
           pip install frappe-bench
-          python -m pip install pytest hypothesis
           bench init --frappe-branch version-15 --skip-redis-config-generation --skip-assets --python "$(which python)" ~/frappe-bench
           mariadb --host 127.0.0.1 --port 3306 -u root -proot -e "SET GLOBAL character_set_server = 'utf8mb4'"
           mariadb --host 127.0.0.1 --port 3306 -u root -proot -e "SET GLOBAL collation_server = 'utf8mb4_unicode_ci'"
@@ -93,18 +92,11 @@ jobs:
           bench get-app erpnext --branch version-15
           bench get-app sheet_cutting_layout $GITHUB_WORKSPACE
           bench setup requirements --dev
-          bench pip install pytest hypothesis
-          bench new-site --db-root-password root --admin-password admin test_site
-          bench --site test_site install-app erpnext
-          bench --site test_site install-app sheet_cutting_layout
-          bench build
         env:
           CI: 'Yes'
 
       - name: Run Tests
-        working-directory: /home/runner/frappe-bench
+        working-directory: ${{ github.workspace }}
         run: |
-          bench --site test_site set-config allow_tests true
-          bench --site test_site run-tests --app sheet_cutting_layout
-        env:
-          TYPE: server
+          chmod +x scripts/run_ephemeral_python_tests.sh
+          BENCH_ROOT=/home/runner/frappe-bench DB_ROOT_PASSWORD=root scripts/run_ephemeral_python_tests.sh
