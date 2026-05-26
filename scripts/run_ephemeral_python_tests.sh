@@ -36,6 +36,7 @@ bench --site "$SITE_NAME" install-app erpnext
 bench --site "$SITE_NAME" install-app sheet_cutting_layout
 bench build --app sheet_cutting_layout
 bench --site "$SITE_NAME" execute erpnext.setup.setup_wizard.operations.install_fixtures.install --args '["India"]'
+bench --site "$SITE_NAME" execute sheet_cutting_layout.tests.test_setup.before_tests
 bench --site "$SITE_NAME" set-config allow_tests true
 
 run_tests_cmd=(bench --site "$SITE_NAME" run-tests --app sheet_cutting_layout)
