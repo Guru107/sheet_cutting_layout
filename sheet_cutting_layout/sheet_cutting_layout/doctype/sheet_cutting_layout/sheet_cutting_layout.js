@@ -186,11 +186,22 @@ frappe.provide("sheet_cutting_layout");
 
 	function clearReuseOnlyEndPieceFields(cdt, cdn) {
 		const row = locals[cdt][cdn];
-		if (!row || row.disposition === "Reuse") {
+		if (!row) {
 			return Promise.resolve();
 		}
 
 		const updates = [];
+		if (row.disposition === "Reuse") {
+			if (row.scrap_item) {
+				updates.push(frappe.model.set_value(cdt, cdn, "scrap_item", ""));
+			}
+			return Promise.all(updates);
+		}
+
+		if (row.disposition !== "Scrap") {
+			return Promise.resolve();
+		}
+
 		if (row.used_for_finished_part) {
 			updates.push(frappe.model.set_value(cdt, cdn, "used_for_finished_part", ""));
 		}

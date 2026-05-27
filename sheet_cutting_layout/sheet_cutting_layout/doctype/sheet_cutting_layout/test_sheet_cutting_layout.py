@@ -338,6 +338,7 @@ def test_client_updates_consumption_tracking_when_user_enters_dimensions_and_net
 	assert "hasRequiredEndPiecePreviewInputs" in client_script
 	assert "raw_material_item: updateEndPieceItemCodesFromForm" in client_script
 	assert 'frappe.model.set_value(cdt, cdn, "used_for_finished_part", "")' in client_script
+	assert 'frappe.model.set_value(cdt, cdn, "scrap_item", "")' in client_script
 	assert 'frappe.model.set_value(cdt, cdn, "bom_quantity", null)' in client_script
 	assert 'frappe.model.set_value(cdt, cdn, "bom_scrap_quantity_kg", null)' in client_script
 	assert "numberOrZero(row.weight_kg)" in client_script

@@ -345,7 +345,9 @@ def _validate_end_piece_required_fields(end_piece: EndPieceRow) -> None:
 		frappe.throw(_("End piece quantity is required"))
 	if end_piece.qty_per_sheet <= 0:
 		frappe.throw(_("End piece quantity must be greater than zero"))
+	_validate_end_piece_disposition(end_piece)
 	_validate_non_reuse_end_piece_fields_are_empty(end_piece)
+	_validate_non_scrap_end_piece_fields_are_empty(end_piece)
 	if _is_reuse_end_piece(end_piece):
 		if _is_missing(getattr(end_piece, "used_for_finished_part", None)):
 			frappe.throw(_("Used for finished part is required for reuse end pieces"))
@@ -359,6 +361,13 @@ def _validate_end_piece_required_fields(end_piece: EndPieceRow) -> None:
 		frappe.throw(_("Scrap item is required for scrap end pieces"))
 
 
+def _validate_end_piece_disposition(end_piece: EndPieceRow) -> None:
+	disposition = getattr(end_piece, "disposition", None)
+	if disposition in {"Reuse", "Scrap"}:
+		return
+	frappe.throw(_("Disposition must be either Reuse or Scrap"))
+
+
 def _validate_non_reuse_end_piece_fields_are_empty(end_piece: EndPieceRow) -> None:
 	if _is_reuse_end_piece(end_piece):
 		return
@@ -368,6 +377,13 @@ def _validate_non_reuse_end_piece_fields_are_empty(end_piece: EndPieceRow) -> No
 		frappe.throw(_("BOM quantity is allowed only for reuse end pieces"))
 	if _has_non_zero_value(getattr(end_piece, "bom_scrap_quantity_kg", None)):
 		frappe.throw(_("BOM scrap quantity is allowed only for reuse end pieces"))
+
+
+def _validate_non_scrap_end_piece_fields_are_empty(end_piece: EndPieceRow) -> None:
+	if _is_scrap_end_piece(end_piece):
+		return
+	if not _is_missing(getattr(end_piece, "scrap_item", None)):
+		frappe.throw(_("Scrap item is allowed only for scrap end pieces"))
 
 
 def _validate_end_piece_distribution(
