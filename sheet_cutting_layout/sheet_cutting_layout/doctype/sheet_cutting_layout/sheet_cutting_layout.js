@@ -184,7 +184,11 @@ frappe.provide("sheet_cutting_layout");
 		return updateEndPieceItemCodes(frm);
 	}
 
-	function clearReuseOnlyEndPieceFields(cdt, cdn) {
+	function hasValue(value) {
+		return value !== null && value !== undefined && value !== "";
+	}
+
+	function clearStaleEndPieceDispositionFields(cdt, cdn) {
 		const row = locals[cdt][cdn];
 		if (!row) {
 			return Promise.resolve();
@@ -205,18 +209,10 @@ frappe.provide("sheet_cutting_layout");
 		if (row.used_for_finished_part) {
 			updates.push(frappe.model.set_value(cdt, cdn, "used_for_finished_part", ""));
 		}
-		if (
-			row.bom_quantity !== null &&
-			row.bom_quantity !== undefined &&
-			row.bom_quantity !== ""
-		) {
+		if (hasValue(row.bom_quantity)) {
 			updates.push(frappe.model.set_value(cdt, cdn, "bom_quantity", null));
 		}
-		if (
-			row.bom_scrap_quantity_kg !== null &&
-			row.bom_scrap_quantity_kg !== undefined &&
-			row.bom_scrap_quantity_kg !== ""
-		) {
+		if (hasValue(row.bom_scrap_quantity_kg)) {
 			updates.push(frappe.model.set_value(cdt, cdn, "bom_scrap_quantity_kg", null));
 		}
 		return Promise.all(updates);
@@ -402,7 +398,7 @@ frappe.provide("sheet_cutting_layout");
 	}
 
 	function updateEndPieceDispositionAndDerivedFields(frm, cdt, cdn) {
-		return clearReuseOnlyEndPieceFields(cdt, cdn)
+		return clearStaleEndPieceDispositionFields(cdt, cdn)
 			.then(() => updateEndPieceItemCodesFromForm(frm))
 			.then(() => updateConsumptionTracking(frm));
 	}

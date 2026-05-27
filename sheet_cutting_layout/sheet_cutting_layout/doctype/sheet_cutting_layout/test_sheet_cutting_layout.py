@@ -324,7 +324,7 @@ def test_client_updates_consumption_tracking_when_user_enters_dimensions_and_net
 	assert "calculateConsumptionTracking" in client_script
 	assert "updateFinishedPartWeights" in client_script
 	assert "updateEndPieceWeights" in client_script
-	assert "clearReuseOnlyEndPieceFields" in client_script
+	assert "clearStaleEndPieceDispositionFields" in client_script
 	assert "updatePartsPerSheet" in client_script
 	assert "preview_sheet_cutting_layout_end_piece_boms" in client_script
 	assert "generate_sheet_cutting_layout_end_piece_boms" in client_script
