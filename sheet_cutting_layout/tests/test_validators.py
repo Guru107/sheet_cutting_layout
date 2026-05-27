@@ -689,9 +689,57 @@ def test_scrap_end_piece_rows_require_scrap_item(validators: types.ModuleType) -
 		validators.validate_sheet_cutting_layout(
 			Layout(
 				finished_parts=[FinishedPart("AB12SHR", 2, 11, 1)],
-				end_pieces=[EndPiece(disposition="Scrap", scrap_item="")],
+				end_pieces=[
+					EndPiece(
+						disposition="Scrap",
+						scrap_item="",
+						used_for_finished_part="",
+						bom_quantity=0,
+						bom_scrap_quantity_kg=0,
+					)
+				],
 			)
 		)
+
+
+def test_non_reuse_end_piece_rows_reject_reuse_only_fields(validators: types.ModuleType) -> None:
+	cases = [
+		(
+			EndPiece(
+				disposition="Scrap",
+				used_for_finished_part="FG01SHR",
+				bom_quantity=0,
+				bom_scrap_quantity_kg=0,
+			),
+			"Used for finished part",
+		),
+		(
+			EndPiece(
+				disposition="Scrap",
+				used_for_finished_part="",
+				bom_quantity=1,
+				bom_scrap_quantity_kg=0,
+			),
+			"BOM quantity",
+		),
+		(
+			EndPiece(
+				disposition="Scrap",
+				used_for_finished_part="",
+				bom_quantity=0,
+				bom_scrap_quantity_kg=0.1,
+			),
+			"BOM scrap quantity",
+		),
+	]
+	for end_piece, message in cases:
+		with pytest.raises(ValidationError, match=message):
+			validators.validate_sheet_cutting_layout(
+				Layout(
+					finished_parts=[FinishedPart("AB12SHR", 2, 11, 1)],
+					end_pieces=[end_piece],
+				)
+			)
 
 
 def test_apply_end_piece_bom_status_tracks_reuse_generation_state(validators: types.ModuleType) -> None:
