@@ -97,6 +97,7 @@ def validators(monkeypatch: pytest.MonkeyPatch) -> types.ModuleType:
 
 	module = importlib.import_module("sheet_cutting_layout.services.validators")
 	monkeypatch.setattr(module, "frappe", fake_frappe)
+	monkeypatch.setattr(module, "_", lambda message: message)
 	return module
 
 

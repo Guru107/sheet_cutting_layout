@@ -25,33 +25,28 @@ def _build_test_method(module_globals: dict[str, Any], fn: Any):
 	param_names = list(signature.parameters)
 	parametrize_marks = _parametrize_marks(fn)
 
-	def _test_method(self) -> None:
+	def _run_case(param_values: dict[str, Any]) -> None:
 		monkeypatch = pytest.MonkeyPatch()
 		fixture_cache: dict[str, Any] = {}
 		try:
 			_run_autouse_fixtures(module_globals, monkeypatch, fixture_cache)
-
-			if _is_hypothesis_test(fn):
-				fn()
-				return
-
-			if not parametrize_marks:
-				kwargs = _build_kwargs(module_globals, param_names, monkeypatch, fixture_cache, {})
-				fn(**kwargs)
-				return
-
-			for case_index, param_values in enumerate(_iter_parametrize_cases(parametrize_marks)):
-				with self.subTest(case=case_index, params=param_values):
-					kwargs = _build_kwargs(
-						module_globals,
-						param_names,
-						monkeypatch,
-						fixture_cache,
-						param_values,
-					)
-					fn(**kwargs)
+			kwargs = _build_kwargs(module_globals, param_names, monkeypatch, fixture_cache, param_values)
+			fn(**kwargs)
 		finally:
 			monkeypatch.undo()
+
+	def _test_method(self) -> None:
+		if _is_hypothesis_test(fn):
+			fn()
+			return
+
+		if not parametrize_marks:
+			_run_case({})
+			return
+
+		for case_index, param_values in enumerate(_iter_parametrize_cases(parametrize_marks)):
+			with self.subTest(case=case_index, params=param_values):
+				_run_case(param_values)
 
 	return _test_method
 
