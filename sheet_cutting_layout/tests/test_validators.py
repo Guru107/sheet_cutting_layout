@@ -9,6 +9,9 @@ from pathlib import Path
 
 import pytest
 
+from sheet_cutting_layout.tests.base import SheetCuttingLayoutTestCase
+from sheet_cutting_layout.tests.unittest_adapter import add_pytest_style_tests
+
 
 class ValidationError(Exception):
 	pass
@@ -94,6 +97,7 @@ def validators(monkeypatch: pytest.MonkeyPatch) -> types.ModuleType:
 
 	module = importlib.import_module("sheet_cutting_layout.services.validators")
 	monkeypatch.setattr(module, "frappe", fake_frappe)
+	monkeypatch.setattr(module, "_", lambda message: message)
 	return module
 
 
@@ -761,7 +765,8 @@ def test_controller_validate_delegates_to_service(monkeypatch: pytest.MonkeyPatc
 
 	monkeypatch.setattr(sheet_cutting_layout, "validate_sheet_cutting_layout", fake_validate)
 
-	doc = sheet_cutting_layout.SheetCuttingLayout()
+	doc = object.__new__(sheet_cutting_layout.SheetCuttingLayout)
+	doc.doctype = "Sheet Cutting Layout"
 	doc.validate()
 
 	assert called_with == [doc]
@@ -776,3 +781,10 @@ def test_revision_and_workflow_invalid_transitions_raise() -> None:
 
 	with pytest.raises(AssertionError, match="Expected layout state"):
 		LayoutWorkflowModel().supersede()
+
+
+class TestValidators(SheetCuttingLayoutTestCase):
+	pass
+
+
+add_pytest_style_tests(globals(), TestValidators)
