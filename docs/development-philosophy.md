@@ -1,6 +1,12 @@
 # Development Philosophy
 
-Test-driven development is the only development path in this repository.
+- Test-driven development is the only development path in this repository.
+- Always use bench native and frappe native testing frameworks.
+- The coverage must always be above 96%.
+- When implementing any feature or a behaviour always adhere to frappe, erpnext coding standards.
+- Always check if a particular feature or behaviour is already handled by frappe or erpnext then use the same where possible, follow DRY principles when coding.
+- Always look to have mimimum customizations, if there is a way to solve a particular problem without customization then give the option to choose if we want to go with already existing behaviour or implement new feature.
+- Always stay close to frappe and erpnext framework.
 
 No production behavior should be added or changed without first writing a failing test that describes
 the required behavior. The cycle is always:
