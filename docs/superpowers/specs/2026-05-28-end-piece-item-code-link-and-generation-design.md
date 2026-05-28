@@ -34,6 +34,7 @@ The field is shown only after generation and is not user-editable. Item creation
 1. Change `end_piece_item_code` field type to `Link` (`Item`), read-only.
 1. Keep `end_piece_item_code` hidden until populated.
 1. Remove `generated_end_piece_item` from doctype and code paths.
+1. Remove `generated_end_piece_bom` from doctype and code paths.
 1. Build code from `used_for_finished_part`, not from finished-part parent row:
    - `<used_for_finished_part>-EP-<thickness>x<width>x<length>`
 1. If computed item exists, reuse as-is.
@@ -58,9 +59,9 @@ The field is shown only after generation and is not user-editable. Item creation
    - to: `Link`
    - options: `Item`
    - `read_only = 1`
-   - hidden when empty (via dependency/property handling)
+   - hidden by default and shown only when populated (`depends_on: eval:doc.end_piece_item_code`)
 1. Remove `generated_end_piece_item` field.
-1. Keep `generated_end_piece_bom` as existing generated record link.
+1. Remove `generated_end_piece_bom` field.
 1. Align `disposition` options to only supported states:
    - `Reuse`
    - `Scrap`
@@ -102,12 +103,11 @@ The field is shown only after generation and is not user-editable. Item creation
 1. Lock semantics for `end_piece_item_code`:
    - user cannot edit it in UI (read-only always).
    - before generation, value is empty.
-   - after generation (`generated_end_piece_bom` present), code is immutable server-side.
+   - after generation (field populated), code is immutable server-side.
    - any attempt to modify generated code on existing rows is rejected.
-1. Legacy disposition handling (no migration strategy):
+1. Disposition validation:
    - `Reuse` and `Scrap` are the only accepted values.
-   - existing `Hold` rows fail with explicit validation error.
-   - development DB cleanup is manual/out-of-band before normal use.
+   - any other value fails with explicit validation error.
 
 ## Item Generation (`Generate End Piece BOMs`)
 
@@ -160,10 +160,14 @@ The field is shown only after generation and is not user-editable. Item creation
 
 ## Test Plan (Frappe/bench-native)
 
-1. DocType contract tests:
-   - `end_piece_item_code` is `Link(Item)` and read-only.
-   - `generated_end_piece_item` is absent.
-   - `disposition` options exclude `Hold`.
+1. Test framework policy:
+   - Use only bench/Frappe native `unittest` style tests (`bench --site ... run-tests`).
+   - Do not use non-`unittest` test APIs or runners.
+   - Prefer behavioral tests over source/introspection assertions for client/server functions.
+1. Layout behavior tests:
+   - before generation, `end_piece_item_code` remains empty during normal save/edit flow.
+   - generation flow populates `end_piece_item_code` with an existing `Item` link.
+   - invalid disposition values are rejected with deterministic validation errors.
 1. Validator tests:
    - reuse suffix valid for `SHR` / `BLK` / `DR`.
    - invalid suffix rejected with expected message.
@@ -177,8 +181,6 @@ The field is shown only after generation and is not user-editable. Item creation
    - scrap row `rate` is filled from valuation fallback when missing.
    - existing auto-populated `rate` is preserved.
    - missing/invalid valuation rate throws deterministic error.
-1. Client/source assertions:
-   - remove suggestion hooks and preview-only code tied to pre-generation item code.
 
 ## Rollout and Risk
 

@@ -6,7 +6,7 @@
 
 **Architecture:** Keep a hybrid enforcement strategy: DocType metadata controls visibility/editability, validators enforce deterministic business rules, and generation services own create-or-reuse and pricing fallback logic. Centralize scrap-rate fallback in `services/bom_service.py` and call it from release and end-piece BOM generation paths.
 
-**Tech Stack:** Frappe/ERPNext 15 DocType JSON + Desk Form JS, Python service modules (`validators.py`, `end_piece_bom_service.py`, `bom_service.py`, `release_service.py`), bench-native tests (`bench --site ... run-tests`), pre-commit.
+**Tech Stack:** Frappe/ERPNext 15 DocType JSON + Desk Form JS, Python service modules (`validators.py`, `end_piece_bom_service.py`, `bom_service.py`, `release_service.py`), bench-native `unittest` tests only (`bench --site ... run-tests`), pre-commit.
 
 ---
 
@@ -19,7 +19,7 @@
 - End-piece generation service: `sheet_cutting_layout/services/end_piece_bom_service.py`
 - BOM model/rate helper owner: `sheet_cutting_layout/services/bom_service.py`
 - Release integration: `sheet_cutting_layout/services/release_service.py`
-- Contract/source tests:
+- Behavioral tests:
   - `sheet_cutting_layout/sheet_cutting_layout/doctype/sheet_cutting_layout/test_sheet_cutting_layout.py`
   - `sheet_cutting_layout/tests/test_validators.py`
   - `sheet_cutting_layout/tests/test_end_piece_bom_service.py`
@@ -33,14 +33,15 @@ Modify:
 - `sheet_cutting_layout/sheet_cutting_layout/doctype/layout_end_piece/layout_end_piece.json`
   - Convert `end_piece_item_code` to read-only `Link(Item)`.
   - Remove `generated_end_piece_item`.
-  - Keep `end_piece_item_code` hidden until generated (`depends_on` on `generated_end_piece_bom`).
+  - Remove `generated_end_piece_bom`.
+  - Keep `end_piece_item_code` hidden by default and show it only when populated (`depends_on: eval:doc.end_piece_item_code`).
 - `sheet_cutting_layout/sheet_cutting_layout/doctype/sheet_cutting_layout/sheet_cutting_layout.js`
   - Remove pre-generation item-code suggestion/update logic and preview wiring.
   - Keep disposition cleanup + consumption recalculation only.
 - `sheet_cutting_layout/services/validators.py`
   - Add `used_for_finished_part` suffix validation (`SHR|BLK|DR`) for reuse rows.
   - Remove reuse-time requirement for prefilled `end_piece_item_code`.
-  - Keep generated code immutable once generated BOM link exists.
+  - Keep generated code immutable once `end_piece_item_code` is populated on an existing row.
 - `sheet_cutting_layout/services/end_piece_bom_service.py`
   - Derive deterministic code from `used_for_finished_part` + dimensions.
   - Create/reuse Item with `Nos` stock UOM and `Kg` alternate UOM conversion (`1 / weight_kg`).
@@ -50,7 +51,7 @@ Modify:
   - Add owned helper `resolve_scrap_item_rate(...)` for valuation-rate fallback.
 - `sheet_cutting_layout/services/release_service.py`
   - Use `resolve_scrap_item_rate(...)` when appending BOM scrap rows if `rate` missing.
-- Tests listed above to match new contract and remove obsolete preview/generated-item dual-field assumptions.
+- Tests listed above to match the updated link-only generation contract and deterministic rate rules.
 
 No migration files are planned (explicitly out of scope for this in-development app).
 
@@ -62,18 +63,23 @@ No migration files are planned (explicitly out of scope for this in-development 
 - Modify: `sheet_cutting_layout/sheet_cutting_layout/doctype/layout_end_piece/layout_end_piece.json`
 - Test: `sheet_cutting_layout/sheet_cutting_layout/doctype/sheet_cutting_layout/test_sheet_cutting_layout.py`
 
-- [ ] **Step 1: Add failing doctype contract assertions**
+- [ ] **Step 1: Add failing layout behavior tests (no function/source assertions)**
 
-In `test_sheet_cutting_layout.py`, assert:
+In `test_sheet_cutting_layout.py`, add behavioral assertions such as:
 
 ```python
-assert end_piece_fields["end_piece_item_code"]["fieldtype"] == "Link"
-assert end_piece_fields["end_piece_item_code"]["options"] == "Item"
-assert end_piece_fields["end_piece_item_code"].get("read_only") == 1
-assert end_piece_fields["end_piece_item_code"].get("depends_on") == 'eval:doc.generated_end_piece_bom'
-assert end_piece_fields["disposition"]["options"] == "\nReuse\nScrap"
-assert "Hold" not in end_piece_fields["disposition"]["options"]
-assert "generated_end_piece_item" not in end_piece_fields
+layout = build_valid_layout(...)
+layout.save()
+self.assertEqual(layout.end_pieces[0].end_piece_item_code, "")
+
+layout.end_pieces[0].disposition = "InvalidDisposition"
+with self.assertRaisesRegex(frappe.ValidationError, "Disposition must be either Reuse or Scrap"):
+    layout.save()
+
+run_generate_end_piece_boms_action(layout.name)
+layout.reload()
+self.assertTrue(layout.end_pieces[0].end_piece_item_code)
+self.assertTrue(frappe.db.exists("Item", layout.end_pieces[0].end_piece_item_code))
 ```
 
 - [ ] **Step 2: Run doctype contract test and confirm failure**
@@ -84,17 +90,17 @@ Run:
 bench --site development.localhost run-tests --app sheet_cutting_layout --module sheet_cutting_layout.sheet_cutting_layout.doctype.sheet_cutting_layout.test_sheet_cutting_layout
 ```
 
-Expected: fail on `end_piece_item_code` fieldtype/options and removed field assertions.
+Expected: fail on new behavioral assertions.
 
 - [ ] **Step 3: Implement DocType JSON changes**
 
 In `layout_end_piece.json`:
 
 1. Change `end_piece_item_code` from `Data` to `Link` with `options: "Item"` and `read_only: 1`.
-1. Add `depends_on: eval:doc.generated_end_piece_bom` to `end_piece_item_code`.
+1. Add `hidden: 1` and `depends_on: eval:doc.end_piece_item_code` to `end_piece_item_code`.
 1. Ensure `disposition` options are exactly:
    - `\nReuse\nScrap`
-1. Remove `generated_end_piece_item` from `field_order` and `fields`.
+1. Remove `generated_end_piece_item` and `generated_end_piece_bom` from `field_order` and `fields`.
 
 - [ ] **Step 4: Re-run doctype contract test and confirm pass**
 
@@ -119,26 +125,27 @@ git commit -m "feat: make end piece item code generated link-only field"
 - Modify: `sheet_cutting_layout/sheet_cutting_layout/doctype/sheet_cutting_layout/sheet_cutting_layout.js`
 - Test: `sheet_cutting_layout/sheet_cutting_layout/doctype/sheet_cutting_layout/test_sheet_cutting_layout.py`
 
-- [ ] **Step 1: Add failing source-contract assertions**
+- [ ] **Step 1: Add failing behavior tests (no source/function assertions)**
 
-In client source assertions, add:
-
-```python
-assert "suggestEndPieceItemCode(" not in client_script
-assert "updateEndPieceItemCodes(" not in client_script
-assert "updateEndPieceItemCodesFromForm" not in client_script
-assert "preview_sheet_cutting_layout_end_piece_boms" not in client_script
-assert "Preview End Piece Items" not in client_script
-assert 'set_value(row.doctype, row.name, "end_piece_item_code"' not in client_script
-```
-
-And keep assertion for disposition cleanup handler:
+In `test_sheet_cutting_layout.py`, add behavioral assertions such as:
 
 ```python
-assert "disposition: updateEndPieceDispositionAndDerivedFields" in client_script
+layout = build_valid_layout(...)
+layout.save()
+self.assertEqual(layout.end_pieces[0].end_piece_item_code, "")
+
+layout.end_pieces[0].disposition = "Scrap"
+layout.end_pieces[0].used_for_finished_part = "FG001SHR"
+with self.assertRaisesRegex(frappe.ValidationError, "allowed only for reuse end pieces"):
+    layout.save()
+
+layout.end_pieces[0].disposition = "Reuse"
+layout.end_pieces[0].scrap_item = "MSScrap"
+with self.assertRaisesRegex(frappe.ValidationError, "allowed only for scrap end pieces"):
+    layout.save()
 ```
 
-- [ ] **Step 2: Run doctype JS source test and confirm failure**
+- [ ] **Step 2: Run doctype behavior test module and confirm failure**
 
 Run:
 
@@ -146,7 +153,7 @@ Run:
 bench --site development.localhost run-tests --app sheet_cutting_layout --module sheet_cutting_layout.sheet_cutting_layout.doctype.sheet_cutting_layout.test_sheet_cutting_layout
 ```
 
-Expected: fail on removed preview/suggestion behavior assertions.
+Expected: fail until behavioral expectations are implemented.
 
 - [ ] **Step 3: Implement JS cleanup**
 
@@ -159,7 +166,7 @@ In `sheet_cutting_layout.js`:
    - stale field cleanup
    - consumption tracking
 
-- [ ] **Step 4: Re-run doctype JS source test and confirm pass**
+- [ ] **Step 4: Re-run doctype behavior test module and confirm pass**
 
 Run:
 
@@ -167,7 +174,7 @@ Run:
 bench --site development.localhost run-tests --app sheet_cutting_layout --module sheet_cutting_layout.sheet_cutting_layout.doctype.sheet_cutting_layout.test_sheet_cutting_layout
 ```
 
-Expected: pass with no preview/suggestion references.
+Expected: pass with behavioral assertions.
 
 - [ ] **Step 5: Commit JS behavior contraction**
 
@@ -192,16 +199,16 @@ Add/adjust tests:
 1. Reuse row rejects non-matching suffix:
 
 ```python
-with pytest.raises(ValidationError, match="must end with SHR, BLK, or DR"):
+with self.assertRaisesRegex(frappe.ValidationError, "must end with SHR, BLK, or DR"):
     validators.validate_sheet_cutting_layout(...)
 ```
 
 1. Reuse validation no longer requires prefilled `end_piece_item_code` before generation.
 1. Before generation contract is explicit:
    - `end_piece_item_code` stays empty until `Generate End Piece BOMs` persists generated value.
-1. Lock test uses `generated_end_piece_bom` as immutable gate for `end_piece_item_code`.
-1. Legacy invalid disposition path is explicit:
-   - `disposition in ("", None, "Hold")` fails with `Disposition must be either Reuse or Scrap`.
+1. Lock test uses populated persisted `end_piece_item_code` as immutable gate for `end_piece_item_code`.
+1. Invalid disposition path is explicit:
+   - `disposition` outside `{Reuse, Scrap}` fails with `Disposition must be either Reuse or Scrap`.
 1. Deterministic numeric-component validation path is explicit:
    - missing/non-numeric/non-positive thickness, width, or length used for code generation fail with expected message.
 
@@ -220,10 +227,10 @@ Expected: fail on new suffix and pre-generation code assumptions.
 In `validators.py`:
 
 1. Add helper to validate reuse suffix (normalize via `strip().upper()` for determinism).
-1. Keep explicit disposition guard (`Reuse`/`Scrap` only), preserving `Hold` rejection message.
+1. Keep explicit disposition guard (`Reuse`/`Scrap` only), with deterministic error for any invalid value.
 1. Remove reuse-time requirement that `end_piece_item_code` must already be set.
 1. Keep/update generated-code lock check:
-   - deny `end_piece_item_code` edits when `generated_end_piece_bom` exists.
+   - deny `end_piece_item_code` edits when a previously persisted non-empty value is changed.
 1. Add/own shared code-format helper in validators (single source of truth for numeric normalization), and use this helper from generation service to avoid derivation drift.
 
 - [ ] **Step 4: Re-run validator module and confirm pass**
@@ -264,7 +271,6 @@ Add/adjust tests for:
    - `stock_uom == "Nos"`.
    - UOM row for `"Kg"` has `conversion_factor == 1 / end_piece.weight_kg`.
 1. Existing item reuse path does not mutate item.
-1. `generated_end_piece_item` is no longer persisted or asserted.
 1. Error paths:
    - missing/zero `weight_kg` fails before UOM conversion setup.
    - generated code length overflow fails with explicit error containing `used_for_finished_part` context (no truncation).
@@ -291,7 +297,6 @@ In `end_piece_bom_service.py`:
 1. Preserve current `item_group` derivation from `raw_material_item` item group.
 1. Persist only:
    - `end_piece_item_code`
-   - `generated_end_piece_bom`
 1. Remove `generated_end_piece_item` protocol usage and persistence payload fields.
 1. Add explicit failures for:
    - missing/zero `weight_kg`
@@ -389,7 +394,7 @@ git commit -m "feat: apply valuation-rate fallback for generated scrap rows"
 **Files:**
 - Modify only if failures require fixups in changed files.
 
-- [ ] **Step 1: Run doctype/source contract module**
+- [ ] **Step 1: Run doctype behavior module**
 
 ```bash
 bench --site development.localhost run-tests --app sheet_cutting_layout --module sheet_cutting_layout.sheet_cutting_layout.doctype.sheet_cutting_layout.test_sheet_cutting_layout

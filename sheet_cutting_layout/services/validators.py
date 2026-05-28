@@ -41,8 +41,6 @@ class EndPieceRow(Protocol):
 	used_for_finished_part: str | None
 	bom_quantity: float | None
 	bom_scrap_quantity_kg: float | None
-	generated_end_piece_item: str | None
-	generated_end_piece_bom: str | None
 	scrap_item: str | None
 
 
@@ -106,7 +104,7 @@ def validate_sheet_cutting_layout(layout: SheetCuttingLayoutDocument) -> None:
 			frappe.throw(_("Process scrap item is required when process scrap weight is positive"))
 
 	for end_piece in end_pieces:
-		_validate_generated_end_piece_item_code_is_locked(end_piece)
+		_validate_end_piece_item_code_is_locked(end_piece)
 		_validate_end_piece_required_fields(end_piece)
 
 	if _requires_process_scrap_item_for_reuse_bom(end_pieces) and _is_missing(
@@ -236,37 +234,26 @@ def apply_end_piece_weight_formulas(
 			end_piece.weight_kg = _flt(weight * qty_per_sheet)
 
 
-def suggest_end_piece_item_code(
+def derive_end_piece_item_code(
 	*,
-	raw_material_item: str | None,
+	used_for_finished_part: str | None,
 	thickness_mm: float | None,
 	width_mm: float | None,
 	length_mm: float | None,
-) -> str | None:
-	if _is_missing(raw_material_item) or thickness_mm is None or width_mm is None or length_mm is None:
-		return None
+) -> str:
+	prefix = str(used_for_finished_part or "").strip()
+	if _is_missing(prefix):
+		raise ValueError("Used for finished part is required")
+	if thickness_mm is None or thickness_mm <= 0:
+		raise ValueError("End piece thickness must be greater than zero")
+	if width_mm is None or width_mm <= 0:
+		raise ValueError("End piece width must be greater than zero")
+	if length_mm is None or length_mm <= 0:
+		raise ValueError("End piece length must be greater than zero")
 	return (
-		f"{raw_material_item}-EP-"
+		f"{prefix}-EP-"
 		f"{_format_code_number(thickness_mm)}x{_format_code_number(width_mm)}x{_format_code_number(length_mm)}"
 	)
-
-
-def apply_end_piece_item_code_suggestions(
-	layout: SheetCuttingLayoutDocument,
-	end_pieces: Sequence[EndPieceRow],
-) -> None:
-	for end_piece in end_pieces:
-		if not _is_missing(getattr(end_piece, "end_piece_item_code", None)):
-			continue
-
-		suggested_code = suggest_end_piece_item_code(
-			raw_material_item=getattr(layout, "raw_material_item", None),
-			thickness_mm=getattr(layout, "sheet_thickness_mm", None),
-			width_mm=getattr(end_piece, "width_mm", None),
-			length_mm=getattr(end_piece, "length_mm", None),
-		)
-		if suggested_code is not None:
-			end_piece.end_piece_item_code = suggested_code
 
 
 def calculate_sheet_weight_kg(
@@ -351,8 +338,7 @@ def _validate_end_piece_required_fields(end_piece: EndPieceRow) -> None:
 	if _is_reuse_end_piece(end_piece):
 		if _is_missing(getattr(end_piece, "used_for_finished_part", None)):
 			frappe.throw(_("Used for finished part is required for reuse end pieces"))
-		if _is_missing(getattr(end_piece, "end_piece_item_code", None)):
-			frappe.throw(_("End piece item code is required for reuse end pieces"))
+		_validate_reuse_suffix(end_piece)
 		if getattr(end_piece, "bom_quantity", None) is None or end_piece.bom_quantity <= 0:
 			frappe.throw(_("BOM quantity must be greater than zero for reuse end pieces"))
 		if getattr(end_piece, "bom_scrap_quantity_kg", None) is None or end_piece.bom_scrap_quantity_kg < 0:
@@ -408,6 +394,13 @@ def _validate_end_piece_distribution(
 			frappe.throw(_("Derived finished goods weight must be non-negative"))
 
 
+def _validate_reuse_suffix(end_piece: EndPieceRow) -> None:
+	used_for_finished_part = str(getattr(end_piece, "used_for_finished_part", "") or "").strip().upper()
+	if used_for_finished_part.endswith(("SHR", "BLK", "DR")):
+		return
+	frappe.throw(_("Used for finished part must end with SHR, BLK, or DR"))
+
+
 def _is_reuse_end_piece(end_piece: EndPieceRow) -> bool:
 	return getattr(end_piece, "disposition", None) == "Reuse"
 
@@ -434,20 +427,20 @@ def apply_end_piece_bom_status(
 		layout.end_piece_bom_status = "Not Required"
 		return
 	if all(
-		not _is_missing(getattr(end_piece, "generated_end_piece_bom", None)) for end_piece in reuse_end_pieces
+		not _is_missing(getattr(end_piece, "end_piece_item_code", None)) for end_piece in reuse_end_pieces
 	):
 		layout.end_piece_bom_status = "Generated"
 		return
 	layout.end_piece_bom_status = "Pending"
 
 
-def _validate_generated_end_piece_item_code_is_locked(end_piece: EndPieceRow) -> None:
+def _validate_end_piece_item_code_is_locked(end_piece: EndPieceRow) -> None:
 	has_value_changed = getattr(end_piece, "has_value_changed", None)
 	if not callable(has_value_changed) or not has_value_changed("end_piece_item_code"):
 		return
-	if not _is_missing(getattr(end_piece, "generated_end_piece_item", None)) or not _is_missing(
-		getattr(end_piece, "generated_end_piece_bom", None)
-	):
+	previous_value_getter = getattr(end_piece, "get_db_value", None)
+	previous_value = previous_value_getter("end_piece_item_code") if callable(previous_value_getter) else None
+	if not _is_missing(previous_value):
 		frappe.throw(_("End piece item code cannot be changed after generated records exist"))
 
 

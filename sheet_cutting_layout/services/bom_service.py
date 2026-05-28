@@ -5,6 +5,8 @@ from dataclasses import dataclass, field
 from decimal import Decimal, InvalidOperation
 from typing import Literal, Protocol
 
+import frappe
+
 
 class FinishedPartRow(Protocol):
 	finished_part_item: str
@@ -53,6 +55,32 @@ class BomDocument:
 
 
 BomDocumentFactory = Callable[[str], BomDocument]
+
+
+def resolve_scrap_item_rate(
+	*,
+	item_code: str | None,
+	company: str | None,
+	existing_rate: float | int | str | None = None,
+) -> float:
+	if existing_rate is not None and float(existing_rate) > 0:
+		return float(existing_rate)
+
+	item_code = str(item_code or "").strip()
+	if not item_code:
+		raise ValueError("Scrap item code is required to resolve scrap rate")
+	company = str(company or "").strip()
+	if not company:
+		raise ValueError(f"Company is required to resolve scrap rate for scrap item {item_code}")
+
+	rate = _fetch_valuation_rate(item_code=item_code, company=company)
+	try:
+		rate_value = float(rate)
+	except (TypeError, ValueError):
+		raise ValueError(f"Valuation rate is required for scrap item {item_code}") from None
+	if rate_value <= 0:
+		raise ValueError(f"Valuation rate is required for scrap item {item_code}")
+	return rate_value
 
 
 def build_bom_from_layout_row(
@@ -135,3 +163,10 @@ def _sheet_weight_kg(layout_doc: LayoutDocument, finished_part_row: FinishedPart
 
 	end_piece_weight = sum(end_piece.weight_kg for end_piece in layout_doc.end_pieces)
 	return finished_part_row.gross_weight_per_part_kg * finished_part_row.parts_per_sheet + end_piece_weight
+
+
+def _fetch_valuation_rate(*, item_code: str, company: str) -> float | int | str | None:
+	from erpnext.manufacturing.doctype.bom.bom import get_valuation_rate
+
+	args = frappe._dict({"item_code": item_code, "company": company})
+	return get_valuation_rate(args)

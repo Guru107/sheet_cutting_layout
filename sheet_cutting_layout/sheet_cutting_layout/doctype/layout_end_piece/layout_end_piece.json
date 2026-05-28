@@ -7,7 +7,6 @@
  "engine": "InnoDB",
  "field_order": [
   "end_piece_item_code",
-  "generated_end_piece_item",
   "width_mm",
   "length_mm",
   "weight_kg",
@@ -16,20 +15,16 @@
   "scrap_item",
   "used_for_finished_part",
   "bom_quantity",
-  "bom_scrap_quantity_kg",
-  "generated_end_piece_bom"
+  "bom_scrap_quantity_kg"
  ],
  "fields": [
   {
+   "depends_on": "eval:doc.end_piece_item_code",
    "fieldname": "end_piece_item_code",
-   "fieldtype": "Data",
-   "in_list_view": 1,
-   "label": "End Piece Item Code"
-  },
-  {
-   "fieldname": "generated_end_piece_item",
    "fieldtype": "Link",
-   "label": "Generated End Piece Item",
+   "hidden": 1,
+   "in_list_view": 1,
+   "label": "End Piece Item Code",
    "options": "Item",
    "read_only": 1
   },
@@ -95,13 +90,6 @@
    "fieldname": "bom_scrap_quantity_kg",
    "fieldtype": "Float",
    "label": "BOM Scrap Quantity Kg"
-  },
-  {
-   "fieldname": "generated_end_piece_bom",
-   "fieldtype": "Link",
-   "label": "Generated End Piece BOM",
-   "options": "BOM",
-   "read_only": 1
   }
  ],
  "istable": 1,

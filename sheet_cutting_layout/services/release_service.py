@@ -4,7 +4,11 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from typing import Literal, Protocol
 
-from sheet_cutting_layout.services.bom_service import BomDocument, build_bom_from_layout_row
+from sheet_cutting_layout.services.bom_service import (
+	BomDocument,
+	build_bom_from_layout_row,
+	resolve_scrap_item_rate,
+)
 from sheet_cutting_layout.services.validators import validate_sheet_cutting_layout
 from sheet_cutting_layout.services.versioning import finalize_new_revision_release
 
@@ -200,6 +204,11 @@ def _insert_frappe_bom(bom: BomDocument) -> BomDocument:
 			},
 		)
 	for row in bom.scrap_items:
+		rate = resolve_scrap_item_rate(
+			item_code=row.item_code,
+			company=bom_doc.company,
+			existing_rate=getattr(row, "rate", None),
+		)
 		bom_doc.append(
 			"scrap_items",
 			{
@@ -207,6 +216,7 @@ def _insert_frappe_bom(bom: BomDocument) -> BomDocument:
 				"stock_qty": row.qty,
 				"qty": row.qty,
 				"uom": row.uom,
+				"rate": rate,
 			},
 		)
 	bom_doc.insert()
