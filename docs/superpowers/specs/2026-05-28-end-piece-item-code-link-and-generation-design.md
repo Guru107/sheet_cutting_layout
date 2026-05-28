@@ -47,6 +47,7 @@ The field is shown only after generation and is not user-editable. Item creation
 1. Add scrap row `rate` in both flows when not already available:
    - finished-part BOM creation path
    - Generate End Piece BOMs path
+1. Make scrap-rate fallback logic owned by one module (`services/bom_service.py`) and reused by both flows.
 
 ## Data Model Changes
 
@@ -66,6 +67,25 @@ The field is shown only after generation and is not user-editable. Item creation
 
 ## Behavior Changes
 
+## Item Code Normalization Contract
+
+1. Code source fields:
+   - `used_for_finished_part` (trimmed)
+   - `sheet_thickness_mm`
+   - `end_piece.width_mm`
+   - `end_piece.length_mm`
+1. Preconditions:
+   - `used_for_finished_part` is non-empty.
+   - thickness, width, and length are numeric and strictly greater than zero.
+1. Numeric normalization:
+   - format each numeric component to 6 decimal places.
+   - strip trailing zeros and trailing decimal point.
+   - examples: `2.000000 -> 2`, `1.600000 -> 1.6`, `1250.000000 -> 1250`.
+1. Final format:
+   - `<used_for_finished_part>-EP-<thickness>x<width>x<length>`
+1. Invalid inputs (missing/non-positive/non-numeric) fail validation before generation.
+1. Implementation must reuse one shared formatter for deterministic behavior across validator/service/client tests.
+
 ## UI/Client
 
 1. Remove item-code suggestion behavior and preview dependencies.
@@ -79,7 +99,15 @@ The field is shown only after generation and is not user-editable. Item creation
    - `used_for_finished_part` is present.
    - suffix must match one of `SHR`, `BLK`, `DR`.
 1. Keep existing reuse/scrap field integrity guards.
-1. Keep existing generated-record lock semantics adapted to single-field model.
+1. Lock semantics for `end_piece_item_code`:
+   - user cannot edit it in UI (read-only always).
+   - before generation, value is empty.
+   - after generation (`generated_end_piece_bom` present), code is immutable server-side.
+   - any attempt to modify generated code on existing rows is rejected.
+1. Legacy disposition handling (no migration strategy):
+   - `Reuse` and `Scrap` are the only accepted values.
+   - existing `Hold` rows fail with explicit validation error.
+   - development DB cleanup is manual/out-of-band before normal use.
 
 ## Item Generation (`Generate End Piece BOMs`)
 
@@ -94,14 +122,23 @@ The field is shown only after generation and is not user-editable. Item creation
 ## BOM Scrap Rate Fallback
 
 1. When adding scrap rows, keep ERPNext default rate behavior first.
-1. If `rate` is not set by ERPNext, fetch valuation rate for scrap item and set `rate`.
+1. If `rate` is not set by ERPNext, use shared helper `resolve_scrap_item_rate(...)` to fetch and set `rate`.
 1. Apply this to:
    - Finished-part BOM creation path.
    - End-piece BOM creation path.
 
 ## Rate Source and Rules
 
-1. Use valuation rate lookup for the relevant scrap item.
+1. Single owner:
+   - `services/bom_service.py` owns scrap-rate resolution helper and query contract.
+1. Query contract:
+   - inputs: `item_code`, `company`.
+   - lookup source: ERPNext valuation-rate helper used by BOM pricing path,
+     `erpnext.manufacturing.doctype.bom.bom.get_valuation_rate` (same canonical source).
+1. Decision rules:
+   - if `rate` is already populated on row, keep it.
+   - else resolve valuation rate from helper.
+   - if resolved rate is missing, non-numeric, or `<= 0`, throw explicit error to set valuation before BOM generation.
 1. Do not overwrite existing populated `rate`.
 1. Fail with clear error when a required scrap item is missing but a scrap row with quantity/rate needs to be created.
 
@@ -111,6 +148,13 @@ The field is shown only after generation and is not user-editable. Item creation
    - Throw explicit validation error listing allowed suffixes.
 1. Missing or zero `end_piece.weight_kg` for conversion factor:
    - Throw explicit error before item creation.
+1. Invalid code components (`used_for_finished_part`, thickness, width, length):
+   - Throw explicit error that code cannot be derived from missing/invalid dimensions.
+1. Generated item code length overflow:
+   - if derived code exceeds Item code length limit, throw explicit validation error with
+     `used_for_finished_part` context instead of truncating.
+1. Missing valuation rate for fallback:
+   - Throw explicit error with scrap item code and row context.
 1. Failed item creation due to missing required master data (e.g., item group):
    - Raise actionable error with row index context.
 
@@ -123,13 +167,16 @@ The field is shown only after generation and is not user-editable. Item creation
 1. Validator tests:
    - reuse suffix valid for `SHR` / `BLK` / `DR`.
    - invalid suffix rejected with expected message.
+   - invalid/missing numeric code components rejected deterministically.
 1. End-piece generation service tests:
    - computed code uses `used_for_finished_part`.
+   - computed code formatting uses 6-decimal trim normalization rules.
    - item creation sets `Nos` stock UOM and `Kg` alternate conversion (`1 / weight_kg`).
    - existing item reuse path does not mutate item metadata.
 1. BOM service/release tests:
    - scrap row `rate` is filled from valuation fallback when missing.
    - existing auto-populated `rate` is preserved.
+   - missing/invalid valuation rate throws deterministic error.
 1. Client/source assertions:
    - remove suggestion hooks and preview-only code tied to pre-generation item code.
 
@@ -147,7 +194,7 @@ The field is shown only after generation and is not user-editable. Item creation
 2. Client behavior unit (`sheet_cutting_layout.js`)
 3. Validation unit (`services/validators.py`)
 4. End-piece BOM generation unit (`services/end_piece_bom_service.py`)
-5. Finished-part BOM/release unit (`services/bom_service.py` and/or `services/release_service.py`)
+5. Finished-part BOM/release unit (`services/release_service.py`) calling shared rate helper owned by `services/bom_service.py`
 6. Bench-native test units (doctype + validators + service modules)
 
 Each unit has a clear boundary and can be implemented/tested independently while sharing existing APIs.
