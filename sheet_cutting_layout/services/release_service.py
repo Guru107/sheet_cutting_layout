@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import sys
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from typing import Literal, Protocol
@@ -121,8 +120,6 @@ def release_layout(
 
 def get_release_context(layout: ReleaseLayoutDocument) -> ReleaseContext:
 	if not frappe:
-		if _is_test_runtime():
-			return ReleaseContext(layouts=(), boms=[])
 		raise RuntimeError("Frappe is required to build Sheet Cutting Layout release context")
 
 	layouts = _get_same_project_layouts(layout)
@@ -171,8 +168,6 @@ def _default_bom_document_factory(
 	bom.sheet_cutting_layout = getattr(layout, "name", None)
 
 	if not frappe:
-		if _is_test_runtime():
-			return bom
 		raise RuntimeError("Frappe is required to persist generated BOM documents")
 
 	return _insert_frappe_bom(bom)
@@ -319,10 +314,6 @@ def _is_submitted_document(doc: object) -> bool:
 		return True
 	is_submitted = getattr(docstatus, "is_submitted", None)
 	return bool(callable(is_submitted) and is_submitted())
-
-
-def _is_test_runtime() -> bool:
-	return "pytest" in sys.modules
 
 
 def _company_for_layout(layout: object | None) -> str:

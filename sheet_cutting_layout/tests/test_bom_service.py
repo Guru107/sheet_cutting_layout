@@ -6,6 +6,9 @@ from dataclasses import dataclass, field
 
 import pytest
 
+from sheet_cutting_layout.tests.base import SheetCuttingLayoutTestCase
+from sheet_cutting_layout.tests.unittest_adapter import add_pytest_style_tests
+
 
 @dataclass
 class FinishedPart:
@@ -145,3 +148,10 @@ def test_custom_bom_document_factory_is_used() -> None:
 	)
 
 	assert bom.name == "CUSTOM-BOM"
+
+
+class TestBomService(SheetCuttingLayoutTestCase):
+	pass
+
+
+add_pytest_style_tests(globals(), TestBomService)

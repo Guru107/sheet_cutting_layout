@@ -7,6 +7,9 @@ import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
+from sheet_cutting_layout.tests.base import SheetCuttingLayoutTestCase
+from sheet_cutting_layout.tests.unittest_adapter import add_pytest_style_tests
+
 
 @dataclass
 class FinishedPart:
@@ -151,3 +154,10 @@ def test_bom_invariants_hold_for_random_valid_layouts(layout_case: LayoutCase) -
 
 def _sum_bom_qty(items: list[object], row_type: str) -> float:
 	return sum(item.qty for item in items if item.row_type == row_type)
+
+
+class TestPropertyLayoutInvariants(SheetCuttingLayoutTestCase):
+	pass
+
+
+add_pytest_style_tests(globals(), TestPropertyLayoutInvariants)

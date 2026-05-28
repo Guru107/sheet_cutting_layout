@@ -40,7 +40,7 @@ If release fails, keep the layout in `Approved by Purchase`, fix validation erro
 ## Development
 
 ```bash
-pytest -q
+bench --site <site-name> run-tests --app sheet_cutting_layout
 python -m ruff check .
 python -m ruff format --check .
 bench --site <site-name> run-ui-tests sheet_cutting_layout --headless
