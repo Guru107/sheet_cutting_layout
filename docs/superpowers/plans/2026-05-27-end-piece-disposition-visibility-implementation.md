@@ -158,7 +158,7 @@ function clearReuseOnlyEndPieceFields(row) {
 }
 ```
 
-2. Add new disposition handler:
+1. Add new disposition handler:
 
 ```javascript
 function updateEndPieceDispositionAndDerivedFields(frm, cdt, cdn) {
@@ -169,7 +169,7 @@ function updateEndPieceDispositionAndDerivedFields(frm, cdt, cdn) {
 }
 ```
 
-3. Wire handler:
+1. Wire handler:
 
 ```javascript
 disposition: updateEndPieceDispositionAndDerivedFields,
@@ -309,8 +309,9 @@ Expected: all hooks pass.
 - [ ] **Step 4: Review final diff for scope**
 
 ```bash
+git fetch origin develop
 git status --short
-git diff --name-only HEAD~3..HEAD
+git diff --name-only origin/develop...HEAD
 ```
 
 Expected: only planned files changed.
