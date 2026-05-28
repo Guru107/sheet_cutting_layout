@@ -38,6 +38,31 @@ class TestUnittestAdapter(SheetCuttingLayoutTestCase):
 
 		self.assertEqual(observed_counts, [1, 2, 3])
 
+	def test_parametrized_cases_honor_pytestfixturefunction_autouse_marker(self) -> None:
+		counter = {"count": 0}
+		observed_counts: list[int] = []
+
+		def autouse_counter() -> None:
+			counter["count"] += 1
+			return None
+
+		autouse_counter._pytestfixturefunction = SimpleNamespace(autouse=True)
+
+		def test_fn(case_index: int) -> None:
+			_ = case_index
+			observed_counts.append(counter["count"])
+
+		test_fn.pytestmark = [FakeMark("parametrize", ("case_index", [0, 1, 2]))]
+
+		test_method = unittest_adapter._build_test_method(
+			{"autouse_counter": autouse_counter, "test_fn": test_fn},
+			test_fn,
+		)
+
+		test_method(self)
+
+		self.assertEqual(observed_counts, [1, 2, 3])
+
 	def test_parametrized_cases_recreate_regular_fixture_values(self) -> None:
 		def box_fixture() -> dict[str, list[str]]:
 			return {"values": []}
