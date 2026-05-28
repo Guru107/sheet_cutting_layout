@@ -212,7 +212,10 @@ def _insert_frappe_bom(bom: BomDocument) -> BomDocument:
 			)
 		except ValueError as error:
 			frappe.throw(
-				_("Failed to resolve valuation rate for scrap item {0}: {1}").format(row.item_code, error)
+				_("Failed to resolve valuation rate for scrap item {0}: {1}").format(
+					row.item_code,
+					str(error),
+				)
 			)
 		bom_doc.append(
 			"scrap_items",

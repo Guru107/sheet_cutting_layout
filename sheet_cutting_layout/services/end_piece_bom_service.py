@@ -80,11 +80,12 @@ def _ensure_end_piece_item(layout: LayoutDocument, row: EndPieceRow) -> str:
 	try:
 		item.insert(ignore_permissions=True)
 	except Exception as error:
+		error_message = str(error)
 		_throw(
 			_("Row {0}: Failed to create end piece item '{1}': {2}").format(
 				getattr(row, "idx", 0),
 				item_code,
-				error,
+				error_message,
 			)
 		)
 	return item_code
@@ -108,7 +109,7 @@ def _create_end_piece_bom(layout: LayoutDocument, row: EndPieceRow, item_code: s
 		try:
 			rate = resolve_scrap_item_rate(item_code=scrap_item, company=bom.company)
 		except ValueError as error:
-			_throw(_("Row {0}: {1}").format(getattr(row, "idx", 0), error))
+			_throw(_("Row {0}: {1}").format(getattr(row, "idx", 0), str(error)))
 		bom.append(
 			"scrap_items",
 			{
@@ -157,7 +158,7 @@ def _derived_item_code(layout: LayoutDocument, row: EndPieceRow) -> str:
 			length_mm=getattr(row, "length_mm", None),
 		)
 	except ValueError as error:
-		_throw(_("Row {0}: {1}").format(getattr(row, "idx", 0), error))
+		_throw(_("Row {0}: {1}").format(getattr(row, "idx", 0), str(error)))
 
 	max_item_code_length = 140
 	if len(item_code) > max_item_code_length:
