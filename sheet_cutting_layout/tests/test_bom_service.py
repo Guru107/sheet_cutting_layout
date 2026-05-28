@@ -3,6 +3,7 @@ from __future__ import annotations
 import importlib
 import types
 from dataclasses import dataclass, field
+from unittest.mock import patch
 
 import pytest
 
@@ -148,6 +149,38 @@ def test_custom_bom_document_factory_is_used() -> None:
 	)
 
 	assert bom.name == "CUSTOM-BOM"
+
+
+def test_resolve_scrap_item_rate_reuses_positive_existing_rate_without_lookup() -> None:
+	bom_service = import_bom_service()
+	with patch.object(bom_service, "_fetch_valuation_rate", return_value=99.0) as fetch_rate:
+		rate = bom_service.resolve_scrap_item_rate(
+			item_code="SCRAP-001",
+			company="Test Company",
+			existing_rate=42.5,
+		)
+
+	assert rate == pytest.approx(42.5)
+	fetch_rate.assert_not_called()
+
+
+def test_resolve_scrap_item_rate_looks_up_when_existing_rate_is_zero_or_invalid() -> None:
+	bom_service = import_bom_service()
+	with patch.object(bom_service, "_fetch_valuation_rate", return_value=88.25) as fetch_rate:
+		rate_zero = bom_service.resolve_scrap_item_rate(
+			item_code="SCRAP-001",
+			company="Test Company",
+			existing_rate=0,
+		)
+		rate_invalid = bom_service.resolve_scrap_item_rate(
+			item_code="SCRAP-001",
+			company="Test Company",
+			existing_rate="not-a-number",
+		)
+
+	assert rate_zero == pytest.approx(88.25)
+	assert rate_invalid == pytest.approx(88.25)
+	assert fetch_rate.call_count == 2
 
 
 class TestBomService(SheetCuttingLayoutTestCase):

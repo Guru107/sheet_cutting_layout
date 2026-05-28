@@ -65,7 +65,7 @@ def _ensure_end_piece_item(layout: LayoutDocument, row: EndPieceRow) -> str:
 
 	weight_kg = getattr(row, "weight_kg", None)
 	if weight_kg is None or weight_kg <= 0:
-		_throw(_(f"Row {getattr(row, 'idx', 0)}: End piece weight must be greater than zero"))
+		_throw(_("Row {0}: End piece weight must be greater than zero").format(getattr(row, "idx", 0)))
 
 	item = frappe.new_doc("Item")
 	item.item_code = item_code
@@ -77,7 +77,16 @@ def _ensure_end_piece_item(layout: LayoutDocument, row: EndPieceRow) -> str:
 	item.disabled = 0
 	item.append("uoms", {"uom": "Nos", "conversion_factor": 1})
 	item.append("uoms", {"uom": "Kg", "conversion_factor": 1 / weight_kg})
-	item.insert(ignore_permissions=True)
+	try:
+		item.insert(ignore_permissions=True)
+	except Exception as error:
+		_throw(
+			_("Row {0}: Failed to create end piece item '{1}': {2}").format(
+				getattr(row, "idx", 0),
+				item_code,
+				error,
+			)
+		)
 	return item_code
 
 
@@ -95,8 +104,11 @@ def _create_end_piece_bom(layout: LayoutDocument, row: EndPieceRow, item_code: s
 	if scrap_qty > 0:
 		scrap_item = _clean(getattr(layout, "process_scrap_item", None))
 		if scrap_item is None:
-			_throw(_(f"Row {getattr(row, 'idx', 0)}: Process scrap item is required"))
-		rate = resolve_scrap_item_rate(item_code=scrap_item, company=bom.company)
+			_throw(_("Row {0}: Process scrap item is required").format(getattr(row, "idx", 0)))
+		try:
+			rate = resolve_scrap_item_rate(item_code=scrap_item, company=bom.company)
+		except ValueError as error:
+			_throw(_("Row {0}: {1}").format(getattr(row, "idx", 0), error))
 		bom.append(
 			"scrap_items",
 			{
@@ -113,17 +125,19 @@ def _create_end_piece_bom(layout: LayoutDocument, row: EndPieceRow, item_code: s
 
 
 def _validate_pending_row(layout: LayoutDocument, row: EndPieceRow) -> None:
-	prefix = f"Row {getattr(row, 'idx', 0)}: "
+	row_idx = getattr(row, "idx", 0)
 	if _is_missing(getattr(row, "used_for_finished_part", None)):
-		_throw(_(prefix + "Used for finished part is required"))
+		_throw(_("Row {0}: Used for finished part is required").format(row_idx))
 	if getattr(row, "bom_quantity", None) is None or row.bom_quantity <= 0:
-		_throw(_(prefix + "BOM quantity must be greater than zero"))
+		_throw(_("Row {0}: BOM quantity must be greater than zero").format(row_idx))
 	if getattr(row, "bom_scrap_quantity_kg", None) is None or row.bom_scrap_quantity_kg < 0:
-		_throw(_(prefix + "BOM scrap quantity must be non-negative"))
+		_throw(_("Row {0}: BOM scrap quantity must be non-negative").format(row_idx))
 	if getattr(row, "weight_kg", None) is None or row.weight_kg <= 0:
-		_throw(_(prefix + "End piece weight must be greater than zero"))
+		_throw(_("Row {0}: End piece weight must be greater than zero").format(row_idx))
 	if row.bom_scrap_quantity_kg > 0 and _is_missing(getattr(layout, "process_scrap_item", None)):
-		_throw(_(prefix + "Process scrap item is required when BOM scrap quantity is positive"))
+		_throw(
+			_("Row {0}: Process scrap item is required when BOM scrap quantity is positive").format(row_idx)
+		)
 
 
 def _reuse_end_pieces(layout: LayoutDocument) -> list[EndPieceRow]:
@@ -143,7 +157,7 @@ def _derived_item_code(layout: LayoutDocument, row: EndPieceRow) -> str:
 			length_mm=getattr(row, "length_mm", None),
 		)
 	except ValueError as error:
-		_throw(_(f"Row {getattr(row, 'idx', 0)}: {error}"))
+		_throw(_("Row {0}: {1}").format(getattr(row, "idx", 0), error))
 
 	max_item_code_length = 140
 	if len(item_code) > max_item_code_length:
@@ -159,9 +173,9 @@ def _derived_item_code(layout: LayoutDocument, row: EndPieceRow) -> str:
 
 def _build_item_description(layout: LayoutDocument, row: EndPieceRow) -> str:
 	raw_material_item = _clean(getattr(layout, "raw_material_item", None)) or "Unknown raw material"
-	thickness_mm = _format_code_number(getattr(layout, "sheet_thickness_mm", 0))
-	width_mm = _format_code_number(getattr(row, "width_mm", 0))
-	length_mm = _format_code_number(getattr(row, "length_mm", 0))
+	thickness_mm = validators._format_code_number(getattr(layout, "sheet_thickness_mm", 0))
+	width_mm = validators._format_code_number(getattr(row, "width_mm", 0))
+	length_mm = validators._format_code_number(getattr(row, "length_mm", 0))
 	return f"Derived from {raw_material_item}; End Piece {thickness_mm}x{width_mm}x{length_mm} mm"
 
 
@@ -271,7 +285,7 @@ def _company_for_layout(layout: LayoutDocument | None) -> str:
 def _required_clean(row: EndPieceRow, fieldname: str) -> str:
 	value = _clean(getattr(row, fieldname, None))
 	if value is None:
-		_throw(_(f"Row {getattr(row, 'idx', 0)}: {fieldname} is required"))
+		_throw(_("Row {0}: {1} is required").format(getattr(row, "idx", 0), fieldname))
 	return value
 
 
@@ -286,10 +300,6 @@ def _clean(value: object) -> str | None:
 		value = value.strip()
 		return value or None
 	return str(value)
-
-
-def _format_code_number(value: float | int | str) -> str:
-	return f"{float(value):.6f}".rstrip("0").rstrip(".")
 
 
 def _throw(message: str) -> None:

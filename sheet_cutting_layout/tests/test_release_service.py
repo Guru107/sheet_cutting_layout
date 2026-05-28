@@ -1013,6 +1013,51 @@ def test_frappe_bom_insert_sets_required_company_from_layout(
 	assert inserted.name == "BOM-PART001SHR"
 
 
+def test_frappe_bom_insert_wraps_scrap_rate_resolution_error(
+	monkeypatch: pytest.MonkeyPatch,
+) -> None:
+	from sheet_cutting_layout.services import release_service
+	from sheet_cutting_layout.services.bom_service import BomDocument, BomItemRow
+
+	class FrappeBom:
+		def __init__(self) -> None:
+			self.name = ""
+			self.items: list[dict[str, object]] = []
+			self.scrap_items: list[dict[str, object]] = []
+
+		def append(self, fieldname: str, row: dict[str, object]) -> None:
+			getattr(self, fieldname).append(row)
+
+		def insert(self) -> None:
+			self.name = self.name or "BOM-PERSISTED"
+
+	class FrappeStub:
+		@staticmethod
+		def new_doc(doctype: str) -> FrappeBom:
+			assert doctype == "BOM"
+			return FrappeBom()
+
+		@staticmethod
+		def throw(message: str) -> None:
+			raise ValueError(message)
+
+	bom = BomDocument(item="PART001SHR", name="BOM-PART001SHR")
+	bom._layout = type("LayoutWithCompany", (), {"company": "Test Company", "name": "SCL-001"})()
+	bom.scrap_items.append(BomItemRow(item_code="SCRAP-ITEM", qty=1.0, row_type="process_scrap"))
+	monkeypatch.setattr(release_service, "frappe", FrappeStub)
+
+	def _raise_rate_error(**_kwargs: object) -> float:
+		raise ValueError("Valuation rate is required for scrap item SCRAP-ITEM")
+
+	monkeypatch.setattr(release_service, "resolve_scrap_item_rate", _raise_rate_error)
+
+	with pytest.raises(
+		ValueError,
+		match="Failed to resolve valuation rate for scrap item SCRAP-ITEM",
+	):
+		release_service._insert_frappe_bom(bom)
+
+
 def test_get_release_context_requires_frappe_outside_tests(monkeypatch: pytest.MonkeyPatch) -> None:
 	from sheet_cutting_layout.services import release_service
 

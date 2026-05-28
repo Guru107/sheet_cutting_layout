@@ -186,7 +186,7 @@ class TestValidators(SheetCuttingLayoutTestCase):
 
 	def test_derive_end_piece_item_code_uses_used_for_finished_part_and_trimmed_numbers(self) -> None:
 		derived = self.validators.derive_end_piece_item_code(
-			used_for_finished_part="FG01SHR",
+			used_for_finished_part="fg01shr",
 			thickness_mm=1.6,
 			width_mm=1250.0,
 			length_mm=179.000000,
@@ -205,11 +205,32 @@ class TestValidators(SheetCuttingLayoutTestCase):
 			),
 			(dict(used_for_finished_part="FG01SHR", thickness_mm=1.6, width_mm=0, length_mm=179), "width"),
 			(dict(used_for_finished_part="FG01SHR", thickness_mm=1.6, width_mm=1250, length_mm=0), "length"),
+			(
+				dict(used_for_finished_part="FG01SHR", thickness_mm="abc", width_mm=1250, length_mm=179),
+				"thickness",
+			),
+			(
+				dict(used_for_finished_part="FG01SHR", thickness_mm=1.6, width_mm="abc", length_mm=179),
+				"width",
+			),
+			(
+				dict(used_for_finished_part="FG01SHR", thickness_mm=1.6, width_mm=1250, length_mm="abc"),
+				"length",
+			),
 		]
 		for kwargs, message in cases:
 			with self.subTest(kwargs=kwargs):
 				with self.assertRaisesRegex(ValueError, message):
 					self.validators.derive_end_piece_item_code(**kwargs)
+
+	def test_calculate_sheet_weight_returns_none_for_non_numeric_dimensions(self) -> None:
+		self.assertIsNone(
+			self.validators.calculate_sheet_weight_kg(
+				thickness_mm="abc",
+				width_mm=1250,
+				length_mm=179,
+			)
+		)
 
 	def test_end_piece_disposition_accepts_only_reuse_or_scrap(self) -> None:
 		layout = self._balanced_layout(end_piece=EndPiece(disposition="Invalid", used_for_finished_part=None))

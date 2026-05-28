@@ -22,7 +22,6 @@
    "depends_on": "eval:doc.end_piece_item_code",
    "fieldname": "end_piece_item_code",
    "fieldtype": "Link",
-   "hidden": 1,
    "in_list_view": 1,
    "label": "End Piece Item Code",
    "options": "Item",

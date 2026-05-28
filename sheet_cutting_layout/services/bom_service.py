@@ -63,8 +63,15 @@ def resolve_scrap_item_rate(
 	company: str | None,
 	existing_rate: float | int | str | None = None,
 ) -> float:
-	if existing_rate is not None and float(existing_rate) > 0:
-		return float(existing_rate)
+	# Zero/negative/invalid existing rates are treated as unresolved and fall back
+	# to valuation-rate lookup for deterministic BOM scrap pricing.
+	if existing_rate is not None:
+		try:
+			existing_rate_value = float(existing_rate)
+		except (TypeError, ValueError):
+			existing_rate_value = 0.0
+		if existing_rate_value > 0:
+			return existing_rate_value
 
 	item_code = str(item_code or "").strip()
 	if not item_code:

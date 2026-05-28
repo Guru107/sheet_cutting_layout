@@ -204,11 +204,16 @@ def _insert_frappe_bom(bom: BomDocument) -> BomDocument:
 			},
 		)
 	for row in bom.scrap_items:
-		rate = resolve_scrap_item_rate(
-			item_code=row.item_code,
-			company=bom_doc.company,
-			existing_rate=getattr(row, "rate", None),
-		)
+		try:
+			rate = resolve_scrap_item_rate(
+				item_code=row.item_code,
+				company=bom_doc.company,
+				existing_rate=getattr(row, "rate", None),
+			)
+		except ValueError as error:
+			frappe.throw(
+				_("Failed to resolve valuation rate for scrap item {0}: {1}").format(row.item_code, error)
+			)
 		bom_doc.append(
 			"scrap_items",
 			{

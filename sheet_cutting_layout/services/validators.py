@@ -241,18 +241,17 @@ def derive_end_piece_item_code(
 	width_mm: float | None,
 	length_mm: float | None,
 ) -> str:
-	prefix = str(used_for_finished_part or "").strip()
+	prefix = str(used_for_finished_part or "").strip().upper()
 	if _is_missing(prefix):
 		raise ValueError("Used for finished part is required")
-	if thickness_mm is None or thickness_mm <= 0:
-		raise ValueError("End piece thickness must be greater than zero")
-	if width_mm is None or width_mm <= 0:
-		raise ValueError("End piece width must be greater than zero")
-	if length_mm is None or length_mm <= 0:
-		raise ValueError("End piece length must be greater than zero")
+	thickness = _coerce_positive_number(
+		thickness_mm, error_message="End piece thickness must be greater than zero"
+	)
+	width = _coerce_positive_number(width_mm, error_message="End piece width must be greater than zero")
+	length = _coerce_positive_number(length_mm, error_message="End piece length must be greater than zero")
 	return (
 		f"{prefix}-EP-"
-		f"{_format_code_number(thickness_mm)}x{_format_code_number(width_mm)}x{_format_code_number(length_mm)}"
+		f"{_format_code_number(thickness)}x{_format_code_number(width)}x{_format_code_number(length)}"
 	)
 
 
@@ -262,12 +261,16 @@ def calculate_sheet_weight_kg(
 	width_mm: float | None,
 	length_mm: float | None,
 ) -> float | None:
-	if thickness_mm is None or width_mm is None or length_mm is None:
+	try:
+		thickness = float(thickness_mm)
+		width = float(width_mm)
+		length = float(length_mm)
+	except (TypeError, ValueError):
 		return None
-	if thickness_mm <= 0 or width_mm <= 0 or length_mm <= 0:
+	if thickness <= 0 or width <= 0 or length <= 0:
 		return None
 
-	weight = length_mm * width_mm * thickness_mm * _steel_density_g_per_cm3() / 1_000_000
+	weight = length * width * thickness * _steel_density_g_per_cm3() / 1_000_000
 	return _flt(weight)
 
 
@@ -510,6 +513,16 @@ def _sheet_consumption_flt(value: float | int | str | None) -> float:
 
 def _format_sheet_consumption_weight(value: float) -> str:
 	return f"{_sheet_consumption_flt(value):.{SHEET_CONSUMPTION_PRECISION}f}"
+
+
+def _coerce_positive_number(value: float | int | str | None, *, error_message: str) -> float:
+	try:
+		number = float(value)
+	except (TypeError, ValueError):
+		raise ValueError(error_message) from None
+	if number <= 0:
+		raise ValueError(error_message)
+	return number
 
 
 def _format_code_number(value: float | int | str) -> str:

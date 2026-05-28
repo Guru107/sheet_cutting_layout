@@ -135,6 +135,14 @@ frappe.provide("sheet_cutting_layout");
 		return value !== null && value !== undefined && value !== "";
 	}
 
+	function hasWritePermission(frm) {
+		if (typeof frm.has_perm === "function") {
+			return frm.has_perm("write");
+		}
+		const permissions = Array.isArray(frm.perm) ? frm.perm : [];
+		return permissions.some((entry) => Boolean(entry && entry.write));
+	}
+
 	function clearStaleEndPieceDispositionFields(cdt, cdn) {
 		const row = locals[cdt][cdn];
 		if (!row) {
@@ -338,7 +346,7 @@ frappe.provide("sheet_cutting_layout");
 		const hasReusableEndPieces = (frm.doc.end_pieces || []).some(
 			(row) => row.disposition === "Reuse"
 		);
-		if (!hasReusableEndPieces || frm.is_new()) {
+		if (!hasReusableEndPieces || frm.is_new() || !hasWritePermission(frm)) {
 			return;
 		}
 		if (frm.doc.status === "Released" && frm.doc.end_piece_bom_status === "Pending") {

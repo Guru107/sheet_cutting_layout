@@ -249,6 +249,33 @@ class TestEndPieceBomService(SheetCuttingLayoutTestCase):
 			],
 		)
 
+	def test_generation_wraps_end_piece_item_insert_error_with_row_context(self) -> None:
+		self._install_fakes()
+		layout = Layout(end_pieces=[EndPiece()])
+
+		with patch.object(FakeDoc, "insert", side_effect=RuntimeError("duplicate item")):
+			with self.assertRaisesRegex(
+				ValueError,
+				"Row 1: Failed to create end piece item 'FG01SHR-EP-2x100x200': duplicate item",
+			):
+				self.service.generate_end_piece_boms(layout)
+
+	def test_generation_wraps_scrap_rate_resolution_error_with_row_context(self) -> None:
+		existing_code = "FG01SHR-EP-2x100x200"
+		self._install_fakes(existing_items={existing_code})
+		layout = Layout(end_pieces=[EndPiece(bom_scrap_quantity_kg=0.75)])
+
+		with patch.object(
+			self.service,
+			"resolve_scrap_item_rate",
+			side_effect=ValueError("Valuation rate is required for scrap item PROCESS-SCRAP"),
+		):
+			with self.assertRaisesRegex(
+				ValueError,
+				"Row 1: Valuation rate is required for scrap item PROCESS-SCRAP",
+			):
+				self.service.generate_end_piece_boms(layout)
+
 	def test_generation_requires_process_scrap_item_for_positive_bom_scrap_qty(self) -> None:
 		self._install_fakes(existing_items={"FG01SHR-EP-2x100x200"})
 		layout = Layout(process_scrap_item=None, end_pieces=[EndPiece(bom_scrap_quantity_kg=0.75)])
