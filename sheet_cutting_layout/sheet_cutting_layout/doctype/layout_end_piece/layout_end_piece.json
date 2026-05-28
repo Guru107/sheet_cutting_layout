@@ -68,26 +68,30 @@
    "fieldtype": "Select",
    "in_list_view": 1,
    "label": "Disposition",
-   "options": "\nReuse\nScrap\nHold"
+   "options": "\nReuse\nScrap"
   },
   {
+   "depends_on": "eval:doc.disposition==\"Scrap\"",
    "fieldname": "scrap_item",
    "fieldtype": "Link",
    "label": "Scrap Item",
    "options": "Item"
   },
   {
+   "depends_on": "eval:doc.disposition==\"Reuse\"",
    "fieldname": "used_for_finished_part",
    "fieldtype": "Link",
    "label": "Used For Finished Part",
    "options": "Item"
   },
   {
+   "depends_on": "eval:doc.disposition==\"Reuse\"",
    "fieldname": "bom_quantity",
    "fieldtype": "Float",
    "label": "BOM Quantity"
   },
   {
+   "depends_on": "eval:doc.disposition==\"Reuse\"",
    "fieldname": "bom_scrap_quantity_kg",
    "fieldtype": "Float",
    "label": "BOM Scrap Quantity Kg"

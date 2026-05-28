@@ -53,7 +53,7 @@ class EndPiece:
 	bom_scrap_quantity_kg: float | None = 0
 	generated_end_piece_item: str | None = None
 	generated_end_piece_bom: str | None = None
-	scrap_item: str | None = "ENDSCRAP001"
+	scrap_item: str | None = ""
 
 	def __post_init__(self) -> None:
 		if self.weight_kg is not None and self.width_mm is None and self.length_mm is None:
@@ -689,7 +689,87 @@ def test_scrap_end_piece_rows_require_scrap_item(validators: types.ModuleType) -
 		validators.validate_sheet_cutting_layout(
 			Layout(
 				finished_parts=[FinishedPart("AB12SHR", 2, 11, 1)],
-				end_pieces=[EndPiece(disposition="Scrap", scrap_item="")],
+				end_pieces=[
+					EndPiece(
+						disposition="Scrap",
+						scrap_item="",
+						used_for_finished_part="",
+						bom_quantity=0,
+						bom_scrap_quantity_kg=0,
+					)
+				],
+			)
+		)
+
+
+def test_non_reuse_end_piece_rows_reject_reuse_only_fields(validators: types.ModuleType) -> None:
+	cases = [
+		(
+			EndPiece(
+				disposition="Scrap",
+				used_for_finished_part="FG01SHR",
+				bom_quantity=0,
+				bom_scrap_quantity_kg=0,
+			),
+			"Used for finished part",
+		),
+		(
+			EndPiece(
+				disposition="Scrap",
+				used_for_finished_part="",
+				bom_quantity=1,
+				bom_scrap_quantity_kg=0,
+			),
+			"BOM quantity",
+		),
+		(
+			EndPiece(
+				disposition="Scrap",
+				used_for_finished_part="",
+				bom_quantity=0,
+				bom_scrap_quantity_kg=0.1,
+			),
+			"BOM scrap quantity",
+		),
+	]
+	for end_piece, message in cases:
+		with pytest.raises(ValidationError, match=message):
+			validators.validate_sheet_cutting_layout(
+				Layout(
+					finished_parts=[FinishedPart("AB12SHR", 2, 11, 1)],
+					end_pieces=[end_piece],
+				)
+			)
+
+
+@pytest.mark.parametrize("disposition", ["", "Hold", None])
+def test_end_piece_disposition_must_be_reuse_or_scrap(
+	validators: types.ModuleType,
+	disposition: str | None,
+) -> None:
+	with pytest.raises(ValidationError, match="Disposition must be either Reuse or Scrap"):
+		validators.validate_sheet_cutting_layout(
+			Layout(
+				finished_parts=[FinishedPart("AB12SHR", 2, 11, 1)],
+				end_pieces=[
+					EndPiece(
+						disposition=disposition,
+						used_for_finished_part="",
+						bom_quantity=0,
+						bom_scrap_quantity_kg=0,
+						scrap_item="",
+					)
+				],
+			)
+		)
+
+
+def test_reuse_end_piece_rows_reject_scrap_item(validators: types.ModuleType) -> None:
+	with pytest.raises(ValidationError, match="Scrap item is allowed only for scrap end pieces"):
+		validators.validate_sheet_cutting_layout(
+			Layout(
+				finished_parts=[FinishedPart("AB12SHR", 2, 11, 1)],
+				end_pieces=[EndPiece(disposition="Reuse", scrap_item="SCRAP-ITEM-001")],
 			)
 		)
 

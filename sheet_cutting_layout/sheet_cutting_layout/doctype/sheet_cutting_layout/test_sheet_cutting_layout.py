@@ -143,15 +143,21 @@ def test_sheet_cutting_layout_doctypes_define_normalized_model() -> None:
 	assert end_piece_fields["weight_kg"].get("read_only") == 1
 	assert end_piece_fields["qty_per_sheet"]["fieldtype"] == "Float"
 	assert end_piece_fields["disposition"]["fieldtype"] == "Select"
+	assert end_piece_fields["disposition"]["options"] == "\nReuse\nScrap"
 	assert end_piece_fields["scrap_item"]["fieldtype"] == "Link"
 	assert end_piece_fields["scrap_item"]["options"] == "Item"
+	assert end_piece_fields["scrap_item"]["depends_on"] == 'eval:doc.disposition=="Scrap"'
 	assert end_piece_fields["used_for_finished_part"]["fieldtype"] == "Link"
 	assert end_piece_fields["used_for_finished_part"]["options"] == "Item"
+	assert end_piece_fields["used_for_finished_part"]["depends_on"] == 'eval:doc.disposition=="Reuse"'
 	assert end_piece_fields["bom_quantity"]["fieldtype"] == "Float"
+	assert end_piece_fields["bom_quantity"]["depends_on"] == 'eval:doc.disposition=="Reuse"'
 	assert end_piece_fields["bom_scrap_quantity_kg"]["fieldtype"] == "Float"
+	assert end_piece_fields["bom_scrap_quantity_kg"]["depends_on"] == 'eval:doc.disposition=="Reuse"'
 	assert end_piece_fields["generated_end_piece_bom"]["fieldtype"] == "Link"
 	assert end_piece_fields["generated_end_piece_bom"]["options"] == "BOM"
 	assert end_piece_fields["generated_end_piece_bom"].get("read_only") == 1
+	assert "Hold" not in end_piece_fields["disposition"]["options"]
 	assert "thickness" not in end_piece_fields
 	assert_child_doctype_fields(
 		"layout_approval_snapshot",
@@ -318,6 +324,7 @@ def test_client_updates_consumption_tracking_when_user_enters_dimensions_and_net
 	assert "calculateConsumptionTracking" in client_script
 	assert "updateFinishedPartWeights" in client_script
 	assert "updateEndPieceWeights" in client_script
+	assert "clearStaleEndPieceDispositionFields" in client_script
 	assert "updatePartsPerSheet" in client_script
 	assert "preview_sheet_cutting_layout_end_piece_boms" in client_script
 	assert "generate_sheet_cutting_layout_end_piece_boms" in client_script
@@ -330,6 +337,10 @@ def test_client_updates_consumption_tracking_when_user_enters_dimensions_and_net
 	assert "generated_end_piece_bom" in client_script
 	assert "hasRequiredEndPiecePreviewInputs" in client_script
 	assert "raw_material_item: updateEndPieceItemCodesFromForm" in client_script
+	assert 'frappe.model.set_value(cdt, cdn, "used_for_finished_part", "")' in client_script
+	assert 'frappe.model.set_value(cdt, cdn, "scrap_item", "")' in client_script
+	assert 'frappe.model.set_value(cdt, cdn, "bom_quantity", null)' in client_script
+	assert 'frappe.model.set_value(cdt, cdn, "bom_scrap_quantity_kg", null)' in client_script
 	assert "numberOrZero(row.weight_kg)" in client_script
 	assert "numberOrZero(row.weight_kg) * numberOrZero(row.qty_per_sheet)" not in client_script
 	assert "row.finished_part_item" in client_script
@@ -343,7 +354,7 @@ def test_client_updates_consumption_tracking_when_user_enters_dimensions_and_net
 	assert "width_mm: updateEndPieceWeightsAndConsumption" in client_script
 	assert "length_mm: updateEndPieceWeightsAndConsumption" in client_script
 	assert "qty_per_sheet: updateEndPieceWeightsAndConsumption" in client_script
-	assert "disposition: updateEndPieceItemCodesFromForm" in client_script
+	assert "disposition: updateEndPieceDispositionAndDerivedFields" in client_script
 
 
 def test_client_has_no_sheet_layout_canvas_dependency() -> None:
