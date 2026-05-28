@@ -309,7 +309,7 @@ Expected: all hooks pass.
 - [ ] **Step 4: Review final diff for scope**
 
 ```bash
-git fetch origin develop
+git fetch origin
 git status --short
 git diff --name-only origin/develop...HEAD
 ```
