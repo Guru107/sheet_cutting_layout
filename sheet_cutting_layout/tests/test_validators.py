@@ -349,6 +349,25 @@ class TestValidators(SheetCuttingLayoutTestCase):
 		with self.assertRaisesRegex(ValidationError, "End piece item code cannot be changed"):
 			self.validators.validate_sheet_cutting_layout(layout)
 
+	def test_end_piece_item_code_can_be_set_when_previous_value_is_empty(self) -> None:
+		end_piece = ExistingEndPiece(
+			previous_code=None,
+			current_code="FG01SHR-EP-1x1250x260",
+			weight_kg=2.5545,
+			qty_per_sheet=1,
+			width_mm=1250,
+			length_mm=260,
+			disposition="Reuse",
+			used_for_finished_part="FG01SHR",
+			bom_quantity=1,
+			bom_scrap_quantity_kg=0,
+			scrap_item="",
+		)
+		layout = self._balanced_layout(end_piece=end_piece)
+
+		self.validators.validate_sheet_cutting_layout(layout)
+		self.assertEqual(layout.end_piece_bom_status, "Generated")
+
 	def test_consumption_tracking_uses_gross_plus_end_piece_weight_and_sets_balanced(self) -> None:
 		layout = self._balanced_layout()
 		self.validators.validate_sheet_cutting_layout(layout)

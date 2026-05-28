@@ -253,11 +253,19 @@ class TestEndPieceBomService(SheetCuttingLayoutTestCase):
 		self._install_fakes()
 		layout = Layout(end_pieces=[EndPiece()])
 
-		with patch.object(FakeDoc, "insert", side_effect=RuntimeError("duplicate item")):
+		with patch.object(FakeDoc, "insert", side_effect=ValueError("duplicate item")):
 			with self.assertRaisesRegex(
 				ValueError,
 				"Row 1: Failed to create end piece item 'FG01SHR-EP-2x100x200': duplicate item",
 			):
+				self.service.generate_end_piece_boms(layout)
+
+	def test_generation_propagates_unexpected_end_piece_item_insert_error(self) -> None:
+		self._install_fakes()
+		layout = Layout(end_pieces=[EndPiece()])
+
+		with patch.object(FakeDoc, "insert", side_effect=RuntimeError("unexpected insert failure")):
+			with self.assertRaisesRegex(RuntimeError, "unexpected insert failure"):
 				self.service.generate_end_piece_boms(layout)
 
 	def test_generation_wraps_scrap_rate_resolution_error_with_row_context(self) -> None:

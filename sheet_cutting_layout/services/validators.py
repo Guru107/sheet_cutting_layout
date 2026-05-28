@@ -251,7 +251,7 @@ def derive_end_piece_item_code(
 	length = _coerce_positive_number(length_mm, error_message="End piece length must be greater than zero")
 	return (
 		f"{prefix}-EP-"
-		f"{_format_code_number(thickness)}x{_format_code_number(width)}x{_format_code_number(length)}"
+		f"{format_code_number(thickness)}x{format_code_number(width)}x{format_code_number(length)}"
 	)
 
 
@@ -525,7 +525,7 @@ def _coerce_positive_number(value: float | int | str | None, *, error_message: s
 	return number
 
 
-def _format_code_number(value: float | int | str) -> str:
+def format_code_number(value: float | int | str) -> str:
 	return f"{float(value):.6f}".rstrip("0").rstrip(".")
 
 

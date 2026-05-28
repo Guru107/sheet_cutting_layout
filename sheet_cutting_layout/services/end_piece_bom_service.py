@@ -77,17 +77,22 @@ def _ensure_end_piece_item(layout: LayoutDocument, row: EndPieceRow) -> str:
 	item.disabled = 0
 	item.append("uoms", {"uom": "Nos", "conversion_factor": 1})
 	item.append("uoms", {"uom": "Kg", "conversion_factor": 1 / weight_kg})
-	try:
-		item.insert(ignore_permissions=True)
-	except Exception as error:
-		error_message = str(error)
-		_throw(
-			_("Row {0}: Failed to create end piece item '{1}': {2}").format(
-				getattr(row, "idx", 0),
-				item_code,
-				error_message,
+	insert_error_types = _item_insert_exception_types()
+	if insert_error_types:
+		try:
+			item.insert(ignore_permissions=True)
+		except insert_error_types as error:
+			_log_item_insert_error(item_code=item_code, row=row, error=error)
+			error_message = str(error)
+			_throw(
+				_("Row {0}: Failed to create end piece item '{1}': {2}").format(
+					getattr(row, "idx", 0),
+					item_code,
+					error_message,
+				)
 			)
-		)
+	else:
+		item.insert(ignore_permissions=True)
 	return item_code
 
 
@@ -174,10 +179,31 @@ def _derived_item_code(layout: LayoutDocument, row: EndPieceRow) -> str:
 
 def _build_item_description(layout: LayoutDocument, row: EndPieceRow) -> str:
 	raw_material_item = _clean(getattr(layout, "raw_material_item", None)) or "Unknown raw material"
-	thickness_mm = validators._format_code_number(getattr(layout, "sheet_thickness_mm", 0))
-	width_mm = validators._format_code_number(getattr(row, "width_mm", 0))
-	length_mm = validators._format_code_number(getattr(row, "length_mm", 0))
+	thickness_mm = validators.format_code_number(getattr(layout, "sheet_thickness_mm", 0))
+	width_mm = validators.format_code_number(getattr(row, "width_mm", 0))
+	length_mm = validators.format_code_number(getattr(row, "length_mm", 0))
 	return f"Derived from {raw_material_item}; End Piece {thickness_mm}x{width_mm}x{length_mm} mm"
+
+
+def _item_insert_exception_types() -> tuple[type[Exception], ...]:
+	exception_types: list[type[Exception]] = []
+	for attr in ("ValidationError", "DuplicateEntryError"):
+		error_type = getattr(frappe, attr, None)
+		if isinstance(error_type, type) and issubclass(error_type, Exception):
+			exception_types.append(error_type)
+	return tuple(dict.fromkeys(exception_types))
+
+
+def _log_item_insert_error(*, item_code: str, row: EndPieceRow, error: Exception) -> None:
+	log_error = getattr(frappe, "log_error", None)
+	if not callable(log_error):
+		return
+	get_traceback = getattr(frappe, "get_traceback", None)
+	traceback = get_traceback() if callable(get_traceback) else str(error)
+	log_error(
+		message=traceback,
+		title=f"Row {getattr(row, 'idx', 0)}: Failed to create end piece item '{item_code}'",
+	)
 
 
 def _item_exists(item_code: str) -> bool:
