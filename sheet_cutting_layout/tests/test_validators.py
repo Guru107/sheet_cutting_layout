@@ -224,13 +224,14 @@ class TestValidators(SheetCuttingLayoutTestCase):
 					self.validators.derive_end_piece_item_code(**kwargs)
 
 	def test_calculate_sheet_weight_returns_none_for_non_numeric_dimensions(self) -> None:
-		self.assertIsNone(
-			self.validators.calculate_sheet_weight_kg(
-				thickness_mm="abc",
-				width_mm=1250,
-				length_mm=179,
-			)
-		)
+		cases = [
+			{"thickness_mm": "abc", "width_mm": 1250, "length_mm": 179},
+			{"thickness_mm": 1.6, "width_mm": "abc", "length_mm": 179},
+			{"thickness_mm": 1.6, "width_mm": 1250, "length_mm": "abc"},
+		]
+		for kwargs in cases:
+			with self.subTest(kwargs=kwargs):
+				self.assertIsNone(self.validators.calculate_sheet_weight_kg(**kwargs))
 
 	def test_end_piece_disposition_accepts_only_reuse_or_scrap(self) -> None:
 		layout = self._balanced_layout(end_piece=EndPiece(disposition="Invalid", used_for_finished_part=None))

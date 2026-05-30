@@ -181,6 +181,8 @@ def test_resolve_scrap_item_rate_looks_up_when_existing_rate_is_zero_or_invalid(
 	assert rate_zero == pytest.approx(88.25)
 	assert rate_invalid == pytest.approx(88.25)
 	assert fetch_rate.call_count == 2
+	assert fetch_rate.call_args_list[0].kwargs == {"item_code": "SCRAP-001", "company": "Test Company"}
+	assert fetch_rate.call_args_list[1].kwargs == {"item_code": "SCRAP-001", "company": "Test Company"}
 
 
 class TestBomService(SheetCuttingLayoutTestCase):

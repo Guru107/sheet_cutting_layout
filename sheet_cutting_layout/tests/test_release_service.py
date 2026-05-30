@@ -1053,7 +1053,10 @@ def test_frappe_bom_insert_wraps_scrap_rate_resolution_error(
 
 	with pytest.raises(
 		ValueError,
-		match="Failed to resolve valuation rate for scrap item SCRAP-ITEM",
+		match=(
+			"^Failed to resolve valuation rate for scrap item SCRAP-ITEM: "
+			"Valuation rate is required for scrap item SCRAP-ITEM$"
+		),
 	):
 		release_service._insert_frappe_bom(bom)
 
