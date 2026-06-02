@@ -39,11 +39,12 @@
   "parts_per_strip",
   "no_of_strips",
   "parts_per_sheet",
+  "finished_part_code",
+  "net_weight_per_part_kg",
+  "scrap_weight_per_part_kg",
+  "generated_bom",
   "workflow_section",
   "status",
-  "workflow_column_break",
-  "project_manager_ok",
-  "manufacturing_manager_ok",
   "tables_section",
   "finished_parts",
   "end_pieces",
@@ -244,6 +245,31 @@
    "reqd": 1
   },
   {
+   "fieldname": "finished_part_code",
+   "fieldtype": "Data",
+   "label": "Finished Part Code",
+   "reqd": 1
+  },
+  {
+   "fieldname": "net_weight_per_part_kg",
+   "fieldtype": "Float",
+   "label": "Net Weight Per Part (Kg)",
+   "reqd": 1
+  },
+  {
+   "fieldname": "scrap_weight_per_part_kg",
+   "fieldtype": "Float",
+   "label": "Scrap Weight Per Part (Kg)",
+   "read_only": 1
+  },
+  {
+   "fieldname": "generated_bom",
+   "fieldtype": "Link",
+   "label": "Generated BOM",
+   "options": "BOM",
+   "read_only": 1
+  },
+  {
    "fieldname": "workflow_section",
    "fieldtype": "Section Break",
    "label": "Workflow"
@@ -255,28 +281,8 @@
    "fieldtype": "Select",
    "in_list_view": 1,
    "label": "Status",
-   "options": "Draft\nSubmitted for Check\nChecked\nApproved by Purchase\nReleased\nRejected\nSuperseded",
+   "options": "Draft\nSubmitted for Check\nPM Approved\nApproved by Purchase\nReleased\nRejected\nSuperseded",
    "reqd": 1
-  },
-  {
-   "fieldname": "workflow_column_break",
-   "fieldtype": "Column Break"
-  },
-  {
-   "default": "0",
-   "fieldname": "project_manager_ok",
-   "fieldtype": "Check",
-   "hidden": 1,
-   "label": "Projects Manager OK",
-   "read_only": 1
-  },
-  {
-   "default": "0",
-   "fieldname": "manufacturing_manager_ok",
-   "fieldtype": "Check",
-   "hidden": 1,
-   "label": "Manufacturing Manager OK",
-   "read_only": 1
   },
   {
    "fieldname": "tables_section",
@@ -286,9 +292,10 @@
   {
    "fieldname": "finished_parts",
    "fieldtype": "Table",
+   "depends_on": "eval:doc.generated_bom",
    "label": "Finished Parts",
-   "options": "Layout Finished Part",
-   "reqd": 1
+   "read_only": 1,
+   "options": "Layout Finished Part"
   },
   {
    "fieldname": "end_pieces",

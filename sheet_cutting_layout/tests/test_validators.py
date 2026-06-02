@@ -73,6 +73,9 @@ class ExistingEndPiece(EndPiece):
 
 @dataclass
 class Layout:
+	finished_part_code: str | None = "AB12SHR"
+	net_weight_per_part_kg: float | None = 11.004
+	generated_bom: str | None = None
 	finished_parts: list[FinishedPart] = field(default_factory=list)
 	end_pieces: list[EndPiece] = field(default_factory=list)
 	raw_material_item: str = "RM001"
@@ -87,6 +90,7 @@ class Layout:
 	strip_length_mm: float = 260
 	weight_of_strip_kg: float = 0
 	gross_weight_per_part_kg: float = 0
+	scrap_weight_per_part_kg: float = 0
 	parts_per_strip: int = 2
 	no_of_strips: int | None = 1
 	parts_per_sheet: int = 0
@@ -113,8 +117,11 @@ class TestValidators(SheetCuttingLayoutTestCase):
 		finished_part: FinishedPart | None = None,
 		end_piece: EndPiece | None = None,
 	) -> Layout:
+		accounted_finished_part = finished_part or FinishedPart("AB12SHR", 2, 11.004, 0)
 		return Layout(
-			finished_parts=[finished_part or FinishedPart("AB12SHR", 2, 11.004, 0)],
+			finished_part_code=accounted_finished_part.finished_part_item,
+			net_weight_per_part_kg=1.0,
+			finished_parts=[accounted_finished_part],
 			end_pieces=[end_piece or EndPiece()],
 		)
 
@@ -126,9 +133,9 @@ class TestValidators(SheetCuttingLayoutTestCase):
 
 		self.validators.validate_finished_part_code("AB12SHR")
 
-	def test_layout_requires_exactly_one_finished_part(self) -> None:
-		with self.assertRaisesRegex(ValidationError, "exactly one finished part"):
-			self.validators.validate_sheet_cutting_layout(Layout())
+	def test_layout_requires_parent_finished_part_code_when_no_child_rows(self) -> None:
+		with self.assertRaisesRegex(ValidationError, "Finished part code is required"):
+			self.validators.validate_sheet_cutting_layout(Layout(finished_part_code="", finished_parts=[]))
 		with self.assertRaisesRegex(ValidationError, "exactly one finished part"):
 			self.validators.validate_sheet_cutting_layout(
 				Layout(
@@ -160,28 +167,27 @@ class TestValidators(SheetCuttingLayoutTestCase):
 			79.0,
 		)
 
-	def test_strip_and_parts_formulas_derive_parent_and_child_fields(self) -> None:
-		layout = self._balanced_layout(
-			finished_part=FinishedPart(
-				finished_part_item="AB12SHR",
-				parts_per_sheet=99,
-				gross_weight_per_part_kg=0,
-				net_weight_per_part_kg=0.5,
-			)
+	def test_strip_and_parts_formulas_derive_parent_fields_from_parent_inputs(self) -> None:
+		layout = Layout(
+			finished_part_code="AB12SHR",
+			net_weight_per_part_kg=0.289,
+			finished_parts=[],
+			end_pieces=[],
+			parts_per_strip=7,
+			no_of_strips=11,
+			weight_of_strip_kg=3.31692,
 		)
 
-		self.validators.apply_strip_weight_formula(layout)
 		self.validators.apply_parent_gross_weight_per_part_formula(layout)
+		self.validators.apply_parent_scrap_weight_per_part_formula(layout)
 		self.validators.apply_parts_per_sheet_formula(layout, layout.finished_parts)
-		self.validators.apply_finished_part_weight_formulas(layout, layout.finished_parts)
 
-		self.assertEqual(layout.parts_per_sheet, 2)
-		self.assertEqual(layout.finished_parts[0].parts_per_sheet, 2)
-		self.assertGreater(layout.weight_of_strip_kg, 0)
-		self.assertGreater(layout.gross_weight_per_part_kg, 0)
-		self.assertEqual(
-			layout.finished_parts[0].gross_weight_per_part_kg,
-			layout.gross_weight_per_part_kg,
+		self.assertEqual(layout.parts_per_sheet, 77)
+		self.assertAlmostEqual(layout.gross_weight_per_part_kg, 3.31692 / 7, places=6)
+		self.assertAlmostEqual(
+			layout.scrap_weight_per_part_kg,
+			layout.gross_weight_per_part_kg - 0.289,
+			places=6,
 		)
 
 	def test_derive_end_piece_item_code_uses_used_for_finished_part_and_trimmed_numbers(self) -> None:
