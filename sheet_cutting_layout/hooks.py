@@ -41,7 +41,9 @@ override_whitelisted_methods = {
 
 doc_events = {
 	"BOM": {
+		"before_insert": "sheet_cutting_layout.overrides.bom.validate_shearing_bom_source",
 		"validate": "sheet_cutting_layout.overrides.bom.validate_shearing_bom_source",
+		"before_save": "sheet_cutting_layout.overrides.bom.validate_shearing_bom_source",
 	}
 }
 

@@ -27,6 +27,10 @@ class LayoutDocument(Protocol):
 	process_scrap_item: str
 	weight_per_sheet_kg: float
 	no_of_strips: int
+	finished_part_code: str | None
+	parts_per_sheet: int
+	gross_weight_per_part_kg: float
+	scrap_weight_per_part_kg: float
 	end_pieces: Sequence[EndPieceRow]
 
 
@@ -52,6 +56,24 @@ class BomDocument:
 	status: str = "Active"
 	items: list[BomItemRow] = field(default_factory=list)
 	scrap_items: list[BomItemRow] = field(default_factory=list)
+
+
+@dataclass
+class ParentFinishedPartRow:
+	finished_part_item: str
+	parts_per_sheet: int
+	gross_weight_per_part_kg: float
+	scrap_weight_per_part_kg: float
+
+
+@dataclass
+class ExpectedBomConsumption:
+	item: str
+	quantity: int
+	raw_material_rows: list[BomItemRow]
+	scrap_rows: list[BomItemRow]
+	total_raw_material_qty: float
+	total_scrap_qty: float
 
 
 BomDocumentFactory = Callable[[str], BomDocument]
@@ -128,6 +150,44 @@ def build_bom_from_layout_row(
 			)
 
 	return bom
+
+
+def build_bom_from_layout(
+	layout_doc: LayoutDocument,
+	*,
+	document_factory: BomDocumentFactory | None = None,
+) -> BomDocument:
+	return build_bom_from_layout_row(
+		layout_doc,
+		_parent_finished_part_row(layout_doc),
+		document_factory=document_factory,
+	)
+
+
+def expected_bom_consumption_from_layout(layout_doc: LayoutDocument) -> ExpectedBomConsumption:
+	bom = build_bom_from_layout(layout_doc)
+	total_raw_material_qty = sum(row.qty for row in bom.items)
+	total_scrap_qty = sum(row.qty for row in bom.scrap_items)
+	return ExpectedBomConsumption(
+		item=bom.item,
+		quantity=bom.quantity,
+		raw_material_rows=list(bom.items),
+		scrap_rows=list(bom.scrap_items),
+		total_raw_material_qty=total_raw_material_qty,
+		total_scrap_qty=total_scrap_qty,
+	)
+
+
+def _parent_finished_part_row(layout_doc: LayoutDocument) -> ParentFinishedPartRow:
+	finished_part_item = str(getattr(layout_doc, "finished_part_code", "") or "").strip()
+	if not finished_part_item:
+		raise ValueError("finished_part_code is required to create generated BOM")
+	return ParentFinishedPartRow(
+		finished_part_item=finished_part_item,
+		parts_per_sheet=int(getattr(layout_doc, "parts_per_sheet", 0) or 0),
+		gross_weight_per_part_kg=float(getattr(layout_doc, "gross_weight_per_part_kg", 0) or 0),
+		scrap_weight_per_part_kg=float(getattr(layout_doc, "scrap_weight_per_part_kg", 0) or 0),
+	)
 
 
 def _new_bom(item: str, document_factory: BomDocumentFactory | None) -> BomDocument:

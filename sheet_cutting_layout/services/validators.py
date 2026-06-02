@@ -4,6 +4,8 @@ import re
 from collections.abc import Sequence
 from typing import Protocol
 
+from sheet_cutting_layout.services.bom_service import BomItemRow, expected_bom_consumption_from_layout
+
 try:
 	import frappe
 except ImportError:
@@ -104,6 +106,7 @@ def validate_sheet_cutting_layout(layout: SheetCuttingLayoutDocument) -> None:
 	apply_end_piece_bom_status(layout, end_pieces)
 	if end_pieces:
 		_validate_complete_sheet_consumption(layout, end_pieces)
+	_validate_generated_bom_matches_layout(layout)
 
 
 def apply_sheet_weight_formula(layout: SheetCuttingLayoutDocument) -> None:
@@ -428,6 +431,103 @@ def _validate_complete_sheet_consumption(
 				_format_sheet_consumption_weight(abs(unaccounted_weight))
 			)
 		)
+
+
+def _validate_generated_bom_matches_layout(layout: SheetCuttingLayoutDocument) -> None:
+	generated_bom = str(getattr(layout, "generated_bom", "") or "").strip()
+	if not generated_bom:
+		return
+
+	get_doc = getattr(frappe, "get_doc", None)
+	if not callable(get_doc):
+		return
+
+	bom = get_doc("BOM", generated_bom)
+	expected = expected_bom_consumption_from_layout(layout)  # type: ignore[arg-type]
+
+	if str(getattr(bom, "item", "") or "").strip() != expected.item:
+		frappe.throw(
+			_("BOM item mismatch: expected {0}, found {1}").format(
+				expected.item,
+				getattr(bom, "item", None),
+			)
+		)
+	if int(float(getattr(bom, "quantity", 0) or 0)) != expected.quantity:
+		frappe.throw(
+			_("BOM quantity mismatch: expected {0}, found {1}").format(
+				expected.quantity,
+				getattr(bom, "quantity", None),
+			)
+		)
+
+	_validate_bom_rows(
+		actual_rows=list(getattr(bom, "items", []) or []),
+		expected_rows=expected.raw_material_rows,
+		qty_getter=_bom_row_qty,
+		category="raw material",
+	)
+	_validate_bom_rows(
+		actual_rows=list(getattr(bom, "scrap_items", []) or []),
+		expected_rows=expected.scrap_rows,
+		qty_getter=_bom_scrap_row_qty,
+		category="scrap",
+	)
+
+
+def _validate_bom_rows(
+	*,
+	actual_rows: Sequence[object],
+	expected_rows: Sequence[BomItemRow],
+	qty_getter: object,
+	category: str,
+) -> None:
+	expected_by_item = _sum_expected_bom_rows(expected_rows)
+	actual_by_item = _sum_actual_bom_rows(actual_rows, qty_getter)  # type: ignore[arg-type]
+	if set(actual_by_item) != set(expected_by_item):
+		frappe.throw(
+			_("BOM {0} item mismatch: expected {1}, found {2}").format(
+				category,
+				", ".join(sorted(expected_by_item)) or "none",
+				", ".join(sorted(actual_by_item)) or "none",
+			)
+		)
+	for item_code, expected_qty in expected_by_item.items():
+		actual_qty = actual_by_item[item_code]
+		if _flt(actual_qty - expected_qty) != 0:
+			frappe.throw(
+				_("BOM {0} quantity mismatch for {1}: expected {2}, found {3}").format(
+					category,
+					item_code,
+					expected_qty,
+					actual_qty,
+				)
+			)
+
+
+def _sum_expected_bom_rows(rows: Sequence[BomItemRow]) -> dict[str, float]:
+	totals: dict[str, float] = {}
+	for row in rows:
+		totals[row.item_code] = _flt(totals.get(row.item_code, 0) + row.qty)
+	return totals
+
+
+def _sum_actual_bom_rows(rows: Sequence[object], qty_getter: object) -> dict[str, float]:
+	totals: dict[str, float] = {}
+	for row in rows:
+		item_code = str(getattr(row, "item_code", "") or "").strip()
+		if not item_code:
+			continue
+		qty = qty_getter(row)  # type: ignore[operator]
+		totals[item_code] = _flt(totals.get(item_code, 0) + qty)
+	return totals
+
+
+def _bom_row_qty(row: object) -> float:
+	return float(getattr(row, "qty", 0) or 0)
+
+
+def _bom_scrap_row_qty(row: object) -> float:
+	return float(getattr(row, "stock_qty", None) or getattr(row, "qty", 0) or 0)
 
 
 def _is_missing(value: object) -> bool:

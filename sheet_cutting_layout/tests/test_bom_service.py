@@ -33,6 +33,11 @@ class Layout:
 	process_scrap_item: str = "PROCESS-SCRAP"
 	weight_per_sheet_kg: float = 50
 	no_of_strips: int = 11
+	finished_part_code: str = "FINISHED-SHR"
+	net_weight_per_part_kg: float = 12.5
+	gross_weight_per_part_kg: float = 12.5
+	scrap_weight_per_part_kg: float = 0
+	parts_per_sheet: int = 4
 	end_pieces: list[EndPiece] = field(default_factory=list)
 
 
@@ -186,6 +191,52 @@ def test_resolve_scrap_item_rate_looks_up_when_existing_rate_is_zero_or_invalid(
 
 
 class TestBomService(SheetCuttingLayoutTestCase):
+	def test_main_bom_is_derived_from_parent_finished_part_fields(self) -> None:
+		bom_service = import_bom_service()
+		layout = Layout(
+			raw_material_item="RM001",
+			process_scrap_item="PROCESS-SCRAP",
+			finished_part_code="FG01SHR",
+			net_weight_per_part_kg=0.289,
+			parts_per_sheet=77,
+			no_of_strips=11,
+			weight_per_sheet_kg=39.3,
+			gross_weight_per_part_kg=0.473846,
+			scrap_weight_per_part_kg=0.184846,
+		)
+
+		bom = bom_service.build_bom_from_layout(layout)
+
+		self.assertEqual(bom.item, "FG01SHR")
+		self.assertEqual(bom.quantity, 11)
+		self.assertAlmostEqual(self._sum_bom_qty(bom.items, "raw_material"), 39.3, places=6)
+		self.assertAlmostEqual(self._sum_bom_qty(bom.scrap_items, "process_scrap"), 14.233142, places=6)
+
+	def test_main_bom_expected_consumption_helper_matches_parent_fields(self) -> None:
+		bom_service = import_bom_service()
+		layout = Layout(
+			raw_material_item="RM001",
+			process_scrap_item="PROCESS-SCRAP",
+			finished_part_code="FG01SHR",
+			parts_per_sheet=77,
+			no_of_strips=11,
+			weight_per_sheet_kg=39.3,
+			gross_weight_per_part_kg=0.473846,
+			scrap_weight_per_part_kg=0.184846,
+		)
+
+		expected = bom_service.expected_bom_consumption_from_layout(layout)
+
+		self.assertEqual(expected.item, "FG01SHR")
+		self.assertEqual(expected.quantity, 11)
+		self.assertEqual([(row.item_code, row.qty, row.row_type) for row in expected.raw_material_rows], [
+			("RM001", 39.3, "raw_material")
+		])
+		self.assertEqual([(row.item_code, row.qty, row.row_type) for row in expected.scrap_rows], [
+			("PROCESS-SCRAP", 14.233142, "process_scrap")
+		])
+		self.assertAlmostEqual(expected.total_scrap_qty, 14.233142, places=6)
+
 	def test_bom_invariants_hold_for_representative_layouts(self) -> None:
 		bom_service = import_bom_service()
 		cases = [

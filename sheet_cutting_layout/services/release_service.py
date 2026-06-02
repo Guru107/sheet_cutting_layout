@@ -134,11 +134,11 @@ def release_layout(
 	_activate_boms(generated_boms)
 	layout.status = "Released"
 	if layouts:
-		finalize_new_revision_release(layouts, layout, boms or [])  # type: ignore[arg-type]
+		finalize_new_revision_release(layouts, layout, generated_boms)  # type: ignore[arg-type]
 	_sync_finished_part_reference_rows(layout, generated_boms, _release_finished_part_rows(layout))
 	if layouts:
 		_save_layout_records(layouts)
-	_save_bom_records(boms or generated_boms)
+	_save_bom_records(generated_boms)
 
 	return ReleaseResult(
 		status=layout.status,
@@ -220,6 +220,7 @@ def _insert_frappe_bom(bom: BomDocument) -> BomDocument:
 	bom_doc.sheet_cutting_layout = bom.sheet_cutting_layout or getattr(
 		getattr(bom, "_layout", None), "name", None
 	)
+	_mark_bom_app_controlled(bom_doc)
 	for row in bom.items:
 		bom_doc.append(
 			"items",
@@ -291,8 +292,8 @@ def _sync_finished_part_reference_rows(
 		{
 			"finished_part_item": finished_part.finished_part_item,
 			"bom_quantity": bom.quantity,
-			"scrap_weight_kg": finished_part.scrap_weight_per_part_kg * finished_part.parts_per_sheet,
-			"raw_material_weight_kg": bom.items[0].qty if bom.items else None,
+			"scrap_weight_kg": _sum_bom_qty(bom.scrap_items),
+			"raw_material_weight_kg": _sum_bom_qty(bom.items),
 		}
 		for finished_part, bom in zip(finished_parts, generated_boms, strict=False)
 	]
@@ -372,6 +373,7 @@ def _save_bom_records(boms: Sequence[BomRecord]) -> None:
 		_set_frappe_field_if_supported(bom_doc, "is_active", 1 if bom.is_active else 0)
 		_set_frappe_field_if_supported(bom_doc, "disabled", 1 if bom.disabled else 0)
 		_set_frappe_field_if_supported(bom_doc, "status", bom.status)
+		_mark_bom_app_controlled(bom_doc)
 		bom_doc.save(ignore_permissions=True)
 
 
@@ -431,3 +433,15 @@ def _set_frappe_field_if_supported(doc: object, fieldname: str, value: object) -
 	if meta is None and not hasattr(doc, fieldname):
 		return
 	setattr(doc, fieldname, value)
+
+
+def _sum_bom_qty(rows: Sequence[object]) -> float:
+	return sum(float(getattr(row, "qty", 0) or 0) for row in rows)
+
+
+def _mark_bom_app_controlled(bom_doc: object) -> None:
+	flags = getattr(bom_doc, "flags", None)
+	if flags is None:
+		flags = type("Flags", (), {})()
+		setattr(bom_doc, "flags", flags)
+	setattr(flags, "sheet_cutting_layout_allow_bom_update", True)
