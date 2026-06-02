@@ -248,6 +248,24 @@ def test_bom_custom_fields_are_fixture_owned() -> None:
 	assert fields["sheet_cutting_layout"]["no_copy"] == 1
 
 
+def test_parent_finished_part_code_is_item_link() -> None:
+	doctype_path = (
+		Path(__file__).resolve().parents[1]
+		/ "sheet_cutting_layout"
+		/ "doctype"
+		/ "sheet_cutting_layout"
+		/ "sheet_cutting_layout.json"
+	)
+	fields = {
+		row["fieldname"]: row
+		for row in json.loads(doctype_path.read_text(encoding="utf-8"))["fields"]
+		if "fieldname" in row
+	}
+
+	assert fields["finished_part_code"]["fieldtype"] == "Link"
+	assert fields["finished_part_code"]["options"] == "Item"
+
+
 def test_release_reaches_released() -> None:
 	from sheet_cutting_layout.services.release_service import release_layout
 

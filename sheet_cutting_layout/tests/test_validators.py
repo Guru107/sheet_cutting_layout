@@ -118,6 +118,10 @@ class TestValidators(SheetCuttingLayoutTestCase):
 		end_piece: EndPiece | None = None,
 	) -> Layout:
 		accounted_finished_part = finished_part or FinishedPart("AB12SHR", 2, 11.004, 0)
+		strip_weight = (
+			accounted_finished_part.gross_weight_per_part_kg
+			* accounted_finished_part.parts_per_sheet
+		)
 		net_weight = (
 			accounted_finished_part.net_weight_per_part_kg
 			if accounted_finished_part.net_weight_per_part_kg is not None
@@ -127,8 +131,8 @@ class TestValidators(SheetCuttingLayoutTestCase):
 		return Layout(
 			finished_part_code=accounted_finished_part.finished_part_item,
 			net_weight_per_part_kg=net_weight,
-			weight_of_strip_kg=accounted_finished_part.gross_weight_per_part_kg
-			* accounted_finished_part.parts_per_sheet,
+			strip_length_mm=strip_weight * 1_000_000 / (1 * 1250 * 7.86),
+			weight_of_strip_kg=strip_weight,
 			gross_weight_per_part_kg=accounted_finished_part.gross_weight_per_part_kg,
 			scrap_weight_per_part_kg=accounted_finished_part.scrap_weight_per_part_kg,
 			parts_per_sheet=accounted_finished_part.parts_per_sheet,
@@ -200,6 +204,34 @@ class TestValidators(SheetCuttingLayoutTestCase):
 			layout.gross_weight_per_part_kg - 0.289,
 			places=6,
 		)
+
+	def test_strip_weight_recomputes_from_dimensions_even_when_prefilled(self) -> None:
+		layout = Layout(
+			strip_thickness_mm=1,
+			strip_width_mm=1250,
+			strip_length_mm=260,
+			weight_of_strip_kg=999,
+		)
+
+		self.validators.apply_strip_weight_formula(layout)
+
+		self.assertEqual(layout.weight_of_strip_kg, 2.5545)
+
+	def test_parent_only_consumption_tracking_counts_finished_part_without_end_pieces(self) -> None:
+		layout = Layout(
+			finished_part_code="AB12SHR",
+			net_weight_per_part_kg=1.27725,
+			finished_parts=[],
+			end_pieces=[],
+			parts_per_strip=2,
+			no_of_strips=1,
+		)
+
+		self.validators.validate_sheet_cutting_layout(layout)
+
+		self.assertEqual(layout.parts_per_sheet, 2)
+		self.assertEqual(layout.consumed_weight_kg, 2.554)
+		self.assertEqual(layout.consumption_status, "Short")
 
 	def test_validation_uses_parent_finished_part_contract_even_when_child_rows_exist(self) -> None:
 		layout = Layout(

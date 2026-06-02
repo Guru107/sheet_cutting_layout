@@ -281,7 +281,9 @@ class TestSheetCuttingLayoutController(SheetCuttingLayoutTestCase):
 
 		layout.parts_per_strip = 7
 		layout.no_of_strips = 11
-		layout.weight_of_strip_kg = 3.31692
+		layout.strip_thickness_mm = 1
+		layout.strip_width_mm = 1250
+		layout.strip_length_mm = 337.6
 		layout.net_weight_per_part_kg = 0.289
 		layout.save()
 

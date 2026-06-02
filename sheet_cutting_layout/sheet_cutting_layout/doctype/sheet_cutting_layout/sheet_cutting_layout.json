@@ -246,8 +246,9 @@
   },
   {
    "fieldname": "finished_part_code",
-   "fieldtype": "Data",
+   "fieldtype": "Link",
    "label": "Finished Part Code",
+   "options": "Item",
    "reqd": 1
   },
   {

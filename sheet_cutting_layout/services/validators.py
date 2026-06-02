@@ -103,7 +103,6 @@ def validate_sheet_cutting_layout(layout: SheetCuttingLayoutDocument) -> None:
 	finished_parts = list(getattr(layout, "finished_parts", []) or [])
 	end_pieces = list(getattr(layout, "end_pieces", []) or [])
 	apply_parts_per_sheet_formula(layout, finished_parts)
-	apply_finished_part_weight_formulas(layout, finished_parts)
 	apply_end_piece_weight_formulas(layout, end_pieces)
 	effective_finished_parts = _parent_finished_part_rows(layout)
 
@@ -131,7 +130,7 @@ def validate_sheet_cutting_layout(layout: SheetCuttingLayoutDocument) -> None:
 		_validate_end_piece_distribution(effective_finished_parts, end_pieces)
 	apply_consumption_tracking(
 		layout,
-		effective_finished_parts if end_pieces else [],
+		effective_finished_parts,
 		end_pieces,
 	)
 	apply_end_piece_bom_status(layout, end_pieces)
@@ -150,10 +149,6 @@ def apply_sheet_weight_formula(layout: SheetCuttingLayoutDocument) -> None:
 
 
 def apply_strip_weight_formula(layout: SheetCuttingLayoutDocument) -> None:
-	current_weight = getattr(layout, "weight_of_strip_kg", None)
-	if current_weight is not None and current_weight > 0:
-		return
-
 	weight = calculate_sheet_weight_kg(
 		thickness_mm=getattr(layout, "strip_thickness_mm", None),
 		width_mm=getattr(layout, "strip_width_mm", None),
@@ -180,13 +175,6 @@ def apply_parent_scrap_weight_per_part_formula(layout: SheetCuttingLayoutDocumen
 	layout.scrap_weight_per_part_kg = _flt(gross_weight - _flt(net_weight))
 
 
-def apply_finished_part_weight_formulas(
-	layout: SheetCuttingLayoutDocument,
-	finished_parts: Sequence[FinishedPartRow],
-) -> None:
-	return None
-
-
 def apply_parts_per_sheet_formula(
 	layout: SheetCuttingLayoutDocument,
 	finished_parts: Sequence[FinishedPartRow],
@@ -211,16 +199,6 @@ def calculate_parts_per_sheet(
 	if parts_per_strip <= 0 or no_of_strips <= 0:
 		return None
 	return int(parts_per_strip) * int(no_of_strips)
-
-
-def calculate_gross_weight_per_part_kg(
-	*,
-	weight_of_strip_kg: float | None,
-	parts_per_strip: int | None,
-) -> float | None:
-	if weight_of_strip_kg is None or parts_per_strip is None or parts_per_strip <= 0:
-		return None
-	return _flt(weight_of_strip_kg / parts_per_strip)
 
 
 def calculate_parent_gross_weight_per_part_kg(
