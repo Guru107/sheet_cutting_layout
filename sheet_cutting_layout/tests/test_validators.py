@@ -118,9 +118,20 @@ class TestValidators(SheetCuttingLayoutTestCase):
 		end_piece: EndPiece | None = None,
 	) -> Layout:
 		accounted_finished_part = finished_part or FinishedPart("AB12SHR", 2, 11.004, 0)
+		net_weight = (
+			accounted_finished_part.net_weight_per_part_kg
+			if accounted_finished_part.net_weight_per_part_kg is not None
+			else accounted_finished_part.gross_weight_per_part_kg
+			- accounted_finished_part.scrap_weight_per_part_kg
+		)
 		return Layout(
 			finished_part_code=accounted_finished_part.finished_part_item,
-			net_weight_per_part_kg=1.0,
+			net_weight_per_part_kg=net_weight,
+			weight_of_strip_kg=accounted_finished_part.gross_weight_per_part_kg
+			* accounted_finished_part.parts_per_sheet,
+			gross_weight_per_part_kg=accounted_finished_part.gross_weight_per_part_kg,
+			scrap_weight_per_part_kg=accounted_finished_part.scrap_weight_per_part_kg,
+			parts_per_sheet=accounted_finished_part.parts_per_sheet,
 			finished_parts=[accounted_finished_part],
 			end_pieces=[end_piece or EndPiece()],
 		)
@@ -133,17 +144,17 @@ class TestValidators(SheetCuttingLayoutTestCase):
 
 		self.validators.validate_finished_part_code("AB12SHR")
 
-	def test_layout_requires_parent_finished_part_code_when_no_child_rows(self) -> None:
+	def test_layout_requires_parent_finished_part_code_even_when_child_rows_exist(self) -> None:
 		with self.assertRaisesRegex(ValidationError, "Finished part code is required"):
 			self.validators.validate_sheet_cutting_layout(Layout(finished_part_code="", finished_parts=[]))
-		with self.assertRaisesRegex(ValidationError, "exactly one finished part"):
+
+		with self.assertRaisesRegex(ValidationError, "Finished part code is required"):
 			self.validators.validate_sheet_cutting_layout(
 				Layout(
+					finished_part_code="",
 					finished_parts=[
 						FinishedPart("AB12SHR", 2, 11.004, 0),
-						FinishedPart("CD34SHR", 2, 11.004, 0),
 					],
-					end_pieces=[EndPiece(disposition="Scrap", scrap_item="MS", used_for_finished_part=None)],
 				)
 			)
 
@@ -171,7 +182,7 @@ class TestValidators(SheetCuttingLayoutTestCase):
 		layout = Layout(
 			finished_part_code="AB12SHR",
 			net_weight_per_part_kg=0.289,
-			finished_parts=[],
+			finished_parts=[FinishedPart("CHILDSHR", parts_per_sheet=999, gross_weight_per_part_kg=9.9)],
 			end_pieces=[],
 			parts_per_strip=7,
 			no_of_strips=11,
@@ -189,6 +200,26 @@ class TestValidators(SheetCuttingLayoutTestCase):
 			layout.gross_weight_per_part_kg - 0.289,
 			places=6,
 		)
+
+	def test_validation_uses_parent_finished_part_contract_even_when_child_rows_exist(self) -> None:
+		layout = Layout(
+			finished_part_code="AB12SHR",
+			net_weight_per_part_kg=0.289,
+			parts_per_sheet=77,
+			gross_weight_per_part_kg=0.473846,
+			scrap_weight_per_part_kg=0.184846,
+			finished_parts=[
+				FinishedPart(
+					finished_part_item="BAD-CHILD",
+					parts_per_sheet=999,
+					gross_weight_per_part_kg=9.9,
+					scrap_weight_per_part_kg=9.8,
+				)
+			],
+			end_pieces=[],
+		)
+
+		self.validators.validate_sheet_cutting_layout(layout)
 
 	def test_derive_end_piece_item_code_uses_used_for_finished_part_and_trimmed_numbers(self) -> None:
 		derived = self.validators.derive_end_piece_item_code(

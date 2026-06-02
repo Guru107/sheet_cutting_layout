@@ -105,11 +105,8 @@ def validate_sheet_cutting_layout(layout: SheetCuttingLayoutDocument) -> None:
 	apply_parts_per_sheet_formula(layout, finished_parts)
 	apply_finished_part_weight_formulas(layout, finished_parts)
 	apply_end_piece_weight_formulas(layout, end_pieces)
-	accounted_finished_parts = _accounted_finished_parts(finished_parts)
-	effective_finished_parts = accounted_finished_parts or _parent_finished_part_rows(layout)
+	effective_finished_parts = _parent_finished_part_rows(layout)
 
-	if accounted_finished_parts and len(accounted_finished_parts) != 1:
-		frappe.throw(_("Sheet Cutting Layout requires exactly one finished part"))
 	if not effective_finished_parts:
 		frappe.throw(_("Finished part code is required"))
 
@@ -134,11 +131,11 @@ def validate_sheet_cutting_layout(layout: SheetCuttingLayoutDocument) -> None:
 		_validate_end_piece_distribution(effective_finished_parts, end_pieces)
 	apply_consumption_tracking(
 		layout,
-		effective_finished_parts if accounted_finished_parts or end_pieces else [],
+		effective_finished_parts if end_pieces else [],
 		end_pieces,
 	)
 	apply_end_piece_bom_status(layout, end_pieces)
-	if accounted_finished_parts or end_pieces:
+	if end_pieces:
 		_validate_complete_sheet_consumption(layout, effective_finished_parts, end_pieces)
 
 
@@ -187,21 +184,7 @@ def apply_finished_part_weight_formulas(
 	layout: SheetCuttingLayoutDocument,
 	finished_parts: Sequence[FinishedPartRow],
 ) -> None:
-	gross_weight = calculate_gross_weight_per_part_kg(
-		weight_of_strip_kg=getattr(layout, "weight_of_strip_kg", None),
-		parts_per_strip=getattr(layout, "parts_per_strip", None),
-	)
-	if gross_weight is None:
-		return
-
-	for finished_part in finished_parts:
-		if _is_missing(finished_part.finished_part_item):
-			continue
-		net_weight = getattr(finished_part, "net_weight_per_part_kg", None)
-		if net_weight is None:
-			continue
-		finished_part.gross_weight_per_part_kg = gross_weight
-		finished_part.scrap_weight_per_part_kg = _flt(gross_weight - _flt(net_weight))
+	return None
 
 
 def apply_parts_per_sheet_formula(
@@ -216,10 +199,6 @@ def apply_parts_per_sheet_formula(
 		return
 
 	layout.parts_per_sheet = parts_per_sheet
-	for finished_part in finished_parts:
-		if _is_missing(finished_part.finished_part_item):
-			continue
-		finished_part.parts_per_sheet = parts_per_sheet
 
 
 def calculate_parts_per_sheet(

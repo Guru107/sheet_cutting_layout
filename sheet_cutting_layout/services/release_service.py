@@ -49,6 +49,12 @@ class ReleaseLayoutDocument(Protocol):
 	process_scrap_item: str
 	no_of_strips: int
 	weight_per_sheet_kg: float
+	finished_part_code: str | None
+	net_weight_per_part_kg: float | None
+	gross_weight_per_part_kg: float | None
+	scrap_weight_per_part_kg: float | None
+	generated_bom: str | None
+	parts_per_sheet: int
 	end_pieces: Sequence[EndPieceRow]
 	finished_parts: Sequence[FinishedPartRow]
 
@@ -74,6 +80,23 @@ class ReleaseResult:
 class ReleaseContext:
 	layouts: Sequence[object] = ()
 	boms: list[BomRecord] | None = None
+
+
+@dataclass
+class ParentFinishedPartRow:
+	finished_part_item: str
+	parts_per_sheet: int
+	gross_weight_per_part_kg: float
+	scrap_weight_per_part_kg: float
+	generated_bom: str | None = None
+
+
+@dataclass
+class FinishedPartReferenceRow:
+	finished_part_item: str
+	bom_quantity: float | None
+	scrap_weight_kg: float | None
+	raw_material_weight_kg: float | None
 
 
 ReleaseContextProvider = Callable[[ReleaseLayoutDocument], ReleaseContext]
@@ -112,6 +135,8 @@ def release_layout(
 	layout.status = "Released"
 	if layouts:
 		finalize_new_revision_release(layouts, layout, boms or [])  # type: ignore[arg-type]
+	_sync_finished_part_reference_rows(layout, generated_boms, _release_finished_part_rows(layout))
+	if layouts:
 		_save_layout_records(layouts)
 	_save_bom_records(boms or generated_boms)
 
@@ -136,7 +161,7 @@ def _generate_boms(
 	bom_name_factory: Callable[[ReleaseLayoutDocument, FinishedPartRow, int], str] | None,
 	bom_document_factory: BomDocumentFactory | None,
 ) -> list[BomDocument]:
-	finished_parts = list(getattr(layout, "finished_parts", []))
+	finished_parts = _release_finished_part_rows(layout)
 	generated_boms: list[BomDocument] = []
 
 	for index, finished_part in enumerate(finished_parts, start=1):
@@ -146,6 +171,7 @@ def _generate_boms(
 			else _default_bom_document_factory(layout, finished_part, index, bom_name_factory)
 		)
 		finished_part.generated_bom = bom.name
+		_set_frappe_field_if_supported(layout, "generated_bom", bom.name)
 		generated_boms.append(bom)
 
 	return generated_boms
@@ -236,6 +262,47 @@ def _insert_frappe_bom(bom: BomDocument) -> BomDocument:
 	return bom
 
 
+def _release_finished_part_rows(layout: ReleaseLayoutDocument) -> list[FinishedPartRow]:
+	return _parent_finished_part_rows(layout)
+
+
+def _parent_finished_part_rows(layout: ReleaseLayoutDocument) -> list[ParentFinishedPartRow]:
+	finished_part_code = str(getattr(layout, "finished_part_code", "") or "").strip()
+	if not finished_part_code:
+		return []
+
+	return [
+		ParentFinishedPartRow(
+			finished_part_item=finished_part_code,
+			parts_per_sheet=int(getattr(layout, "parts_per_sheet", 0) or 0),
+			gross_weight_per_part_kg=float(getattr(layout, "gross_weight_per_part_kg", 0) or 0),
+			scrap_weight_per_part_kg=float(getattr(layout, "scrap_weight_per_part_kg", 0) or 0),
+			generated_bom=getattr(layout, "generated_bom", None),
+		)
+	]
+
+
+def _sync_finished_part_reference_rows(
+	layout: ReleaseLayoutDocument,
+	generated_boms: Sequence[BomDocument],
+	finished_parts: Sequence[FinishedPartRow],
+) -> None:
+	references = [
+		{
+			"finished_part_item": finished_part.finished_part_item,
+			"bom_quantity": bom.quantity,
+			"scrap_weight_kg": finished_part.scrap_weight_per_part_kg * finished_part.parts_per_sheet,
+			"raw_material_weight_kg": bom.items[0].qty if bom.items else None,
+		}
+		for finished_part, bom in zip(finished_parts, generated_boms, strict=False)
+	]
+	set_child_table = getattr(layout, "set", None)
+	if callable(set_child_table):
+		set_child_table("finished_parts", references)
+		return
+	setattr(layout, "finished_parts", [FinishedPartReferenceRow(**row) for row in references])
+
+
 def _activate_boms(boms: Sequence[BomRecord]) -> None:
 	for bom in boms:
 		bom.is_active = True
@@ -283,7 +350,7 @@ def _get_finished_part_boms(layout: ReleaseLayoutDocument) -> list[BomRecord]:
 		raise RuntimeError("Frappe is required to discover BOM records")
 
 	finished_part_items = [
-		row.finished_part_item for row in getattr(layout, "finished_parts", []) if row.finished_part_item
+		row.finished_part_item for row in _release_finished_part_rows(layout) if row.finished_part_item
 	]
 	if not finished_part_items:
 		return []

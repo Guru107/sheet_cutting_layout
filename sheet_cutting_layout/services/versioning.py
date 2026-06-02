@@ -26,6 +26,8 @@ class RevisionLayoutDocument(Protocol):
 	is_active: bool
 	approval_snapshot: list[object]
 	finished_parts: list[FinishedPartRow]
+	finished_part_code: str | None
+	generated_bom: str | None
 
 
 class BomDocument(Protocol):
@@ -74,18 +76,19 @@ def finalize_new_revision_release(
 	previous_active_layouts = [
 		layout for layout in layouts if _is_previous_active_released_layout(layout, new_layout)
 	]
-	affected_items = {row.finished_part_item for row in new_layout.finished_parts}
+	affected_items = _finished_part_items(new_layout)
 	superseded_bom_names = {
-		row.generated_bom
+		generated_bom
 		for layout in previous_active_layouts
 		for row in layout.finished_parts
-		if row.generated_bom is not None and row.finished_part_item in affected_items
+		if (generated_bom := getattr(row, "generated_bom", None)) is not None
+		and row.finished_part_item in affected_items
 	}
 
 	new_layout.status = "Released"
 	new_layout.is_active = True
 
-	new_bom_names = {row.generated_bom for row in new_layout.finished_parts if row.generated_bom is not None}
+	new_bom_names = _generated_bom_names(new_layout)
 
 	for layout in previous_active_layouts:
 		layout.status = "Superseded"
@@ -114,6 +117,30 @@ def _is_previous_active_released_layout(
 		and layout.status == "Released"
 		and layout.is_active
 	)
+
+
+def _finished_part_items(layout: RevisionLayoutDocument) -> set[str]:
+	items = {
+		row.finished_part_item
+		for row in getattr(layout, "finished_parts", []) or []
+		if getattr(row, "finished_part_item", None)
+	}
+	finished_part_code = str(getattr(layout, "finished_part_code", "") or "").strip()
+	if finished_part_code:
+		items.add(finished_part_code)
+	return items
+
+
+def _generated_bom_names(layout: RevisionLayoutDocument) -> set[str]:
+	names = {
+		generated_bom
+		for row in getattr(layout, "finished_parts", []) or []
+		if (generated_bom := getattr(row, "generated_bom", None)) is not None
+	}
+	generated_bom = str(getattr(layout, "generated_bom", "") or "").strip()
+	if generated_bom:
+		names.add(generated_bom)
+	return names
 
 
 def _copy_layout(old_layout: RevisionLayoutT) -> RevisionLayoutT:

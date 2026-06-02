@@ -22,12 +22,26 @@ class Layout:
 	raw_material_item: str = "RMSHEET001"
 	process_scrap_item: str = "PROCESSSCRAP001"
 	no_of_strips: int = 11
+	finished_part_code: str = "PART001SHR"
+	net_weight_per_part_kg: float = 1.0
+	gross_weight_per_part_kg: float = 1.0
+	scrap_weight_per_part_kg: float = 0.0
+	generated_bom: str | None = None
 	weight_per_sheet_kg: float | None = None
 	consumed_weight_kg: float | None = None
 	leftover_weight_kg: float | None = None
 	consumption_status: str | None = None
+	parts_per_sheet: int = 1
 	finished_parts: list["FinishedPart"] = field(default_factory=lambda: [FinishedPart("PART001SHR")])
 	end_pieces: list["EndPiece"] = field(default_factory=list)
+
+	def __post_init__(self) -> None:
+		if self.finished_parts:
+			self.finished_part_code = self.finished_parts[0].finished_part_item
+			self.parts_per_sheet = self.finished_parts[0].parts_per_sheet
+			self.gross_weight_per_part_kg = self.finished_parts[0].gross_weight_per_part_kg
+			self.scrap_weight_per_part_kg = self.finished_parts[0].scrap_weight_per_part_kg
+		self.net_weight_per_part_kg = self.gross_weight_per_part_kg - self.scrap_weight_per_part_kg
 
 
 @dataclass
@@ -37,6 +51,9 @@ class FinishedPart:
 	gross_weight_per_part_kg: float = 1.0
 	scrap_weight_per_part_kg: float = 0.0
 	generated_bom: str | None = None
+	bom_quantity: float | None = None
+	scrap_weight_kg: float | None = None
+	raw_material_weight_kg: float | None = None
 
 
 @dataclass
@@ -62,6 +79,20 @@ class RevisionLayout:
 	approval_snapshot: list[str] = field(default_factory=list)
 	finished_parts: list[FinishedPart] = field(default_factory=list)
 	end_pieces: list[EndPiece] = field(default_factory=list)
+	finished_part_code: str = ""
+	net_weight_per_part_kg: float = 1.0
+	gross_weight_per_part_kg: float = 1.0
+	scrap_weight_per_part_kg: float = 0.0
+	generated_bom: str | None = None
+	parts_per_sheet: int = 1
+
+	def __post_init__(self) -> None:
+		if self.finished_parts:
+			self.finished_part_code = self.finished_parts[0].finished_part_item
+			self.parts_per_sheet = self.finished_parts[0].parts_per_sheet
+			self.gross_weight_per_part_kg = self.finished_parts[0].gross_weight_per_part_kg
+			self.scrap_weight_per_part_kg = self.finished_parts[0].scrap_weight_per_part_kg
+		self.net_weight_per_part_kg = self.gross_weight_per_part_kg - self.scrap_weight_per_part_kg
 
 
 @dataclass
@@ -317,11 +348,11 @@ def test_release_uses_injected_bom_document_factory_for_persisted_boms() -> None
 	from sheet_cutting_layout.services.release_service import release_layout
 
 	layout = Layout()
-	created: list[tuple[Layout, FinishedPart, int]] = []
+	created: list[tuple[Layout, object, int]] = []
 
-	def fake_factory(received_layout: Layout, row: FinishedPart, index: int) -> BomDocument:
+	def fake_factory(received_layout: Layout, row: object, index: int) -> BomDocument:
 		created.append((received_layout, row, index))
-		return BomDocument(item=row.finished_part_item, name=f"PERSISTED-BOM-{index}")
+		return BomDocument(item=getattr(row, "finished_part_item"), name=f"PERSISTED-BOM-{index}")
 
 	result = release_layout(
 		layout,
@@ -330,9 +361,43 @@ def test_release_uses_injected_bom_document_factory_for_persisted_boms() -> None
 		boms=[],
 	)
 
-	assert created == [(layout, layout.finished_parts[0], 1)]
+	assert created[0][0] is layout
+	assert getattr(created[0][1], "finished_part_item") == "PART001SHR"
+	assert created[0][2] == 1
 	assert result.generated_boms[0].name == "PERSISTED-BOM-1"
-	assert layout.finished_parts[0].generated_bom == "PERSISTED-BOM-1"
+	assert layout.generated_bom == "PERSISTED-BOM-1"
+	assert [row.finished_part_item for row in layout.finished_parts] == ["PART001SHR"]
+	assert [row.bom_quantity for row in layout.finished_parts] == [1]
+
+
+def test_release_uses_parent_finished_part_contract_without_child_inputs() -> None:
+	from sheet_cutting_layout.services.release_service import release_layout
+
+	layout = Layout(
+		weight_per_sheet_kg=100.0,
+		parts_per_sheet=80,
+		finished_part_code="PART001SHR",
+		net_weight_per_part_kg=0.75,
+		gross_weight_per_part_kg=1.0,
+		scrap_weight_per_part_kg=0.25,
+		finished_parts=[],
+	)
+
+	result = release_layout(
+		layout,
+		validators=[lambda _layout: None],
+		layouts=[],
+		boms=[],
+		bom_document_factory=_in_memory_bom_factory,
+	)
+
+	assert result.generated_boms[0].item == "PART001SHR"
+	assert result.generated_boms[0].quantity == 11
+	assert layout.generated_bom == result.generated_boms[0].name
+	assert [row.finished_part_item for row in layout.finished_parts] == ["PART001SHR"]
+	assert [row.bom_quantity for row in layout.finished_parts] == [11]
+	assert [row.scrap_weight_kg for row in layout.finished_parts] == [20.0]
+	assert [row.raw_material_weight_kg for row in layout.finished_parts] == [100.0]
 
 
 def test_release_generates_bom_for_one_sheet_in_kg_with_scrap_outputs() -> None:
@@ -1421,7 +1486,9 @@ def test_release_generates_one_bom_for_single_finished_part_and_supersedes_old()
 		[(item.item_code, item.qty, item.row_type) for item in bom.scrap_items]
 		for bom in result.generated_boms
 	] == [[("PROCESS-SCRAP-001", 0.2, "process_scrap")]]
-	assert [row.generated_bom for row in new_layout.finished_parts] == [result.generated_boms[0].name]
+	assert new_layout.generated_bom == result.generated_boms[0].name
+	assert [row.finished_part_item for row in new_layout.finished_parts] == ["PART001SHR"]
+	assert [row.bom_quantity for row in new_layout.finished_parts] == [1]
 	assert result.superseded_layout is old_layout
 	assert old_layout.status == "Superseded"
 	assert old_layout.is_active is False
