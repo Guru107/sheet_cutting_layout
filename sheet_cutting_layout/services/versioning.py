@@ -57,6 +57,8 @@ def create_revision(old_layout: RevisionLayoutT) -> RevisionLayoutT:
 	new_layout.based_on_layout = old_layout.name
 	new_layout.is_active = False
 	new_layout.approval_snapshot = []
+	if hasattr(new_layout, "generated_bom"):
+		new_layout.generated_bom = None
 
 	for finished_part in new_layout.finished_parts:
 		_reset_child_row(finished_part)
@@ -78,11 +80,9 @@ def finalize_new_revision_release(
 	]
 	affected_items = _finished_part_items(new_layout)
 	superseded_bom_names = {
-		generated_bom
+		bom_name
 		for layout in previous_active_layouts
-		for row in layout.finished_parts
-		if (generated_bom := getattr(row, "generated_bom", None)) is not None
-		and row.finished_part_item in affected_items
+		for bom_name in _generated_bom_names_for_items(layout, affected_items)
 	}
 
 	new_layout.status = "Released"
@@ -139,6 +139,23 @@ def _generated_bom_names(layout: RevisionLayoutDocument) -> set[str]:
 	}
 	generated_bom = str(getattr(layout, "generated_bom", "") or "").strip()
 	if generated_bom:
+		names.add(generated_bom)
+	return names
+
+
+def _generated_bom_names_for_items(
+	layout: RevisionLayoutDocument,
+	affected_items: set[str],
+) -> set[str]:
+	names = {
+		generated_bom
+		for row in getattr(layout, "finished_parts", []) or []
+		if (generated_bom := getattr(row, "generated_bom", None)) is not None
+		and getattr(row, "finished_part_item", None) in affected_items
+	}
+	finished_part_code = str(getattr(layout, "finished_part_code", "") or "").strip()
+	generated_bom = str(getattr(layout, "generated_bom", "") or "").strip()
+	if finished_part_code in affected_items and generated_bom:
 		names.add(generated_bom)
 	return names
 

@@ -1314,6 +1314,7 @@ def test_revision_resets_approval_snapshot_and_generated_boms() -> None:
 		status="Released",
 		is_active=True,
 		approval_snapshot=["purchase-approved"],
+		generated_bom="BOM-PARENT-001-001",
 		finished_parts=[
 			FinishedPart("PART001SHR", generated_bom="BOM-PART-001-001"),
 			FinishedPart("PART002SHR", generated_bom="BOM-PART-002-001"),
@@ -1323,7 +1324,9 @@ def test_revision_resets_approval_snapshot_and_generated_boms() -> None:
 	new_layout = create_revision(old_layout)
 
 	assert new_layout.approval_snapshot == []
+	assert new_layout.generated_bom is None
 	assert [row.generated_bom for row in new_layout.finished_parts] == [None, None]
+	assert old_layout.generated_bom == "BOM-PARENT-001-001"
 	assert [row.generated_bom for row in old_layout.finished_parts] == [
 		"BOM-PART-001-001",
 		"BOM-PART-002-001",
@@ -1439,6 +1442,40 @@ def test_finalizing_new_revision_keeps_unlinked_same_item_boms_active() -> None:
 	assert unlinked_same_item_bom.is_active is True
 	assert unlinked_same_item_bom.disabled is False
 	assert unlinked_same_item_bom.status == "Active"
+	assert new_bom.is_active is True
+	assert new_bom.disabled is False
+	assert new_bom.status == "Active"
+
+
+def test_finalizing_new_revision_supersedes_old_parent_generated_bom() -> None:
+	from sheet_cutting_layout.services.versioning import finalize_new_revision_release
+
+	old_layout = RevisionLayout(
+		name="SCL-001",
+		project="FAM-001",
+		revision_no=1,
+		status="Released",
+		is_active=True,
+		generated_bom="BOM-PART-001-OLD",
+		finished_parts=[FinishedPart("PART001SHR")],
+	)
+	new_layout = RevisionLayout(
+		name="SCL-002",
+		project="FAM-001",
+		revision_no=2,
+		status="Approved by Purchase",
+		is_active=False,
+		generated_bom="BOM-PART-001-NEW",
+		finished_parts=[FinishedPart("PART001SHR")],
+	)
+	old_bom = Bom("BOM-PART-001-OLD", item="PART001SHR")
+	new_bom = Bom("BOM-PART-001-NEW", item="PART001SHR")
+
+	finalize_new_revision_release([old_layout, new_layout], new_layout, [old_bom, new_bom])
+
+	assert old_bom.is_active is False
+	assert old_bom.disabled is True
+	assert old_bom.status == "Superseded"
 	assert new_bom.is_active is True
 	assert new_bom.disabled is False
 	assert new_bom.status == "Active"
