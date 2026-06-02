@@ -136,7 +136,7 @@ class TestValidators(SheetCuttingLayoutTestCase):
 			gross_weight_per_part_kg=accounted_finished_part.gross_weight_per_part_kg,
 			scrap_weight_per_part_kg=accounted_finished_part.scrap_weight_per_part_kg,
 			parts_per_sheet=accounted_finished_part.parts_per_sheet,
-			finished_parts=[accounted_finished_part],
+			finished_parts=[],
 			end_pieces=[end_piece or EndPiece()],
 		)
 
@@ -195,7 +195,7 @@ class TestValidators(SheetCuttingLayoutTestCase):
 
 		self.validators.apply_parent_gross_weight_per_part_formula(layout)
 		self.validators.apply_parent_scrap_weight_per_part_formula(layout)
-		self.validators.apply_parts_per_sheet_formula(layout, layout.finished_parts)
+		self.validators.apply_parts_per_sheet_formula(layout)
 
 		self.assertEqual(layout.parts_per_sheet, 77)
 		self.assertAlmostEqual(layout.gross_weight_per_part_kg, 3.31692 / 7, places=6)
@@ -204,6 +204,33 @@ class TestValidators(SheetCuttingLayoutTestCase):
 			layout.gross_weight_per_part_kg - 0.289,
 			places=6,
 		)
+
+	def test_validation_derives_parent_part_quantities_and_weights_from_parent_inputs(self) -> None:
+		layout = Layout(
+			finished_part_code="FG01SHR",
+			net_weight_per_part_kg=0.289,
+			parts_per_strip=7,
+			no_of_strips=11,
+			weight_of_strip_kg=3.31692,
+			strip_thickness_mm=None,
+			strip_width_mm=None,
+			strip_length_mm=None,
+			end_pieces=[],
+		)
+
+		self.validators.validate_sheet_cutting_layout(layout)
+
+		self.assertEqual(layout.parts_per_sheet, 77)
+		self.assertAlmostEqual(layout.gross_weight_per_part_kg, 3.31692 / 7, places=6)
+		self.assertAlmostEqual(
+			layout.scrap_weight_per_part_kg,
+			layout.gross_weight_per_part_kg - 0.289,
+			places=6,
+		)
+
+		layout.net_weight_per_part_kg = layout.gross_weight_per_part_kg + 0.001
+		with self.assertRaisesRegex(ValidationError, "Scrap weight per part cannot be negative"):
+			self.validators.validate_sheet_cutting_layout(layout)
 
 	def test_strip_weight_recomputes_from_dimensions_even_when_prefilled(self) -> None:
 		layout = Layout(
@@ -446,6 +473,32 @@ class TestValidators(SheetCuttingLayoutTestCase):
 		self.assertEqual(layout.leftover_weight_kg, 0.0)
 		self.assertEqual(layout.consumption_status, "Balanced")
 
+	def test_consumption_tracking_accepts_balanced_layout_with_scrap_end_piece(self) -> None:
+		layout = self._balanced_layout(
+			end_piece=EndPiece(
+				disposition="Scrap",
+				scrap_item="MS-SCRAP",
+				used_for_finished_part=None,
+				bom_quantity=0,
+				bom_scrap_quantity_kg=0,
+			)
+		)
+
+		self.validators.validate_sheet_cutting_layout(layout)
+
+		self.assertEqual(layout.consumed_weight_kg, 24.562)
+		self.assertEqual(layout.leftover_weight_kg, 0.0)
+		self.assertEqual(layout.consumption_status, "Balanced")
+
+	def test_consumption_tracking_accepts_balanced_layout_with_reuse_end_piece(self) -> None:
+		layout = self._balanced_layout(end_piece=EndPiece(disposition="Reuse"))
+
+		self.validators.validate_sheet_cutting_layout(layout)
+
+		self.assertEqual(layout.consumed_weight_kg, 24.562)
+		self.assertEqual(layout.leftover_weight_kg, 0.0)
+		self.assertEqual(layout.consumption_status, "Balanced")
+
 	def test_consumption_tracking_raises_for_short_and_excess_outside_tolerance(self) -> None:
 		short_layout = self._balanced_layout(
 			end_piece=EndPiece(length_mm=259.338, used_for_finished_part="FG01SHR")
@@ -461,16 +514,34 @@ class TestValidators(SheetCuttingLayoutTestCase):
 			self.validators.validate_sheet_cutting_layout(excess_layout)
 		self.assertEqual(excess_layout.consumption_status, "Excess")
 
-	def test_consumed_weight_calculation_does_not_add_process_scrap(self) -> None:
-		consumed = self.validators.calculate_consumed_weight_kg(
-			[
-				FinishedPart(
-					"AB12SHR",
-					parts_per_sheet=2,
-					gross_weight_per_part_kg=11.004,
-					scrap_weight_per_part_kg=0.5,
+	def test_consumption_tracking_accepts_sheet_consumption_at_tolerance_edge(self) -> None:
+		cases = [
+			("short_edge", 259.44, 0.005),
+			("excess_edge", 260.458, -0.005),
+		]
+		for name, end_piece_length_mm, expected_leftover_weight in cases:
+			with self.subTest(name=name):
+				layout = self._balanced_layout(
+					end_piece=EndPiece(
+						length_mm=end_piece_length_mm,
+						used_for_finished_part="FG01SHR",
+					)
 				)
-			],
+
+				self.validators.validate_sheet_cutting_layout(layout)
+
+				self.assertEqual(layout.leftover_weight_kg, expected_leftover_weight)
+				self.assertEqual(layout.consumption_status, "Balanced")
+
+	def test_consumed_weight_calculation_does_not_add_process_scrap(self) -> None:
+		layout = Layout(
+			finished_part_code="AB12SHR",
+			parts_per_sheet=2,
+			gross_weight_per_part_kg=11.004,
+			scrap_weight_per_part_kg=0.5,
+		)
+		consumed = self.validators.calculate_consumed_weight_kg(
+			layout,
 			[EndPiece(weight_kg=2.5545)],
 		)
 		self.assertEqual(consumed, 24.562)

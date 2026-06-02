@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import re
 from collections.abc import Sequence
-from dataclasses import dataclass
 from typing import Protocol
 
 try:
@@ -24,14 +23,6 @@ except ImportError:
 _ = getattr(frappe, "_", lambda message: message)
 
 
-class FinishedPartRow(Protocol):
-	finished_part_item: str
-	parts_per_sheet: int
-	net_weight_per_part_kg: float | None
-	gross_weight_per_part_kg: float
-	scrap_weight_per_part_kg: float
-
-
 class EndPieceRow(Protocol):
 	end_piece_item_code: str | None
 	width_mm: float | None
@@ -49,7 +40,6 @@ class SheetCuttingLayoutDocument(Protocol):
 	finished_part_code: str | None
 	net_weight_per_part_kg: float | None
 	generated_bom: str | None
-	finished_parts: Sequence[FinishedPartRow]
 	end_pieces: Sequence[EndPieceRow]
 	raw_material_item: str | None
 	process_scrap_item: str | None
@@ -72,15 +62,6 @@ class SheetCuttingLayoutDocument(Protocol):
 	consumption_status: str | None
 
 
-@dataclass
-class _ParentFinishedPart:
-	finished_part_item: str
-	parts_per_sheet: int
-	net_weight_per_part_kg: float | None
-	gross_weight_per_part_kg: float
-	scrap_weight_per_part_kg: float
-
-
 ALNUM_RE = re.compile(r"^[A-Za-z0-9]+$")
 STEEL_DENSITY_G_PER_CM3 = 7.86
 DEFAULT_FLOAT_PRECISION = 6
@@ -100,22 +81,10 @@ def validate_sheet_cutting_layout(layout: SheetCuttingLayoutDocument) -> None:
 	apply_strip_weight_formula(layout)
 	apply_parent_gross_weight_per_part_formula(layout)
 	apply_parent_scrap_weight_per_part_formula(layout)
-	finished_parts = list(getattr(layout, "finished_parts", []) or [])
 	end_pieces = list(getattr(layout, "end_pieces", []) or [])
-	apply_parts_per_sheet_formula(layout, finished_parts)
+	apply_parts_per_sheet_formula(layout)
 	apply_end_piece_weight_formulas(layout, end_pieces)
-	effective_finished_parts = _parent_finished_part_rows(layout)
-
-	if not effective_finished_parts:
-		frappe.throw(_("Finished part code is required"))
-
-	for finished_part in effective_finished_parts:
-		validate_finished_part_code(finished_part.finished_part_item)
-		_validate_finished_part_weights(finished_part)
-		if finished_part.scrap_weight_per_part_kg > 0 and _is_missing(
-			getattr(layout, "process_scrap_item", None)
-		):
-			frappe.throw(_("Process scrap item is required when process scrap weight is positive"))
+	_validate_parent_finished_part_fields(layout)
 
 	for end_piece in end_pieces:
 		_validate_end_piece_item_code_is_locked(end_piece)
@@ -127,15 +96,14 @@ def validate_sheet_cutting_layout(layout: SheetCuttingLayoutDocument) -> None:
 		frappe.throw(_("Process scrap item is required when reuse BOM scrap weight is positive"))
 
 	if end_pieces:
-		_validate_end_piece_distribution(effective_finished_parts, end_pieces)
+		_validate_end_piece_distribution(layout, end_pieces)
 	apply_consumption_tracking(
 		layout,
-		effective_finished_parts,
 		end_pieces,
 	)
 	apply_end_piece_bom_status(layout, end_pieces)
 	if end_pieces:
-		_validate_complete_sheet_consumption(layout, effective_finished_parts, end_pieces)
+		_validate_complete_sheet_consumption(layout, end_pieces)
 
 
 def apply_sheet_weight_formula(layout: SheetCuttingLayoutDocument) -> None:
@@ -175,10 +143,7 @@ def apply_parent_scrap_weight_per_part_formula(layout: SheetCuttingLayoutDocumen
 	layout.scrap_weight_per_part_kg = _flt(gross_weight - _flt(net_weight))
 
 
-def apply_parts_per_sheet_formula(
-	layout: SheetCuttingLayoutDocument,
-	finished_parts: Sequence[FinishedPartRow],
-) -> None:
+def apply_parts_per_sheet_formula(layout: SheetCuttingLayoutDocument) -> None:
 	parts_per_sheet = calculate_parts_per_sheet(
 		parts_per_strip=getattr(layout, "parts_per_strip", None),
 		no_of_strips=getattr(layout, "no_of_strips", None),
@@ -268,14 +233,13 @@ def calculate_sheet_weight_kg(
 
 def apply_consumption_tracking(
 	layout: SheetCuttingLayoutDocument,
-	finished_parts: Sequence[FinishedPartRow],
 	end_pieces: Sequence[EndPieceRow],
 ) -> None:
 	sheet_weight = getattr(layout, "weight_per_sheet_kg", None)
 	if sheet_weight is None:
 		return
 
-	consumed_weight = calculate_consumed_weight_kg(finished_parts, end_pieces)
+	consumed_weight = calculate_consumed_weight_kg(layout, end_pieces)
 	leftover_weight = _sheet_consumption_flt(_sheet_consumption_flt(sheet_weight) - consumed_weight)
 
 	layout.consumed_weight_kg = consumed_weight
@@ -284,52 +248,38 @@ def apply_consumption_tracking(
 
 
 def calculate_consumed_weight_kg(
-	finished_parts: Sequence[FinishedPartRow],
+	layout: SheetCuttingLayoutDocument,
 	end_pieces: Sequence[EndPieceRow],
 ) -> float:
-	part_gross_weight = sum(
-		finished_part.gross_weight_per_part_kg * finished_part.parts_per_sheet
-		for finished_part in finished_parts
-		if not _is_missing(finished_part.finished_part_item)
-	)
+	part_gross_weight = 0.0
+	if not _is_missing(getattr(layout, "finished_part_code", None)):
+		part_gross_weight = _flt(getattr(layout, "gross_weight_per_part_kg", 0)) * int(
+			getattr(layout, "parts_per_sheet", 0) or 0
+		)
 	end_piece_weight = sum(end_piece.weight_kg for end_piece in end_pieces if end_piece.weight_kg is not None)
 	return _sheet_consumption_flt(part_gross_weight + end_piece_weight)
 
 
-def _accounted_finished_parts(
-	finished_parts: Sequence[FinishedPartRow],
-) -> list[FinishedPartRow]:
-	return [
-		finished_part for finished_part in finished_parts if not _is_missing(finished_part.finished_part_item)
-	]
-
-
-def _parent_finished_part_rows(layout: SheetCuttingLayoutDocument) -> list[_ParentFinishedPart]:
+def _validate_parent_finished_part_fields(layout: SheetCuttingLayoutDocument) -> None:
 	finished_part_code = getattr(layout, "finished_part_code", None)
 	if _is_missing(finished_part_code):
-		return []
+		frappe.throw(_("Finished part code is required"))
+	validate_finished_part_code(str(finished_part_code))
 
-	return [
-		_ParentFinishedPart(
-			finished_part_item=str(finished_part_code),
-			parts_per_sheet=int(getattr(layout, "parts_per_sheet", 0) or 0),
-			net_weight_per_part_kg=getattr(layout, "net_weight_per_part_kg", None),
-			gross_weight_per_part_kg=_flt(getattr(layout, "gross_weight_per_part_kg", 0)),
-			scrap_weight_per_part_kg=_flt(getattr(layout, "scrap_weight_per_part_kg", 0)),
-		)
-	]
-
-
-def _validate_finished_part_weights(finished_part: FinishedPartRow) -> None:
-	net_weight = getattr(finished_part, "net_weight_per_part_kg", None)
+	net_weight = getattr(layout, "net_weight_per_part_kg", None)
+	if net_weight is None:
+		frappe.throw(_("Net weight per part is required"))
 	if net_weight is not None and net_weight < 0:
 		frappe.throw(_("Net weight per part must be non-negative"))
-	if finished_part.gross_weight_per_part_kg < 0:
+
+	gross_weight = _flt(getattr(layout, "gross_weight_per_part_kg", 0))
+	if gross_weight < 0:
 		frappe.throw(_("Gross weight per part must be non-negative"))
-	if finished_part.scrap_weight_per_part_kg < 0:
-		if net_weight is None:
-			frappe.throw(_("Scrap weight per part must be non-negative"))
-		frappe.throw(_("Net weight per part cannot exceed gross weight"))
+	scrap_weight = _flt(getattr(layout, "scrap_weight_per_part_kg", 0))
+	if scrap_weight < 0:
+		frappe.throw(_("Scrap weight per part cannot be negative"))
+	if scrap_weight > 0 and _is_missing(getattr(layout, "process_scrap_item", None)):
+		frappe.throw(_("Process scrap item is required when process scrap weight is positive"))
 
 
 def _validate_end_piece_required_fields(end_piece: EndPieceRow) -> None:
@@ -384,25 +334,25 @@ def _validate_non_scrap_end_piece_fields_are_empty(end_piece: EndPieceRow) -> No
 
 
 def _validate_end_piece_distribution(
-	finished_parts: Sequence[FinishedPartRow],
+	layout: SheetCuttingLayoutDocument,
 	end_pieces: Sequence[EndPieceRow],
 ) -> None:
-	for finished_part in finished_parts:
-		if finished_part.parts_per_sheet <= 0:
-			frappe.throw(_("Parts per sheet must be greater than zero for end-piece distribution"))
+	parts_per_sheet = int(getattr(layout, "parts_per_sheet", 0) or 0)
+	if parts_per_sheet <= 0:
+		frappe.throw(_("Parts per sheet must be greater than zero for end-piece distribution"))
 
-		end_piece_weight_per_part = sum(
-			end_piece.weight_kg / finished_part.parts_per_sheet
-			for end_piece in end_pieces
-			if end_piece.weight_kg is not None
-		)
-		derived_fg_weight = (
-			finished_part.gross_weight_per_part_kg
-			- finished_part.scrap_weight_per_part_kg
-			- end_piece_weight_per_part
-		)
-		if derived_fg_weight < 0:
-			frappe.throw(_("Derived finished goods weight must be non-negative"))
+	end_piece_weight_per_part = sum(
+		end_piece.weight_kg / parts_per_sheet
+		for end_piece in end_pieces
+		if end_piece.weight_kg is not None
+	)
+	derived_fg_weight = (
+		_flt(getattr(layout, "gross_weight_per_part_kg", 0))
+		- _flt(getattr(layout, "scrap_weight_per_part_kg", 0))
+		- end_piece_weight_per_part
+	)
+	if derived_fg_weight < 0:
+		frappe.throw(_("Derived finished goods weight must be non-negative"))
 
 
 def _validate_reuse_suffix(end_piece: EndPieceRow) -> None:
@@ -457,14 +407,13 @@ def _validate_end_piece_item_code_is_locked(end_piece: EndPieceRow) -> None:
 
 def _validate_complete_sheet_consumption(
 	layout: SheetCuttingLayoutDocument,
-	finished_parts: Sequence[FinishedPartRow],
 	end_pieces: Sequence[EndPieceRow],
 ) -> None:
 	sheet_weight = getattr(layout, "weight_per_sheet_kg", None)
 	if sheet_weight is None:
 		return
 
-	consumed_weight = calculate_consumed_weight_kg(finished_parts, end_pieces)
+	consumed_weight = calculate_consumed_weight_kg(layout, end_pieces)
 	unaccounted_weight = _sheet_consumption_flt(_sheet_consumption_flt(sheet_weight) - consumed_weight)
 
 	if unaccounted_weight > SHEET_CONSUMPTION_TOLERANCE_KG:

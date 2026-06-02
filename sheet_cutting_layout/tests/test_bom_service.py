@@ -186,7 +186,71 @@ def test_resolve_scrap_item_rate_looks_up_when_existing_rate_is_zero_or_invalid(
 
 
 class TestBomService(SheetCuttingLayoutTestCase):
-	pass
+	def test_bom_invariants_hold_for_representative_layouts(self) -> None:
+		bom_service = import_bom_service()
+		cases = [
+			(
+				"scrap_end_piece",
+				Layout(
+					weight_per_sheet_kg=50,
+					no_of_strips=11,
+					end_pieces=[
+						EndPiece(weight_kg=2.5, disposition="Scrap", scrap_item="EP-SCRAP"),
+						EndPiece(weight_kg=1.25, disposition="Reuse"),
+					],
+				),
+				FinishedPart(
+					finished_part_item="FINISHEDSHR",
+					parts_per_sheet=4,
+					gross_weight_per_part_kg=12.5,
+					scrap_weight_per_part_kg=1.25,
+				),
+				11.25,
+				2.5,
+			),
+			(
+				"reuse_end_piece",
+				Layout(
+					weight_per_sheet_kg=50,
+					no_of_strips=8,
+					end_pieces=[EndPiece(weight_kg=3.75, disposition="Reuse")],
+				),
+				FinishedPart(
+					finished_part_item="FINISHEDSHR",
+					parts_per_sheet=4,
+					gross_weight_per_part_kg=12.5,
+					scrap_weight_per_part_kg=0.5,
+				),
+				12,
+				0,
+			),
+		]
+		for name, layout, finished_part, expected_derived_fg_weight_kg, expected_end_piece_scrap_qty in cases:
+			with self.subTest(name=name):
+				bom = bom_service.build_bom_from_layout_row(layout, finished_part)
+				process_scrap_qty = self._sum_bom_qty(bom.scrap_items, "process_scrap")
+				end_piece_scrap_qty = self._sum_bom_qty(bom.scrap_items, "end_piece_scrap")
+				total_scrap_qty = process_scrap_qty + end_piece_scrap_qty
+				derived_fg_weight_kg = (
+					finished_part.gross_weight_per_part_kg - finished_part.scrap_weight_per_part_kg
+				)
+
+				self.assertEqual(bom.quantity, layout.no_of_strips)
+				self.assertEqual(self._sum_bom_qty(bom.items, "raw_material"), layout.weight_per_sheet_kg)
+				self.assertEqual(
+					process_scrap_qty,
+					finished_part.scrap_weight_per_part_kg * finished_part.parts_per_sheet,
+				)
+				self.assertEqual(end_piece_scrap_qty, expected_end_piece_scrap_qty)
+				self.assertEqual(
+					total_scrap_qty,
+					finished_part.scrap_weight_per_part_kg * finished_part.parts_per_sheet
+					+ expected_end_piece_scrap_qty,
+				)
+				self.assertEqual(derived_fg_weight_kg, expected_derived_fg_weight_kg)
+
+	def _sum_bom_qty(self, items: list[object], row_type: str) -> float:
+		return sum(item.qty for item in items if item.row_type == row_type)
 
 
 add_pytest_style_tests(globals(), TestBomService)
