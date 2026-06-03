@@ -28,10 +28,14 @@ _ = getattr(frappe, "_", lambda message: message)
 from sheet_cutting_layout.services.end_piece_bom_service import (
 	generate_end_piece_boms,
 )
-from sheet_cutting_layout.services.release_service import get_release_context, release_layout
+from sheet_cutting_layout.services.release_service import (
+	deactivate_generated_bom,
+	get_release_context,
+	release_layout,
+)
 from sheet_cutting_layout.services.validators import validate_sheet_cutting_layout
 from sheet_cutting_layout.services.versioning import create_revision
-from sheet_cutting_layout.services.workflow import apply_checker_action, record_approval_snapshot
+from sheet_cutting_layout.services.workflow import record_approval_snapshot
 
 
 class SheetCuttingLayout(Document):
@@ -75,7 +79,6 @@ class SheetCuttingLayout(Document):
 			return
 
 		self._sheet_cutting_layout_applied_workflow_action = action
-		apply_checker_action(self, action)
 		record_approval_snapshot(
 			self,
 			action=action,
@@ -86,6 +89,8 @@ class SheetCuttingLayout(Document):
 		if action == "MR Release":
 			with _suppress_workflow_side_effects():
 				release_layout(self, release_context=context)
+		if action == "Supersede":
+			deactivate_generated_bom(self)
 
 
 def _get_selected_workflow_action() -> str | None:

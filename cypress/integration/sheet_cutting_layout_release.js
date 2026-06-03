@@ -134,8 +134,7 @@ describe("Sheet Cutting Layout release workflow", () => {
 			cy.contains('[data-fieldname="status"]', "Draft");
 
 			runWorkflowAction("Submit for Check", "Submitted for Check");
-			runWorkflowAction("Projects Manager Approves", "Submitted for Check");
-			runWorkflowAction("Manufacturing Manager Approves", "Checked");
+			runWorkflowAction("Project Manager Approves", "PM Approved");
 			runWorkflowAction("Purchase Approves", "Approved by Purchase");
 			runWorkflowAction("MR Release", "Released");
 

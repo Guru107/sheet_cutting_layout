@@ -20,7 +20,7 @@
    {
     "allow_edit": "System Manager",
     "doc_status": "0",
-    "state": "Checked"
+    "state": "PM Approved"
    },
    {
     "allow_edit": "System Manager",
@@ -51,30 +51,20 @@
     "state": "Draft"
    },
    {
-    "action": "Projects Manager Approves",
-    "allowed": "Projects Manager",
-    "condition": "not doc.project_manager_ok and not doc.manufacturing_manager_ok",
-    "next_state": "Submitted for Check",
-    "state": "Submitted for Check"
-   },
-   {
-    "action": "Manufacturing Manager Approves",
-    "allowed": "Manufacturing Manager",
-    "condition": "doc.project_manager_ok and not doc.manufacturing_manager_ok",
-    "next_state": "Checked",
+    "action": "Project Manager Approves",
+    "allowed": "Project Manager",
+    "next_state": "PM Approved",
     "state": "Submitted for Check"
    },
    {
     "action": "Purchase Approves",
     "allowed": "Purchase Manager",
-    "condition": "doc.project_manager_ok and doc.manufacturing_manager_ok",
     "next_state": "Approved by Purchase",
-    "state": "Checked"
+    "state": "PM Approved"
    },
    {
     "action": "MR Release",
     "allowed": "MR Coordinator",
-    "condition": "doc.project_manager_ok and doc.manufacturing_manager_ok",
     "next_state": "Released",
     "state": "Approved by Purchase"
    },
@@ -88,7 +78,7 @@
     "action": "Reject",
     "allowed": "System Manager",
     "next_state": "Rejected",
-    "state": "Checked"
+    "state": "PM Approved"
    },
    {
     "action": "Reject",

@@ -5,7 +5,6 @@ from dataclasses import dataclass, field
 
 import pytest
 from hypothesis import settings
-from hypothesis import strategies as st
 from hypothesis.stateful import RuleBasedStateMachine, invariant, rule
 
 from sheet_cutting_layout.services.versioning import (
@@ -13,7 +12,7 @@ from sheet_cutting_layout.services.versioning import (
 	create_revision,
 	finalize_new_revision_release,
 )
-from sheet_cutting_layout.services.workflow import LayoutWorkflowModel, apply_checker_action
+from sheet_cutting_layout.services.workflow import LayoutWorkflowModel
 from sheet_cutting_layout.tests.base import SheetCuttingLayoutTestCase
 from sheet_cutting_layout.tests.unittest_adapter import add_pytest_style_tests
 
@@ -43,91 +42,40 @@ class RevisionLayout:
 	based_on_layout: str | None = None
 	approval_snapshot: list[str] = field(default_factory=list)
 	finished_parts: list[FinishedPart] = field(default_factory=list)
+	finished_part_code: str = ""
+	net_weight_per_part_kg: float = 0.0
+	generated_bom: str | None = None
 
 
-def test_release_blocked_until_both_sequential_checkers_approve() -> None:
+def test_project_manager_approval_moves_state_to_pm_approved() -> None:
 	machine = LayoutWorkflowModel()
-
 	machine.submit()
 	machine.project_manager_approves()
 
-	with pytest.raises(AssertionError, match="both checker approvals"):
-		machine.release()
+	assert machine.state == "PM Approved"
 
 
-def test_state_reaches_checked_only_after_both_checkers() -> None:
+def test_purchase_approval_requires_pm_approved() -> None:
 	machine = LayoutWorkflowModel()
+	machine.submit()
 
+	with pytest.raises(AssertionError, match="Expected layout state PM Approved"):
+		machine.purchase_approves()
+
+
+def test_release_blocked_before_purchase_approval() -> None:
+	machine = LayoutWorkflowModel()
 	machine.submit()
 	machine.project_manager_approves()
-
-	assert machine.state == "Submitted for Check"
-
-	machine.manufacturing_manager_approves()
-
-	assert machine.project_manager_ok is True
-	assert machine.manufacturing_manager_ok is True
-	assert machine.state == "Checked"
-
-
-def test_manufacturing_manager_cannot_approve_before_projects_manager() -> None:
-	machine = LayoutWorkflowModel()
-
-	machine.submit()
-
-	with pytest.raises(AssertionError, match="Projects Manager approval"):
-		machine.manufacturing_manager_approves()
-
-
-def test_checker_action_helper_sets_approval_flags() -> None:
-	machine = LayoutWorkflowModel()
-
-	apply_checker_action(machine, "Projects Manager Approves")
-	apply_checker_action(machine, "Manufacturing Manager Approves")
-
-	assert machine.project_manager_ok is True
-	assert machine.manufacturing_manager_ok is True
-
-
-def test_checker_action_helper_flags_allow_model_to_reach_checked() -> None:
-	machine = LayoutWorkflowModel()
-
-	machine.submit()
-	apply_checker_action(machine, "Projects Manager Approves")
-	apply_checker_action(machine, "Manufacturing Manager Approves")
-	machine.mark_checked_if_ready()
-
-	assert machine.state == "Checked"
-
-
-def test_release_blocked_after_checkers_before_purchase_approval() -> None:
-	machine = LayoutWorkflowModel()
-
-	machine.submit()
-	machine.project_manager_approves()
-	machine.manufacturing_manager_approves()
 
 	with pytest.raises(AssertionError, match="purchase approval"):
 		machine.release()
 
 
-def test_purchase_approval_keeps_layout_pre_release_until_mr_release() -> None:
-	machine = LayoutWorkflowModel()
-
-	machine.submit()
-	machine.project_manager_approves()
-	machine.manufacturing_manager_approves()
-	machine.purchase_approves()
-
-	assert machine.state == "Approved by Purchase"
-
-
 def test_purchase_and_mr_release_path_reaches_released() -> None:
 	machine = LayoutWorkflowModel()
-
 	machine.submit()
 	machine.project_manager_approves()
-	machine.manufacturing_manager_approves()
 	machine.purchase_approves()
 	machine.release()
 
@@ -139,8 +87,6 @@ class WorkflowStateMachine(RuleBasedStateMachine):
 		super().__init__()
 		self.machine = LayoutWorkflowModel()
 		self.expected_state = "Draft"
-		self.expected_project_manager_ok = False
-		self.expected_manufacturing_manager_ok = False
 		self.purchase_approved = False
 		self.mr_released = False
 		self.was_released = False
@@ -159,24 +105,13 @@ class WorkflowStateMachine(RuleBasedStateMachine):
 		valid = self.expected_state == "Submitted for Check"
 
 		def update_expected() -> None:
-			self.expected_project_manager_ok = True
-			self._mark_checked_if_ready()
+			self.expected_state = "PM Approved"
 
 		self._assert_transition(valid, self.machine.project_manager_approves, update_expected)
 
 	@rule()
-	def manufacturing_manager_approves(self) -> None:
-		valid = self.expected_state == "Submitted for Check" and self.expected_project_manager_ok
-
-		def update_expected() -> None:
-			self.expected_manufacturing_manager_ok = True
-			self._mark_checked_if_ready()
-
-		self._assert_transition(valid, self.machine.manufacturing_manager_approves, update_expected)
-
-	@rule()
 	def purchase_approves(self) -> None:
-		valid = self.expected_state == "Checked"
+		valid = self.expected_state == "PM Approved"
 
 		def update_expected() -> None:
 			self.expected_state = "Approved by Purchase"
@@ -186,24 +121,20 @@ class WorkflowStateMachine(RuleBasedStateMachine):
 
 	@rule()
 	def mr_releases(self) -> None:
-		valid = self.expected_state == "Approved by Purchase" and self._both_checkers_approved()
+		valid = self.expected_state == "Approved by Purchase"
 
 		def update_expected() -> None:
 			self.expected_state = "Released"
 			self.mr_released = True
 			self.was_released = True
 
-		self._assert_transition(
-			valid,
-			self.machine.release,
-			update_expected,
-		)
+		self._assert_transition(valid, self.machine.release, update_expected)
 
 	@rule()
 	def reject(self) -> None:
 		valid = self.expected_state in {
 			"Submitted for Check",
-			"Checked",
+			"PM Approved",
 			"Approved by Purchase",
 		}
 
@@ -224,14 +155,10 @@ class WorkflowStateMachine(RuleBasedStateMachine):
 	@invariant()
 	def model_and_workflow_state_match(self) -> None:
 		assert self.machine.state == self.expected_state
-		assert self.machine.project_manager_ok is self.expected_project_manager_ok
-		assert self.machine.manufacturing_manager_ok is self.expected_manufacturing_manager_ok
 
 	@invariant()
-	def released_requires_all_approvals_and_mr_release(self) -> None:
+	def released_requires_purchase_and_mr_release(self) -> None:
 		if self.machine.state == "Released":
-			assert self.expected_project_manager_ok is True
-			assert self.expected_manufacturing_manager_ok is True
 			assert self.purchase_approved is True
 			assert self.mr_released is True
 
@@ -256,13 +183,6 @@ class WorkflowStateMachine(RuleBasedStateMachine):
 
 		with pytest.raises(AssertionError):
 			action()
-
-	def _mark_checked_if_ready(self) -> None:
-		if self._both_checkers_approved():
-			self.expected_state = "Checked"
-
-	def _both_checkers_approved(self) -> bool:
-		return self.expected_project_manager_ok and self.expected_manufacturing_manager_ok
 
 
 WorkflowStateMachine.TestCase.settings = settings(
@@ -289,6 +209,9 @@ class RevisionVersioningStateMachine(RuleBasedStateMachine):
 				status="Released",
 				is_active=True,
 				approval_snapshot=["purchase-approved"],
+				finished_part_code="PART-001SHR",
+				net_weight_per_part_kg=1.25,
+				generated_bom="BOM-PARENT-001-001",
 				finished_parts=[FinishedPart("PART-001SHR", generated_bom="BOM-PART-001-001")],
 			)
 		]
@@ -308,21 +231,16 @@ class RevisionVersioningStateMachine(RuleBasedStateMachine):
 		assert new_layout.based_on_layout == active_layout.name
 		assert new_layout.revision_no == active_layout.revision_no + 1
 		assert new_layout.approval_snapshot == []
-		assert [row.generated_bom for row in new_layout.finished_parts] == [None]
-		self.one_project_has_at_most_one_active_released_layout()
+		assert new_layout.finished_parts == []
+		assert new_layout.finished_part_code == active_layout.finished_part_code
+		assert new_layout.net_weight_per_part_kg == active_layout.net_weight_per_part_kg
 
 		finalize_new_revision_release(self.layouts, new_layout, [])
 
 		assert new_layout.status == "Released"
 		assert new_layout.is_active is True
-		assert active_layout.status == "Superseded"
-		assert active_layout.is_active is False
-
-	@invariant()
-	def one_project_has_at_most_one_active_released_layout(self) -> None:
-		active_released_layouts = self._active_released_layouts()
-
-		assert len(active_released_layouts) <= 1
+		assert active_layout.status == "Released"
+		assert active_layout.is_active is True
 
 	@invariant()
 	def every_active_layout_in_family_is_released(self) -> None:
@@ -345,7 +263,7 @@ RevisionVersioningStateMachine.TestCase.settings = settings(
 )
 
 
-def test_state_machine_keeps_single_active_released_layout_per_family() -> None:
+def test_state_machine_keeps_all_active_layouts_released_after_new_versions() -> None:
 	machine = RevisionVersioningStateMachine.TestCase()
 	machine.runTest()
 

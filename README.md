@@ -16,22 +16,29 @@ Local bench roots used for development are `~/Workspace/bench15` and `~/Workspac
 ## Role Matrix
 
 - Project User: creates draft layouts and submits for check.
-- Projects Manager: performs the first checker approval.
-- Manufacturing Manager: performs the second checker approval after Projects approval.
-- Purchase Manager: approves checked layouts for release.
+- Project Manager: approves submitted layouts.
+- Purchase Manager: approves PM-approved layouts for release.
 - MR Coordinator: releases approved layouts.
 
 ## Workflow
 
-Layouts move through `Draft -> Submitted for Check -> Checked -> Approved by Purchase`. MR release moves layouts directly to `Released`.
+Layouts move through `Draft -> Submitted for Check -> PM Approved -> Approved by Purchase -> Released`.
 
 ## Validation Rules
 
-Finished part item codes must be alphanumeric and end with `SHR`. Each layout needs exactly one finished part, positive `parts_per_sheet`, non-negative gross and scrap weights, and required end-piece item/weight/quantity values. Process scrap requires `process_scrap_item`.
+Finished part item codes must be alphanumeric and end with `SHR`. Each layout uses one parent-level finished part input (`finished_part_code`) plus `net_weight_per_part_kg`; the app derives `gross_weight_per_part_kg`, `scrap_weight_per_part_kg`, and `parts_per_sheet`. The `finished_parts` table is hidden until a BOM is generated and then acts as a read-only BOM reference view. Process scrap requires `process_scrap_item`.
 
 ## BOM Mapping
 
-MR Release creates one native ERPNext Shearing BOM for the finished part. BOM quantity equals `no_of_strips`, raw material quantity is the full sheet weight in Kg, process scrap uses `process_scrap_item`, reusable end pieces do not create Shearing BOM scrap rows, and end pieces marked `Scrap` create separate rows using their row-level `scrap_item`.
+MR Release creates one native ERPNext Shearing BOM for the finished part. BOM quantity equals `no_of_strips`, raw material quantity is the full sheet weight in Kg, process scrap uses `process_scrap_item`, reusable end pieces do not create Shearing BOM scrap rows, and end pieces marked `Scrap` create separate rows using their row-level `scrap_item`. After release, the layout stores the generated BOM link and audits that BOM against the layout on every save.
+
+Derived shearing BOMs are not manually editable. Any change to a released shearing BOM must start from the Sheet Cutting Layout.
+
+## Revisioning
+
+Use `New Version` on a released Sheet Cutting Layout to create the next revision. The new draft carries forward the layout inputs, clears approval history, clears the generated BOM link, and goes through the full approval flow again. Releasing the new revision creates a new BOM version and leaves older released layouts and BOMs unchanged.
+
+Use `Supersede` only when you want to retire a released layout. Superseding deactivates the BOM linked to that layout.
 
 ## Recovery
 

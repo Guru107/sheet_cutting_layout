@@ -16,9 +16,9 @@
  {
   "doctype": "Workflow State",
   "icon": "right",
-  "name": "Checked",
+  "name": "PM Approved",
   "style": "Info",
-  "workflow_state_name": "Checked"
+  "workflow_state_name": "PM Approved"
  },
  {
   "doctype": "Workflow State",

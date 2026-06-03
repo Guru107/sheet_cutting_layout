@@ -188,7 +188,7 @@ def test_hooks_exposes_required_fixtures() -> None:
 					[
 						"Draft",
 						"Submitted for Check",
-						"Checked",
+						"PM Approved",
 						"Approved by Purchase",
 						"Released",
 						"Rejected",
@@ -203,7 +203,7 @@ def test_hooks_exposes_required_fixtures() -> None:
 		},
 		{
 			"dt": "Role",
-			"filters": [["name", "in", ["Projects Manager", "Manufacturing Manager", "MR Coordinator"]]],
+			"filters": [["name", "in", ["Project Manager", "MR Coordinator"]]],
 		},
 		{
 			"dt": "Custom Field",
@@ -372,7 +372,7 @@ def test_release_uses_injected_bom_document_factory_for_persisted_boms() -> None
 
 	def fake_factory(received_layout: Layout, row: object, index: int) -> BomDocument:
 		created.append((received_layout, row, index))
-		return BomDocument(item=getattr(row, "finished_part_item"), name=f"PERSISTED-BOM-{index}")
+		return BomDocument(item=row.finished_part_item, name=f"PERSISTED-BOM-{index}")
 
 	result = release_layout(
 		layout,
@@ -382,7 +382,7 @@ def test_release_uses_injected_bom_document_factory_for_persisted_boms() -> None
 	)
 
 	assert created[0][0] is layout
-	assert getattr(created[0][1], "finished_part_item") == "PART001SHR"
+	assert created[0][1].finished_part_item == "PART001SHR"
 	assert created[0][2] == 1
 	assert result.generated_boms[0].name == "PERSISTED-BOM-1"
 	assert layout.generated_bom == "PERSISTED-BOM-1"
@@ -608,7 +608,7 @@ def test_generated_boms_are_activated_on_release() -> None:
 	assert new_bom.status == "Active"
 
 
-def test_release_persists_superseded_layouts_when_frappe_is_available(
+def test_release_persists_only_new_revision_layout_when_frappe_is_available(
 	monkeypatch: pytest.MonkeyPatch,
 ) -> None:
 	from sheet_cutting_layout.services import release_service
@@ -649,13 +649,13 @@ def test_release_persists_superseded_layouts_when_frappe_is_available(
 		),
 	)
 
-	assert old_layout.status == "Superseded"
-	assert old_layout.save_calls == 1
+	assert old_layout.status == "Released"
+	assert old_layout.save_calls == 0
 	assert new_layout.status == "Released"
 	assert new_layout.save_calls == 1
 
 
-def test_release_supersedes_submitted_layouts_with_db_set(
+def test_release_does_not_db_set_unchanged_submitted_layouts(
 	monkeypatch: pytest.MonkeyPatch,
 ) -> None:
 	from sheet_cutting_layout.services import release_service
@@ -696,10 +696,10 @@ def test_release_supersedes_submitted_layouts_with_db_set(
 		),
 	)
 
-	assert old_layout.status == "Superseded"
-	assert old_layout.is_active is False
+	assert old_layout.status == "Released"
+	assert old_layout.is_active is True
 	assert old_layout.save_calls == 0
-	assert old_layout.db_set_calls == [({"status": "Superseded", "is_active": False}, True, False)]
+	assert old_layout.db_set_calls == []
 
 
 def test_controller_mr_release_action_calls_release_service_with_release_context(
@@ -810,21 +810,18 @@ def test_controller_validate_applies_workflow_side_effects_and_records_snapshot(
 	monkeypatch.setattr(
 		sheet_cutting_layout,
 		"_get_selected_workflow_action",
-		lambda: "Projects Manager Approves",
+		lambda: "Project Manager Approves",
 	)
 	monkeypatch.setattr(sheet_cutting_layout, "frappe", FrappeStub)
 	monkeypatch.setattr(sheet_cutting_layout, "validate_sheet_cutting_layout", lambda _doc: None)
 
 	doc = _new_sheet_cutting_layout_doc(sheet_cutting_layout)
-	doc.project_manager_ok = False
-	doc.manufacturing_manager_ok = False
 	doc.approval_snapshot = []
 
 	doc.validate()
 
-	assert doc.project_manager_ok is True
 	assert len(doc.approval_snapshot) == 1
-	assert doc.approval_snapshot[0]["step_name"] == "Projects Manager Approval"
+	assert doc.approval_snapshot[0]["step_name"] == "Project Manager Approval"
 	assert doc.approval_snapshot[0]["approver"] == "projects@example.com"
 	assert doc.approval_snapshot[0]["decision"] == "Approved"
 	assert doc.approval_snapshot[0]["decision_time"] == datetime(2026, 5, 15, 9, 30, 0)
@@ -982,47 +979,6 @@ def test_non_rejected_layout_on_trash_keeps_workflow_action_links(
 	doc.on_trash()
 
 	assert deletions == []
-
-
-def test_patch_repairs_submitted_layouts_with_both_checker_flags(
-	monkeypatch: pytest.MonkeyPatch,
-) -> None:
-	from sheet_cutting_layout.patches import v1_0_repair_checked_workflow_state
-
-	class DbStub:
-		calls: ClassVar[list[tuple[str, str, str, dict[str, object], str | None]]] = []
-
-		@classmethod
-		def set_value(
-			cls,
-			doctype: str,
-			filters: dict[str, object],
-			fieldname: str,
-			value: str,
-			update_modified: bool = False,
-		) -> None:
-			cls.calls.append((doctype, fieldname, value, filters, str(update_modified)))
-
-	class FrappeStub:
-		db = DbStub
-
-	monkeypatch.setattr(v1_0_repair_checked_workflow_state, "frappe", FrappeStub)
-
-	v1_0_repair_checked_workflow_state.execute()
-
-	assert DbStub.calls == [
-		(
-			"Sheet Cutting Layout",
-			"status",
-			"Checked",
-			{
-				"status": "Submitted for Check",
-				"project_manager_ok": 1,
-				"manufacturing_manager_ok": 1,
-			},
-			"False",
-		)
-	]
 
 
 def test_patch_submits_existing_released_layouts(
@@ -1454,7 +1410,9 @@ def test_revision_resets_approval_snapshot_and_generated_boms() -> None:
 
 	assert new_layout.approval_snapshot == []
 	assert new_layout.generated_bom is None
-	assert [row.generated_bom for row in new_layout.finished_parts] == [None, None]
+	assert new_layout.finished_parts == []
+	assert new_layout.finished_part_code == "PART001SHR"
+	assert new_layout.net_weight_per_part_kg == 1.0
 	assert old_layout.generated_bom == "BOM-PARENT-001-001"
 	assert [row.generated_bom for row in old_layout.finished_parts] == [
 		"BOM-PART-001-001",
@@ -1462,7 +1420,7 @@ def test_revision_resets_approval_snapshot_and_generated_boms() -> None:
 	]
 
 
-def test_finalizing_new_revision_supersedes_previous_active_layout() -> None:
+def test_finalizing_new_revision_keeps_previous_active_layouts_released() -> None:
 	from sheet_cutting_layout.services.versioning import finalize_new_revision_release
 
 	old_layout = RevisionLayout(
@@ -1489,15 +1447,15 @@ def test_finalizing_new_revision_supersedes_previous_active_layout() -> None:
 
 	finalize_new_revision_release([old_layout, other_family_layout, new_layout], new_layout, [])
 
-	assert old_layout.status == "Superseded"
-	assert old_layout.is_active is False
+	assert old_layout.status == "Released"
+	assert old_layout.is_active is True
 	assert new_layout.status == "Released"
 	assert new_layout.is_active is True
 	assert other_family_layout.status == "Released"
 	assert other_family_layout.is_active is True
 
 
-def test_finalizing_new_revision_disables_old_boms_for_affected_finished_parts() -> None:
+def test_finalizing_new_revision_keeps_old_boms_for_affected_finished_parts_active() -> None:
 	from sheet_cutting_layout.services.versioning import finalize_new_revision_release
 
 	old_layout = RevisionLayout(
@@ -1525,9 +1483,9 @@ def test_finalizing_new_revision_disables_old_boms_for_affected_finished_parts()
 
 	finalize_new_revision_release([old_layout, new_layout], new_layout, [old_bom, new_bom, unaffected_bom])
 
-	assert old_bom.is_active is False
-	assert old_bom.disabled is True
-	assert old_bom.status == "Superseded"
+	assert old_bom.is_active is True
+	assert old_bom.disabled is False
+	assert old_bom.status == "Active"
 	assert new_bom.is_active is True
 	assert new_bom.disabled is False
 	assert new_bom.status == "Active"
@@ -1565,9 +1523,9 @@ def test_finalizing_new_revision_keeps_unlinked_same_item_boms_active() -> None:
 		[old_linked_bom, unlinked_same_item_bom, new_bom],
 	)
 
-	assert old_linked_bom.is_active is False
-	assert old_linked_bom.disabled is True
-	assert old_linked_bom.status == "Superseded"
+	assert old_linked_bom.is_active is True
+	assert old_linked_bom.disabled is False
+	assert old_linked_bom.status == "Active"
 	assert unlinked_same_item_bom.is_active is True
 	assert unlinked_same_item_bom.disabled is False
 	assert unlinked_same_item_bom.status == "Active"
@@ -1576,7 +1534,7 @@ def test_finalizing_new_revision_keeps_unlinked_same_item_boms_active() -> None:
 	assert new_bom.status == "Active"
 
 
-def test_finalizing_new_revision_supersedes_old_parent_generated_bom() -> None:
+def test_finalizing_new_revision_keeps_old_parent_generated_bom_active() -> None:
 	from sheet_cutting_layout.services.versioning import finalize_new_revision_release
 
 	old_layout = RevisionLayout(
@@ -1602,9 +1560,9 @@ def test_finalizing_new_revision_supersedes_old_parent_generated_bom() -> None:
 
 	finalize_new_revision_release([old_layout, new_layout], new_layout, [old_bom, new_bom])
 
-	assert old_bom.is_active is False
-	assert old_bom.disabled is True
-	assert old_bom.status == "Superseded"
+	assert old_bom.is_active is True
+	assert old_bom.disabled is False
+	assert old_bom.status == "Active"
 	assert new_bom.is_active is True
 	assert new_bom.disabled is False
 	assert new_bom.status == "Active"
@@ -1655,9 +1613,9 @@ def test_release_generates_one_bom_for_single_finished_part_and_keeps_existing_b
 	assert new_layout.generated_bom == result.generated_boms[0].name
 	assert [row.finished_part_item for row in new_layout.finished_parts] == ["PART001SHR"]
 	assert [row.bom_quantity for row in new_layout.finished_parts] == [1]
-	assert result.superseded_layout is old_layout
-	assert old_layout.status == "Superseded"
-	assert old_layout.is_active is False
+	assert result.superseded_layout is None
+	assert old_layout.status == "Released"
+	assert old_layout.is_active is True
 	assert old_bom.is_active is True
 	assert old_bom.disabled is False
 	assert old_bom.status == "Active"
@@ -1666,11 +1624,68 @@ def test_release_generates_one_bom_for_single_finished_part_and_keeps_existing_b
 	assert all(bom.status == "Active" for bom in result.generated_boms)
 
 
+def test_deactivate_generated_bom_marks_linked_bom_superseded(
+	monkeypatch: pytest.MonkeyPatch,
+) -> None:
+	from sheet_cutting_layout.services import release_service
+	from sheet_cutting_layout.services.release_service import deactivate_generated_bom
+
+	class BomDoc:
+		def __init__(self) -> None:
+			self.name = "BOM-PART001SHR-001"
+			self.flags = type("Flags", (), {})()
+			self.is_active = 1
+			self.disabled = 0
+			self.status = "Active"
+			self.save_calls: list[dict[str, object]] = []
+
+		def save(self, **kwargs: object) -> None:
+			self.save_calls.append(kwargs)
+
+	bom_doc = BomDoc()
+
+	class FrappeStub:
+		@staticmethod
+		def get_doc(doctype: str, name: str) -> BomDoc:
+			assert (doctype, name) == ("BOM", "BOM-PART001SHR-001")
+			return bom_doc
+
+	monkeypatch.setattr(release_service, "frappe", FrappeStub)
+
+	result = deactivate_generated_bom(type("Layout", (), {"generated_bom": "BOM-PART001SHR-001"})())
+
+	assert result is bom_doc
+	assert bom_doc.is_active == 0
+	assert bom_doc.disabled == 1
+	assert bom_doc.status == "Superseded"
+	assert getattr(bom_doc.flags, "sheet_cutting_layout_allow_bom_update", False) is True
+	assert bom_doc.save_calls == [{"ignore_permissions": True}]
+
+
+def test_controller_supersede_action_deactivates_generated_bom(monkeypatch: pytest.MonkeyPatch) -> None:
+	from sheet_cutting_layout.sheet_cutting_layout.doctype.sheet_cutting_layout import sheet_cutting_layout
+
+	calls: list[object] = []
+
+	monkeypatch.setattr(sheet_cutting_layout, "_get_selected_workflow_action", lambda: "Supersede")
+	monkeypatch.setattr(
+		sheet_cutting_layout,
+		"deactivate_generated_bom",
+		lambda layout: calls.append(layout),
+	)
+
+	doc = _new_sheet_cutting_layout_doc(sheet_cutting_layout)
+	doc.generated_bom = "BOM-PART001SHR-001"
+	doc.before_workflow_action()
+
+	assert calls == [doc]
+
+
 def test_readme_mentions_release_gate_and_bom_qty_no_of_strips() -> None:
 	content = Path(__file__).resolve().parents[2].joinpath("README.md").read_text(encoding="utf-8")
 
 	assert "BOM quantity equals `no_of_strips`" in content
-	assert "MR release moves layouts directly to `Released`" in content
+	assert "Draft -> Submitted for Check -> PM Approved -> Approved by Purchase -> Released" in content
 
 
 class TestReleaseService(SheetCuttingLayoutTestCase):

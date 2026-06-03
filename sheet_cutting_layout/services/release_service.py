@@ -137,14 +137,28 @@ def release_layout(
 		finalize_new_revision_release(layouts, layout, generated_boms)  # type: ignore[arg-type]
 	_sync_finished_part_reference_rows(layout, generated_boms, _release_finished_part_rows(layout))
 	if layouts:
-		_save_layout_records(layouts)
+		_save_layout_records(_release_layout_records(layouts, layout))
 	_save_bom_records(generated_boms)
 
 	return ReleaseResult(
 		status=layout.status,
 		generated_boms=generated_boms,
-		superseded_layout=_superseded_layout(layout, layouts),
+		superseded_layout=None,
 	)
+
+
+def deactivate_generated_bom(layout: object) -> object | None:
+	generated_bom = str(getattr(layout, "generated_bom", "") or "").strip()
+	if not generated_bom or not frappe:
+		return None
+
+	bom_doc = frappe.get_doc("BOM", generated_bom)
+	_set_frappe_field_if_supported(bom_doc, "is_active", 0)
+	_set_frappe_field_if_supported(bom_doc, "disabled", 1)
+	_set_frappe_field_if_supported(bom_doc, "status", "Superseded")
+	_mark_bom_app_controlled(bom_doc)
+	bom_doc.save(ignore_permissions=True)
+	return bom_doc
 
 
 def get_release_context(layout: ReleaseLayoutDocument) -> ReleaseContext:
@@ -301,7 +315,7 @@ def _sync_finished_part_reference_rows(
 	if callable(set_child_table):
 		set_child_table("finished_parts", references)
 		return
-	setattr(layout, "finished_parts", [FinishedPartReferenceRow(**row) for row in references])
+	layout.finished_parts = [FinishedPartReferenceRow(**row) for row in references]
 
 
 def _activate_boms(boms: Sequence[BomRecord]) -> None:
@@ -311,20 +325,15 @@ def _activate_boms(boms: Sequence[BomRecord]) -> None:
 		bom.status = "Active"
 
 
-def _superseded_layout(layout: ReleaseLayoutDocument, layouts: Sequence[object]) -> object | None:
-	for previous_layout in layouts:
-		if _is_superseded_previous_layout(previous_layout, layout):
-			return previous_layout
-	return None
-
-
-def _is_superseded_previous_layout(previous_layout: object, layout: ReleaseLayoutDocument) -> bool:
-	return (
-		previous_layout is not layout
-		and getattr(previous_layout, "project", None) == getattr(layout, "project", None)
-		and getattr(previous_layout, "status", None) == "Superseded"
-		and getattr(previous_layout, "is_active", True) is False
-	)
+def _release_layout_records(
+	layouts: Sequence[object],
+	layout: ReleaseLayoutDocument,
+) -> Sequence[object]:
+	layout_name = getattr(layout, "name", None)
+	for existing_layout in layouts:
+		if getattr(existing_layout, "name", None) == layout_name:
+			return (existing_layout,)
+	return (layout,)
 
 
 def _get_same_project_layouts(layout: ReleaseLayoutDocument) -> list[object]:
@@ -443,5 +452,5 @@ def _mark_bom_app_controlled(bom_doc: object) -> None:
 	flags = getattr(bom_doc, "flags", None)
 	if flags is None:
 		flags = type("Flags", (), {})()
-		setattr(bom_doc, "flags", flags)
-	setattr(flags, "sheet_cutting_layout_allow_bom_update", True)
+		bom_doc.flags = flags
+	flags.sheet_cutting_layout_allow_bom_update = True
