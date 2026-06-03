@@ -260,6 +260,9 @@ class TestSheetCuttingLayoutController(SheetCuttingLayoutTestCase):
 			net_weight_per_part_kg=0.289,
 			generated_bom=None,
 		)
+		layout.parts_per_strip = 1
+		layout.no_of_strips = 1
+		layout.strip_length_mm = 2500
 
 		layout.insert()
 		register_test_doc("Sheet Cutting Layout", layout.name)
@@ -276,11 +279,15 @@ class TestSheetCuttingLayoutController(SheetCuttingLayoutTestCase):
 			net_weight_per_part_kg=0.289,
 			generated_bom=None,
 		)
+		layout.parts_per_strip = 1
+		layout.no_of_strips = 1
+		layout.strip_length_mm = 2500
 		layout.insert()
 		register_test_doc("Sheet Cutting Layout", layout.name)
 
 		layout.parts_per_strip = 7
 		layout.no_of_strips = 11
+		layout.sheet_length_mm = 3713.6
 		layout.strip_thickness_mm = 1
 		layout.strip_width_mm = 1250
 		layout.strip_length_mm = 337.6

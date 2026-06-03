@@ -40,48 +40,17 @@ describe("Sheet Cutting Layout consumption tracking", () => {
 			});
 	}
 
-	function addFinishedPart() {
-		cy.window().then((win) => {
-			const frm = win.cur_frm;
-			const row =
-				frm.doc.finished_parts?.[0] ||
-				win.frappe.model.add_child(frm.doc, "Layout Finished Part", "finished_parts");
-			return win.frappe.run_serially([
-				() =>
-					win.frappe.model.set_value(
-						row.doctype,
-						row.name,
-						"finished_part_item",
-						finishedPartItem
-					),
-				() =>
-					win.frappe.model.set_value(
-						row.doctype,
-						row.name,
-						"net_weight_per_part_kg",
-						0.288846
-					),
-				() => frm.script_manager.trigger("net_weight_per_part_kg", row.doctype, row.name),
-				() => frm.refresh_field("finished_parts"),
-			]);
-		});
-	}
-
 	function addEndPiece() {
 		cy.window().then((win) => {
 			const frm = win.cur_frm;
 			const row = win.frappe.model.add_child(frm.doc, "Layout End Piece", "end_pieces");
 			return win.frappe.run_serially([
-				() =>
-					win.frappe.model.set_value(
-						row.doctype,
-						row.name,
-						"end_piece_item_code",
-						endPieceItem
-					),
 				() => win.frappe.model.set_value(row.doctype, row.name, "width_mm", 1250),
 				() => win.frappe.model.set_value(row.doctype, row.name, "length_mm", 179),
 				() => win.frappe.model.set_value(row.doctype, row.name, "qty_per_sheet", 1),
+				() => win.frappe.model.set_value(row.doctype, row.name, "disposition", "Scrap"),
+				() =>
+					win.frappe.model.set_value(row.doctype, row.name, "scrap_item", endPieceItem),
 				() => frm.script_manager.trigger("qty_per_sheet", row.doctype, row.name),
 				() => frm.refresh_field("end_pieces"),
 			]);
@@ -146,9 +115,10 @@ describe("Sheet Cutting Layout consumption tracking", () => {
 		setField("strip_thickness_mm", 1.6);
 		setField("no_of_strips", 11);
 		setField("parts_per_strip", 7);
+		setField("finished_part_code", `${finishedPartItem}{enter}`);
+		setField("net_weight_per_part_kg", 0.288846);
 		recalculateLayoutFields();
 
-		addFinishedPart();
 		addEndPiece();
 
 		expectFieldNumber("weight_per_sheet_kg", 39.3, 0.5);

@@ -4,6 +4,7 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from typing import Literal, Protocol
 
+from sheet_cutting_layout.overrides.bom import APP_CONTROLLED_BOM_UPDATE_FLAG
 from sheet_cutting_layout.services.bom_service import (
 	BomDocument,
 	build_bom_from_layout_row,
@@ -460,4 +461,4 @@ def _mark_bom_app_controlled(bom_doc: object) -> None:
 	if flags is None:
 		flags = type("Flags", (), {})()
 		bom_doc.flags = flags
-	flags.sheet_cutting_layout_allow_bom_update = True
+	setattr(flags, APP_CONTROLLED_BOM_UPDATE_FLAG, True)

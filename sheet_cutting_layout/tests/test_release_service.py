@@ -62,6 +62,7 @@ class EndPiece:
 	qty_per_sheet: float = 1
 	disposition: str = "Reuse"
 	scrap_item: str | None = None
+	end_piece_item_code: str | None = None
 
 
 @dataclass
@@ -85,6 +86,7 @@ class RevisionLayout:
 	scrap_weight_per_part_kg: float = 0.0
 	generated_bom: str | None = None
 	parts_per_sheet: int = 1
+	end_piece_bom_status: str = ""
 
 	def __post_init__(self) -> None:
 		if self.finished_parts:
@@ -484,7 +486,12 @@ def test_save_time_audit_rejects_generated_bom_quantity_drift(
 							"ScrapItem",
 							(),
 							{"item_code": "PROCESSSCRAP001", "stock_qty": 14.233142, "qty": 14.233142},
-						)()
+						)(),
+						type(
+							"ScrapItem",
+							(),
+							{"item_code": "ENDSCRAP001", "stock_qty": 2.81388, "qty": 2.81388},
+						)(),
 					],
 				},
 			)()
@@ -500,7 +507,110 @@ def test_save_time_audit_rejects_generated_bom_quantity_drift(
 			"finished_part_code": "FG01SHR",
 			"net_weight_per_part_kg": 0.289,
 			"generated_bom": "BOM-FG01SHR",
-			"end_pieces": [],
+			"end_pieces": [
+				type(
+					"EndPieceRow",
+					(),
+					{
+						"weight_kg": 2.81388,
+						"qty_per_sheet": 1,
+						"width_mm": 1250,
+						"length_mm": 179,
+						"disposition": "Scrap",
+						"scrap_item": "ENDSCRAP001",
+					},
+				)()
+			],
+			"raw_material_item": "RMSHEET001",
+			"process_scrap_item": "PROCESSSCRAP001",
+			"end_piece_bom_status": "",
+			"sheet_thickness_mm": None,
+			"sheet_width_mm": None,
+			"sheet_length_mm": None,
+			"weight_per_sheet_kg": 39.3,
+			"strip_thickness_mm": None,
+			"strip_width_mm": None,
+			"strip_length_mm": None,
+			"weight_of_strip_kg": None,
+			"gross_weight_per_part_kg": 0.473846,
+			"scrap_weight_per_part_kg": 0.184846,
+			"parts_per_strip": 7,
+			"no_of_strips": 11,
+			"parts_per_sheet": 77,
+			"consumed_weight_kg": None,
+			"leftover_weight_kg": None,
+			"consumption_status": None,
+		},
+	)()
+	monkeypatch.setattr(validators, "frappe", FrappeStub)
+	monkeypatch.setattr(validators, "_", lambda message: message)
+
+	with pytest.raises(ValueError, match="BOM quantity mismatch"):
+		validators.validate_sheet_cutting_layout(layout)
+
+
+def test_save_time_audit_rejects_fractional_generated_bom_quantity(
+	monkeypatch: pytest.MonkeyPatch,
+) -> None:
+	from sheet_cutting_layout.services import validators
+
+	class FrappeStub:
+		ValidationError = ValueError
+
+		@staticmethod
+		def get_system_settings(_fieldname: str) -> None:
+			return None
+
+		@staticmethod
+		def get_doc(doctype: str, name: str) -> object:
+			assert (doctype, name) == ("BOM", "BOM-FG01SHR")
+			return type(
+				"Bom",
+				(),
+				{
+					"item": "FG01SHR",
+					"quantity": 11.5,
+					"items": [type("BomItem", (), {"item_code": "RMSHEET001", "qty": 39.3})()],
+					"scrap_items": [
+						type(
+							"ScrapItem",
+							(),
+							{"item_code": "PROCESSSCRAP001", "stock_qty": 14.233142, "qty": 14.233142},
+						)(),
+						type(
+							"ScrapItem",
+							(),
+							{"item_code": "ENDSCRAP001", "stock_qty": 2.81388, "qty": 2.81388},
+						)(),
+					],
+				},
+			)()
+
+		@staticmethod
+		def throw(message: str) -> None:
+			raise ValueError(message)
+
+	layout = type(
+		"AuditLayout",
+		(),
+		{
+			"finished_part_code": "FG01SHR",
+			"net_weight_per_part_kg": 0.289,
+			"generated_bom": "BOM-FG01SHR",
+			"end_pieces": [
+				type(
+					"EndPieceRow",
+					(),
+					{
+						"weight_kg": 2.81388,
+						"qty_per_sheet": 1,
+						"width_mm": 1250,
+						"length_mm": 179,
+						"disposition": "Scrap",
+						"scrap_item": "ENDSCRAP001",
+					},
+				)()
+			],
 			"raw_material_item": "RMSHEET001",
 			"process_scrap_item": "PROCESSSCRAP001",
 			"end_piece_bom_status": "",
@@ -1404,13 +1514,17 @@ def test_revision_resets_approval_snapshot_and_generated_boms() -> None:
 			FinishedPart("PART001SHR", generated_bom="BOM-PART-001-001"),
 			FinishedPart("PART002SHR", generated_bom="BOM-PART-002-001"),
 		],
+		end_pieces=[EndPiece(weight_kg=2.5, end_piece_item_code="PART001SHR-EP-1x1250x260")],
+		end_piece_bom_status="Generated",
 	)
 
 	new_layout = create_revision(old_layout)
 
 	assert new_layout.approval_snapshot == []
 	assert new_layout.generated_bom is None
+	assert new_layout.end_piece_bom_status == ""
 	assert new_layout.finished_parts == []
+	assert new_layout.end_pieces[0].end_piece_item_code is None
 	assert new_layout.finished_part_code == "PART001SHR"
 	assert new_layout.net_weight_per_part_kg == 1.0
 	assert old_layout.generated_bom == "BOM-PARENT-001-001"

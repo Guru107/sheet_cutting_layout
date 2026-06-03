@@ -208,6 +208,10 @@ class TestValidators(SheetCuttingLayoutTestCase):
 		layout = Layout(
 			finished_part_code="FG01SHR",
 			net_weight_per_part_kg=0.289,
+			sheet_thickness_mm=None,
+			sheet_width_mm=None,
+			sheet_length_mm=None,
+			weight_per_sheet_kg=36.48612,
 			parts_per_strip=7,
 			no_of_strips=11,
 			weight_of_strip_kg=3.31692,
@@ -247,23 +251,48 @@ class TestValidators(SheetCuttingLayoutTestCase):
 		layout = Layout(
 			finished_part_code="AB12SHR",
 			net_weight_per_part_kg=1.27725,
+			gross_weight_per_part_kg=1.277,
 			finished_parts=[],
 			end_pieces=[],
 			parts_per_strip=2,
 			no_of_strips=1,
 		)
 
-		self.validators.validate_sheet_cutting_layout(layout)
+		self.validators.apply_parts_per_sheet_formula(layout)
+		self.validators.apply_sheet_weight_formula(layout)
+		self.validators.apply_consumption_tracking(layout, layout.end_pieces)
 
 		self.assertEqual(layout.parts_per_sheet, 2)
 		self.assertEqual(layout.consumed_weight_kg, 2.554)
 		self.assertEqual(layout.consumption_status, "Short")
 
+	def test_layout_without_end_pieces_still_requires_complete_sheet_consumption(self) -> None:
+		layout = Layout(
+			finished_part_code="AB12SHR",
+			net_weight_per_part_kg=1.27725,
+			finished_parts=[],
+			end_pieces=[],
+			parts_per_strip=2,
+			no_of_strips=1,
+		)
+
+		with self.assertRaisesRegex(ValidationError, "There is no accounting for"):
+			self.validators.validate_sheet_cutting_layout(layout)
+
 	def test_validation_uses_parent_finished_part_contract_even_when_child_rows_exist(self) -> None:
 		layout = Layout(
 			finished_part_code="AB12SHR",
 			net_weight_per_part_kg=0.289,
-			parts_per_sheet=77,
+			sheet_thickness_mm=None,
+			sheet_width_mm=None,
+			sheet_length_mm=None,
+			weight_per_sheet_kg=36.48612,
+			parts_per_strip=7,
+			no_of_strips=11,
+			weight_of_strip_kg=3.31692,
+			strip_thickness_mm=None,
+			strip_width_mm=None,
+			strip_length_mm=None,
 			gross_weight_per_part_kg=0.473846,
 			scrap_weight_per_part_kg=0.184846,
 			finished_parts=[

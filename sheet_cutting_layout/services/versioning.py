@@ -59,6 +59,8 @@ def create_revision(old_layout: RevisionLayoutT) -> RevisionLayoutT:
 	new_layout.approval_snapshot = []
 	if hasattr(new_layout, "generated_bom"):
 		new_layout.generated_bom = None
+	if hasattr(new_layout, "end_piece_bom_status"):
+		new_layout.end_piece_bom_status = ""
 
 	new_layout.finished_parts = []
 
@@ -100,7 +102,7 @@ def _copy_layout(old_layout: RevisionLayoutT) -> RevisionLayoutT:
 
 
 def _reset_child_row(row: object) -> None:
-	for fieldname in ("name", "parent", "parentfield", "parenttype"):
+	for fieldname in ("name", "parent", "parentfield", "parenttype", "end_piece_item_code"):
 		if hasattr(row, fieldname):
 			setattr(row, fieldname, None)
 

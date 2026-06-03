@@ -104,8 +104,7 @@ def validate_sheet_cutting_layout(layout: SheetCuttingLayoutDocument) -> None:
 		end_pieces,
 	)
 	apply_end_piece_bom_status(layout, end_pieces)
-	if end_pieces:
-		_validate_complete_sheet_consumption(layout, end_pieces)
+	_validate_complete_sheet_consumption(layout, end_pieces)
 	_validate_generated_bom_matches_layout(layout)
 
 
@@ -450,7 +449,8 @@ def _validate_generated_bom_matches_layout(layout: SheetCuttingLayoutDocument) -
 				getattr(bom, "item", None),
 			)
 		)
-	if int(float(getattr(bom, "quantity", 0) or 0)) != expected.quantity:
+	actual_quantity = _coerce_bom_quantity(getattr(bom, "quantity", None))
+	if actual_quantity != expected.quantity:
 		frappe.throw(
 			_("BOM quantity mismatch: expected {0}, found {1}").format(
 				expected.quantity,
@@ -507,6 +507,16 @@ def _sum_expected_bom_rows(rows: Sequence[BomItemRow]) -> dict[str, float]:
 	for row in rows:
 		totals[row.item_code] = _flt(totals.get(row.item_code, 0) + row.qty)
 	return totals
+
+
+def _coerce_bom_quantity(value: object) -> int | None:
+	try:
+		number = float(value)
+	except (TypeError, ValueError):
+		return None
+	if not number.is_integer():
+		return None
+	return int(number)
 
 
 def _sum_actual_bom_rows(rows: Sequence[object], qty_getter: object) -> dict[str, float]:
