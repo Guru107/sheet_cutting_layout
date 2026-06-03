@@ -51,7 +51,7 @@ describe("Sheet Cutting Layout release workflow", () => {
 			)
 			.then(({ body }) => {
 				const layout = body.message;
-				const bomName = layout.finished_parts?.[0]?.generated_bom;
+				const bomName = layout.generated_bom;
 				if (!bomName && attempt < 10) {
 					cy.wait(500);
 					return fetchReleasedLayoutWithBom(attempt + 1);

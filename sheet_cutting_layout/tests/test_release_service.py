@@ -1662,6 +1662,54 @@ def test_deactivate_generated_bom_marks_linked_bom_superseded(
 	assert bom_doc.save_calls == [{"ignore_permissions": True}]
 
 
+def test_deactivate_generated_bom_uses_db_set_for_submitted_bom(
+	monkeypatch: pytest.MonkeyPatch,
+) -> None:
+	from sheet_cutting_layout.services import release_service
+	from sheet_cutting_layout.services.release_service import deactivate_generated_bom
+
+	class BomDoc:
+		docstatus = 1
+
+		def __init__(self) -> None:
+			self.name = "BOM-PART001SHR-001"
+			self.is_active = 1
+			self.disabled = 0
+			self.status = "Active"
+			self.db_set_calls: list[tuple[dict[str, object], bool, bool]] = []
+			self.save_calls: list[dict[str, object]] = []
+
+		def db_set(
+			self,
+			values: dict[str, object],
+			update_modified: bool = True,
+			notify: bool = False,
+		) -> None:
+			self.db_set_calls.append((values, update_modified, notify))
+
+		def save(self, **kwargs: object) -> None:
+			self.save_calls.append(kwargs)
+
+	bom_doc = BomDoc()
+
+	class FrappeStub:
+		@staticmethod
+		def get_doc(doctype: str, name: str) -> BomDoc:
+			assert (doctype, name) == ("BOM", "BOM-PART001SHR-001")
+			return bom_doc
+
+	monkeypatch.setattr(release_service, "frappe", FrappeStub)
+
+	result = deactivate_generated_bom(type("Layout", (), {"generated_bom": "BOM-PART001SHR-001"})())
+
+	assert result is bom_doc
+	assert bom_doc.is_active == 0
+	assert bom_doc.disabled == 1
+	assert bom_doc.status == "Superseded"
+	assert bom_doc.db_set_calls == [({"is_active": 0, "disabled": 1, "status": "Superseded"}, True, False)]
+	assert bom_doc.save_calls == []
+
+
 def test_controller_supersede_action_deactivates_generated_bom(monkeypatch: pytest.MonkeyPatch) -> None:
 	from sheet_cutting_layout.sheet_cutting_layout.doctype.sheet_cutting_layout import sheet_cutting_layout
 

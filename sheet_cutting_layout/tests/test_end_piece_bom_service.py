@@ -5,6 +5,7 @@ from dataclasses import dataclass, field
 from types import SimpleNamespace
 from unittest.mock import patch
 
+from sheet_cutting_layout.overrides.bom import validate_shearing_bom_source
 from sheet_cutting_layout.tests.base import SheetCuttingLayoutTestCase
 
 
@@ -67,6 +68,8 @@ class FakeDoc:
 
 	def insert(self, ignore_permissions: bool = False) -> FakeDoc:
 		self.ignore_permissions = ignore_permissions
+		if self.doctype == "BOM":
+			validate_shearing_bom_source(self)
 		if self.doctype == "BOM" and not getattr(self, "company", None):
 			raise ValueError("Company is required")
 		if not self.name:
@@ -171,6 +174,7 @@ class TestEndPieceBomService(SheetCuttingLayoutTestCase):
 		self.assertEqual(bom.company, "Test Company")
 		self.assertEqual(bom.custom_operation, "Shearing")
 		self.assertEqual(bom.sheet_cutting_layout, "SCL-001")
+		self.assertTrue(getattr(getattr(bom, "flags", None), "sheet_cutting_layout_allow_bom_update", False))
 		self.assertEqual(bom.items, [{"item_code": existing_code, "qty": 2.5, "uom": "Kg"}])
 		self.assertEqual(bom.scrap_items, [])
 		resolve_rate.assert_not_called()

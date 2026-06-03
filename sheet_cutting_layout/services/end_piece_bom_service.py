@@ -5,6 +5,7 @@ from typing import Protocol
 
 import frappe
 
+from sheet_cutting_layout.overrides.bom import APP_CONTROLLED_BOM_UPDATE_FLAG
 from sheet_cutting_layout.services import validators
 from sheet_cutting_layout.services.bom_service import resolve_scrap_item_rate
 
@@ -126,6 +127,11 @@ def _create_end_piece_bom(layout: LayoutDocument, row: EndPieceRow, item_code: s
 			},
 		)
 
+	flags = getattr(bom, "flags", None)
+	if flags is None:
+		flags = type("Flags", (), {})()
+		bom.flags = flags
+	setattr(flags, APP_CONTROLLED_BOM_UPDATE_FLAG, True)
 	bom.insert(ignore_permissions=True)
 	return bom.name
 

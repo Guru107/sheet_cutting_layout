@@ -156,8 +156,15 @@ def deactivate_generated_bom(layout: object) -> object | None:
 	_set_frappe_field_if_supported(bom_doc, "is_active", 0)
 	_set_frappe_field_if_supported(bom_doc, "disabled", 1)
 	_set_frappe_field_if_supported(bom_doc, "status", "Superseded")
-	_mark_bom_app_controlled(bom_doc)
-	bom_doc.save(ignore_permissions=True)
+	if _is_submitted_document(bom_doc) and hasattr(bom_doc, "db_set"):
+		bom_doc.db_set(
+			{"is_active": 0, "disabled": 1, "status": "Superseded"},
+			update_modified=True,
+			notify=False,
+		)
+	else:
+		_mark_bom_app_controlled(bom_doc)
+		bom_doc.save(ignore_permissions=True)
 	return bom_doc
 
 
