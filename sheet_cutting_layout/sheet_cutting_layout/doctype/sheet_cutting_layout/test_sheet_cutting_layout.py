@@ -10,8 +10,8 @@ try:
 except ImportError:
 	frappe = None
 
-from sheet_cutting_layout.tests.factories import register_test_doc
 from sheet_cutting_layout.tests.base import SheetCuttingLayoutTestCase
+from sheet_cutting_layout.tests.factories import register_test_doc
 
 from . import sheet_cutting_layout as controller
 

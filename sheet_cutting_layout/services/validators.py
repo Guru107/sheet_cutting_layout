@@ -345,9 +345,7 @@ def _validate_end_piece_distribution(
 		frappe.throw(_("Parts per sheet must be greater than zero for end-piece distribution"))
 
 	end_piece_weight_per_part = sum(
-		end_piece.weight_kg / parts_per_sheet
-		for end_piece in end_pieces
-		if end_piece.weight_kg is not None
+		end_piece.weight_kg / parts_per_sheet for end_piece in end_pieces if end_piece.weight_kg is not None
 	)
 	derived_fg_weight = (
 		_flt(getattr(layout, "gross_weight_per_part_kg", 0))

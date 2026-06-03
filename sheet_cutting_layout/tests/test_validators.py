@@ -119,8 +119,7 @@ class TestValidators(SheetCuttingLayoutTestCase):
 	) -> Layout:
 		accounted_finished_part = finished_part or FinishedPart("AB12SHR", 2, 11.004, 0)
 		strip_weight = (
-			accounted_finished_part.gross_weight_per_part_kg
-			* accounted_finished_part.parts_per_sheet
+			accounted_finished_part.gross_weight_per_part_kg * accounted_finished_part.parts_per_sheet
 		)
 		net_weight = (
 			accounted_finished_part.net_weight_per_part_kg

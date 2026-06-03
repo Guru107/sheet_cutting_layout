@@ -209,7 +209,8 @@ frappe.provide("sheet_cutting_layout");
 	function calculateConsumptionTracking(frm) {
 		const endPieces = frm.doc.end_pieces || [];
 		const consumedWeight = roundConsumptionWeight(
-			numberOrZero(frm.doc.gross_weight_per_part_kg) * numberOrZero(frm.doc.parts_per_sheet) +
+			numberOrZero(frm.doc.gross_weight_per_part_kg) *
+				numberOrZero(frm.doc.parts_per_sheet) +
 				endPieces.reduce((total, row) => total + numberOrZero(row.weight_kg), 0)
 		);
 		const leftoverWeight = roundConsumptionWeight(

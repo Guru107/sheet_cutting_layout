@@ -229,12 +229,14 @@ class TestBomService(SheetCuttingLayoutTestCase):
 
 		self.assertEqual(expected.item, "FG01SHR")
 		self.assertEqual(expected.quantity, 11)
-		self.assertEqual([(row.item_code, row.qty, row.row_type) for row in expected.raw_material_rows], [
-			("RM001", 39.3, "raw_material")
-		])
-		self.assertEqual([(row.item_code, row.qty, row.row_type) for row in expected.scrap_rows], [
-			("PROCESS-SCRAP", 14.233142, "process_scrap")
-		])
+		self.assertEqual(
+			[(row.item_code, row.qty, row.row_type) for row in expected.raw_material_rows],
+			[("RM001", 39.3, "raw_material")],
+		)
+		self.assertEqual(
+			[(row.item_code, row.qty, row.row_type) for row in expected.scrap_rows],
+			[("PROCESS-SCRAP", 14.233142, "process_scrap")],
+		)
 		self.assertAlmostEqual(expected.total_scrap_qty, 14.233142, places=6)
 
 	def test_bom_invariants_hold_for_representative_layouts(self) -> None:
