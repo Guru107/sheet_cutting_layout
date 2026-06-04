@@ -81,6 +81,8 @@ def _ensure_layout_dependencies() -> tuple[str, str, str]:
 
 def _ensure_hsn_code(hsn_code: str) -> str:
 	assert frappe is not None
+	if not frappe.db.exists("DocType", "GST HSN Code"):
+		raise RuntimeError("GST HSN Code DocType is not available on this site")
 	return _insert_if_missing(
 		{
 			"doctype": "GST HSN Code",
@@ -92,19 +94,19 @@ def _ensure_hsn_code(hsn_code: str) -> str:
 
 def _ensure_item(item_code: str, *, item_group: str, stock_uom: str) -> str:
 	assert frappe is not None
-	hsn_code = _ensure_hsn_code("720810")
-	return _insert_if_missing(
-		{
-			"doctype": "Item",
-			"item_code": item_code,
-			"item_name": item_code,
-			"item_group": item_group,
-			"stock_uom": stock_uom,
-			"is_stock_item": 1,
-			"gst_hsn_code": hsn_code,
-		},
-		"item_code",
-	)
+	doc = {
+		"doctype": "Item",
+		"item_code": item_code,
+		"item_name": item_code,
+		"item_group": item_group,
+		"stock_uom": stock_uom,
+		"is_stock_item": 1,
+	}
+	if frappe.get_meta("Item", cached=True).has_field("gst_hsn_code") and frappe.db.exists(
+		"DocType", "GST HSN Code"
+	):
+		doc["gst_hsn_code"] = _ensure_hsn_code("720810")
+	return _insert_if_missing(doc, "item_code")
 
 
 def make_layout(
