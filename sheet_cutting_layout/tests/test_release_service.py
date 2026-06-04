@@ -223,8 +223,7 @@ def test_hooks_exposes_required_fixtures() -> None:
 	assert hooks.doc_events == {
 		"BOM": {
 			"before_insert": "sheet_cutting_layout.overrides.bom.validate_shearing_bom_source",
-			"validate": "sheet_cutting_layout.overrides.bom.validate_shearing_bom_source",
-			"before_save": "sheet_cutting_layout.overrides.bom.validate_shearing_bom_source",
+			"before_cancel": "sheet_cutting_layout.overrides.bom.validate_shearing_bom_source",
 		}
 	}
 
@@ -1247,16 +1246,22 @@ def test_frappe_bom_insert_sets_required_company_from_layout(
 		def __init__(self) -> None:
 			self.name = ""
 			self.items: list[dict[str, object]] = []
+			self.insert_calls = 0
+			self.submit_calls = 0
 
 		def append(self, fieldname: str, row: dict[str, object]) -> None:
 			assert fieldname == "items"
 			self.items.append(row)
 
 		def insert(self) -> None:
+			self.insert_calls += 1
 			assert self.company == "Test Company"
 			assert self.custom_operation == "Shearing"
 			assert self.sheet_cutting_layout == "SCL-001"
 			self.name = self.name or "BOM-PERSISTED"
+
+		def submit(self) -> None:
+			self.submit_calls += 1
 
 	class FrappeStub:
 		@staticmethod
@@ -1271,6 +1276,7 @@ def test_frappe_bom_insert_sets_required_company_from_layout(
 	inserted = release_service._insert_frappe_bom(bom)
 
 	assert inserted.name == "BOM-PART001SHR"
+	assert inserted.status == "Active"
 
 
 def test_frappe_bom_insert_wraps_scrap_rate_resolution_error(
@@ -1290,6 +1296,9 @@ def test_frappe_bom_insert_wraps_scrap_rate_resolution_error(
 
 		def insert(self) -> None:
 			self.name = self.name or "BOM-PERSISTED"
+
+		def submit(self) -> None:
+			raise AssertionError("submit should not run after scrap-rate resolution failure")
 
 	class FrappeStub:
 		@staticmethod
@@ -1522,7 +1531,7 @@ def test_revision_resets_approval_snapshot_and_generated_boms() -> None:
 
 	assert new_layout.approval_snapshot == []
 	assert new_layout.generated_bom is None
-	assert new_layout.end_piece_bom_status == ""
+	assert new_layout.end_piece_bom_status == "Pending"
 	assert new_layout.finished_parts == []
 	assert new_layout.end_pieces[0].end_piece_item_code is None
 	assert new_layout.finished_part_code == "PART001SHR"

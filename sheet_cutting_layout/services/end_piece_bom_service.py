@@ -132,7 +132,13 @@ def _create_end_piece_bom(layout: LayoutDocument, row: EndPieceRow, item_code: s
 		flags = type("Flags", (), {})()
 		bom.flags = flags
 	setattr(flags, APP_CONTROLLED_BOM_UPDATE_FLAG, True)
+	bom.is_active = 1
+	bom.disabled = 0
+	if hasattr(bom, "status"):
+		bom.status = "Active"
 	bom.insert(ignore_permissions=True)
+	setattr(flags, APP_CONTROLLED_BOM_UPDATE_FLAG, True)
+	bom.submit()
 	return bom.name
 
 

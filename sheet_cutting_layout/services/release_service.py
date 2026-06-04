@@ -158,6 +158,9 @@ def deactivate_generated_bom(layout: object) -> object | None:
 	_set_frappe_field_if_supported(bom_doc, "disabled", 1)
 	_set_frappe_field_if_supported(bom_doc, "status", "Superseded")
 	if _is_submitted_document(bom_doc) and hasattr(bom_doc, "db_set"):
+		# Submitted BOMs cannot be safely re-saved through the layout flow here.
+		# Persist the retirement fields directly and leave broader ERPNext BOM-update
+		# orchestration to the explicit submitted-BOM lifecycle follow-up.
 		bom_doc.db_set(
 			{"is_active": 0, "disabled": 1, "status": "Superseded"},
 			update_modified=True,
@@ -236,8 +239,10 @@ def _insert_frappe_bom(bom: BomDocument) -> BomDocument:
 	bom_doc.company = _company_for_layout(getattr(bom, "_layout", None))
 	bom_doc.quantity = bom.quantity
 	bom_doc.uom = "Kg"
-	bom_doc.is_active = 0
-	bom_doc.disabled = 1
+	bom_doc.is_active = 1
+	bom_doc.disabled = 0
+	if hasattr(bom_doc, "status"):
+		bom_doc.status = "Active"
 	bom_doc.custom_operation = "Shearing"
 	bom_doc.sheet_cutting_layout = bom.sheet_cutting_layout or getattr(
 		getattr(bom, "_layout", None), "name", None
@@ -277,11 +282,14 @@ def _insert_frappe_bom(bom: BomDocument) -> BomDocument:
 			},
 		)
 	bom_doc.insert()
+	_mark_bom_app_controlled(bom_doc)
+	bom_doc.submit()
 
 	bom.name = bom_doc.name
-	bom.is_active = bool(getattr(bom_doc, "is_active", False))
-	bom.disabled = bool(getattr(bom_doc, "disabled", True))
-	bom.status = "Active"
+	bom.is_active = bool(getattr(bom_doc, "is_active", True))
+	bom.disabled = bool(getattr(bom_doc, "disabled", False))
+	bom.status = str(getattr(bom_doc, "status", "Active") or "Active")
+	bom._persisted_with_frappe = True
 	return bom
 
 
@@ -386,6 +394,8 @@ def _save_bom_records(boms: Sequence[BomRecord]) -> None:
 		return
 
 	for bom in boms:
+		if getattr(bom, "_persisted_with_frappe", False):
+			continue
 		bom_doc = bom if hasattr(bom, "save") else frappe.get_doc("BOM", bom.name)
 		_set_frappe_field_if_supported(bom_doc, "is_active", 1 if bom.is_active else 0)
 		_set_frappe_field_if_supported(bom_doc, "disabled", 1 if bom.disabled else 0)

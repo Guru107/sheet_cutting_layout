@@ -62,18 +62,25 @@ class FakeDoc:
 		self.items: list[dict[str, object]] = []
 		self.scrap_items: list[dict[str, object]] = []
 		self.uoms: list[dict[str, object]] = []
+		self.insert_calls = 0
+		self.submit_calls = 0
 
 	def append(self, fieldname: str, row: dict[str, object]) -> None:
 		getattr(self, fieldname).append(row)
 
 	def insert(self, ignore_permissions: bool = False) -> FakeDoc:
+		self.insert_calls += 1
 		self.ignore_permissions = ignore_permissions
 		if self.doctype == "BOM":
-			validate_shearing_bom_source(self)
+			validate_shearing_bom_source(self, "before_insert")
 		if self.doctype == "BOM" and not getattr(self, "company", None):
 			raise ValueError("Company is required")
 		if not self.name:
 			self.name = f"{self.doctype}-{id(self)}"
+		return self
+
+	def submit(self) -> FakeDoc:
+		self.submit_calls += 1
 		return self
 
 
@@ -169,6 +176,8 @@ class TestEndPieceBomService(SheetCuttingLayoutTestCase):
 		self.assertEqual(layout.save_calls, [{"ignore_permissions": True}])
 
 		bom = fake_frappe.created_docs[0]
+		self.assertEqual(bom.insert_calls, 1)
+		self.assertEqual(bom.submit_calls, 1)
 		self.assertEqual(bom.item, "FG01SHR")
 		self.assertEqual(bom.quantity, 1)
 		self.assertEqual(bom.company, "Test Company")
@@ -199,6 +208,7 @@ class TestEndPieceBomService(SheetCuttingLayoutTestCase):
 		self.assertEqual(
 			item.uoms, [{"uom": "Nos", "conversion_factor": 1}, {"uom": "Kg", "conversion_factor": 0.4}]
 		)
+		self.assertEqual(fake_frappe.created_docs[1].submit_calls, 1)
 
 	def test_generation_uses_default_company_when_layout_company_is_missing(self) -> None:
 		existing_code = "FG01SHR-EP-2x100x200"

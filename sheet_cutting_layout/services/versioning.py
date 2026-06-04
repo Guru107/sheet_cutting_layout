@@ -59,13 +59,16 @@ def create_revision(old_layout: RevisionLayoutT) -> RevisionLayoutT:
 	new_layout.approval_snapshot = []
 	if hasattr(new_layout, "generated_bom"):
 		new_layout.generated_bom = None
-	if hasattr(new_layout, "end_piece_bom_status"):
-		new_layout.end_piece_bom_status = ""
 
 	new_layout.finished_parts = []
 
 	for row in getattr(new_layout, "end_pieces", []) or []:
 		_reset_child_row(row)
+
+	if hasattr(new_layout, "end_piece_bom_status"):
+		from sheet_cutting_layout.services.validators import apply_end_piece_bom_status
+
+		apply_end_piece_bom_status(new_layout, getattr(new_layout, "end_pieces", []) or [])
 
 	return new_layout
 

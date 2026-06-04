@@ -43,9 +43,9 @@ Finished part item codes must be alphanumeric and end with `SHR`. Each layout us
 
 ## BOM Mapping
 
-MR Release creates one native ERPNext Shearing BOM for the finished part. BOM quantity equals `no_of_strips`, raw material quantity is the full sheet weight in Kg, process scrap uses `process_scrap_item`, reusable end pieces do not create Shearing BOM scrap rows, and end pieces marked `Scrap` create separate rows using their row-level `scrap_item`. After release, the layout stores the generated BOM link and audits that BOM against the layout on every save.
+MR Release creates one native ERPNext Shearing BOM for the finished part and submits it immediately. BOM quantity equals `no_of_strips`, raw material quantity is the full sheet weight in Kg, process scrap uses `process_scrap_item`, reusable end pieces do not create Shearing BOM scrap rows, and end pieces marked `Scrap` create separate rows using their row-level `scrap_item`. End-piece BOMs generated from released layouts are also submitted immediately. After release, the layout stores the generated BOM link and audits that BOM against the layout on every save.
 
-Derived shearing BOMs are not manually editable. Any change to a released shearing BOM must start from the Sheet Cutting Layout.
+Derived shearing BOMs are layout-owned. `Update Cost` remains allowed through ERPNext, but `New Version`, `Cancel`, and `Amend` must be driven from `Sheet Cutting Layout` instead.
 
 ## Revisioning
 
@@ -55,7 +55,7 @@ Use `Supersede` only when you want to retire a released layout. Superseding deac
 
 ## Recovery
 
-If release fails, keep the layout in `Approved by Purchase`, fix validation errors, and rerun the workflow action.
+If release fails, keep the layout in `Approved by Purchase`, fix validation errors, and rerun the workflow action. Scrap items used in generated BOMs must have a resolvable valuation rate before release or end-piece BOM generation can succeed.
 
 ## Development
 

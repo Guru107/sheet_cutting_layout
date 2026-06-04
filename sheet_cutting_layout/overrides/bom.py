@@ -27,14 +27,23 @@ def validate_shearing_bom_source(doc: object, method: str | None = None) -> None
 		return
 	if _is_app_controlled_bom_update(doc):
 		return
-	if getattr(doc, "sheet_cutting_layout", None):
+	layout_name = str(getattr(doc, "sheet_cutting_layout", "") or "").strip()
+	if layout_name and method == "before_cancel":
 		frappe.throw(
 			_(
 				"This Shearing BOM is generated from a Sheet Cutting Layout. "
-				"To change it, create a new Sheet Cutting Layout version."
+				"Use the Sheet Cutting Layout workflow instead of cancelling or amending this BOM."
 			)
 		)
-	frappe.throw(_("Create a Sheet Cutting Layout to generate a Shearing BOM."))
+	if method == "before_insert":
+		if layout_name:
+			frappe.throw(
+				_(
+					"This Shearing BOM is generated from a Sheet Cutting Layout. "
+					"To change it, create a new Sheet Cutting Layout version."
+				)
+			)
+		frappe.throw(_("Create a Sheet Cutting Layout to generate a Shearing BOM."))
 
 
 def _is_app_controlled_bom_update(doc: object) -> bool:
