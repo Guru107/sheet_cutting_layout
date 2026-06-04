@@ -13,6 +13,19 @@ bench --site <site-name> migrate
 
 Local bench roots used for development are `~/Workspace/bench15` and `~/Workspace/bench16`.
 
+## Developer Bootstrap
+
+Create a repo-local virtualenv for tooling instead of committing `.venv`:
+
+```bash
+git clone <repo-url>
+cd sheet_cutting_layout
+./scripts/setup_dev.sh
+source .venv/bin/activate
+```
+
+This installs the local developer tools declared in [pyproject.toml](/Users/gurudattkulkarni/Workspace/sheet_cutting_layout/pyproject.toml:1) and sets up `pre-commit`. It does not replace bench-managed app installation; Frappe and ERPNext are still installed through bench.
+
 ## Role Matrix
 
 - Project User: creates draft layouts and submits for check.
@@ -47,9 +60,12 @@ If release fails, keep the layout in `Approved by Purchase`, fix validation erro
 ## Development
 
 ```bash
+./scripts/setup_dev.sh
+source .venv/bin/activate
 bench --site <site-name> run-tests --app sheet_cutting_layout
 python -m ruff check .
 python -m ruff format --check .
+pre-commit run --all-files
 bench --site <site-name> run-ui-tests sheet_cutting_layout --headless
 ```
 
