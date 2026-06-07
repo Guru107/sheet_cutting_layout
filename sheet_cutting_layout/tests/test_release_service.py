@@ -1852,10 +1852,10 @@ def test_controller_supersede_action_deactivates_generated_bom(monkeypatch: pyte
 	assert calls == [doc]
 
 
-def test_readme_mentions_release_gate_and_bom_qty_no_of_strips() -> None:
+def test_readme_mentions_release_gate_and_bom_qty_parts_per_sheet() -> None:
 	content = Path(__file__).resolve().parents[2].joinpath("README.md").read_text(encoding="utf-8")
 
-	assert "BOM quantity equals `no_of_strips`" in content
+	assert "BOM quantity equals `parts_per_sheet`" in content
 	assert "Draft -> Submitted for Check -> PM Approved -> Approved by Purchase -> Released" in content
 
 
