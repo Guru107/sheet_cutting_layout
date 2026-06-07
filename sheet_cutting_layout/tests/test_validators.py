@@ -486,6 +486,24 @@ class TestValidators(SheetCuttingLayoutTestCase):
 		with self.assertRaisesRegex(ValidationError, "Process scrap item"):
 			self.validators.validate_sheet_cutting_layout(layout)
 
+	def test_qty_per_sheet_is_not_required_for_end_piece_validation(self) -> None:
+		layout = self._balanced_layout(end_piece=EndPiece(qty_per_sheet=None))
+
+		self.validators.validate_sheet_cutting_layout(layout)
+
+		self.assertEqual(layout.consumption_status, "Balanced")
+
+	def test_stale_qty_per_sheet_payload_is_ignored_for_weight_and_consumption(self) -> None:
+		layout = self._balanced_layout(end_piece=EndPiece(qty_per_sheet=3))
+		layout.status = "Released"
+
+		self.validators.validate_sheet_cutting_layout(layout)
+
+		self.assertEqual(layout.end_pieces[0].weight_kg, 2.5545)
+		self.assertEqual(layout.consumed_weight_kg, 24.562)
+		self.assertEqual(layout.leftover_weight_kg, 0.0)
+		self.assertEqual(layout.consumption_status, "Balanced")
+
 	def test_apply_end_piece_bom_status_uses_end_piece_item_code_presence(self) -> None:
 		no_reuse = self._balanced_layout(
 			end_piece=EndPiece(

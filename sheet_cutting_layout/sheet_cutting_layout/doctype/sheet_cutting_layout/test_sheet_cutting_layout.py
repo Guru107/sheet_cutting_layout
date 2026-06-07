@@ -303,3 +303,30 @@ class TestSheetCuttingLayoutController(SheetCuttingLayoutTestCase):
 			layout.gross_weight_per_part_kg - 0.289,
 			places=6,
 		)
+
+	@skipUnless(frappe is not None, "Frappe bench runtime required")
+	def test_unreleased_layout_with_qty_per_sheet_gt_one_is_blocked_until_rows_are_split(
+		self,
+	) -> None:
+		assert frappe is not None
+		layout = make_layout(
+			finished_part_code="FG01SHR",
+			net_weight_per_part_kg=11.004,
+			generated_bom=None,
+		)
+		layout.strip_length_mm = 2240
+		layout.append(
+			"end_pieces",
+			{
+				"width_mm": 1250,
+				"length_mm": 260,
+				"qty_per_sheet": 2,
+				"disposition": "Reuse",
+				"used_for_finished_part": "FG01SHR",
+				"bom_quantity": 1,
+				"bom_scrap_quantity_kg": 0,
+			},
+		)
+
+		with self.assertRaisesRegex(frappe.ValidationError, "split into duplicate rows"):
+			layout.insert()

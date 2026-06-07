@@ -85,6 +85,7 @@ def validate_sheet_cutting_layout(layout: SheetCuttingLayoutDocument) -> None:
 	apply_parent_scrap_weight_per_part_formula(layout)
 	end_pieces = list(getattr(layout, "end_pieces", []) or [])
 	apply_parts_per_sheet_formula(layout)
+	_validate_unreleased_legacy_end_piece_multiplicity(layout, end_pieces)
 	apply_end_piece_weight_formulas(layout, end_pieces)
 	_validate_parent_finished_part_fields(layout)
 
@@ -188,9 +189,8 @@ def apply_end_piece_weight_formulas(
 			width_mm=getattr(end_piece, "width_mm", None),
 			length_mm=getattr(end_piece, "length_mm", None),
 		)
-		qty_per_sheet = getattr(end_piece, "qty_per_sheet", None)
-		if weight is not None and qty_per_sheet is not None and qty_per_sheet > 0:
-			end_piece.weight_kg = _flt(weight * qty_per_sheet)
+		if weight is not None:
+			end_piece.weight_kg = _flt(weight)
 
 
 def derive_end_piece_item_code(
@@ -291,10 +291,6 @@ def _validate_end_piece_required_fields(end_piece: EndPieceRow) -> None:
 		frappe.throw(_("End piece length is required"))
 	if end_piece.weight_kg is None:
 		frappe.throw(_("End piece weight is required"))
-	if end_piece.qty_per_sheet is None:
-		frappe.throw(_("End piece quantity is required"))
-	if end_piece.qty_per_sheet <= 0:
-		frappe.throw(_("End piece quantity must be greater than zero"))
 	_validate_end_piece_disposition(end_piece)
 	_validate_non_reuse_end_piece_fields_are_empty(end_piece)
 	_validate_non_scrap_end_piece_fields_are_empty(end_piece)
@@ -308,6 +304,28 @@ def _validate_end_piece_required_fields(end_piece: EndPieceRow) -> None:
 			frappe.throw(_("BOM scrap quantity must be non-negative for reuse end pieces"))
 	if _is_scrap_end_piece(end_piece) and _is_missing(getattr(end_piece, "scrap_item", None)):
 		frappe.throw(_("Scrap item is required for scrap end pieces"))
+
+
+def _validate_unreleased_legacy_end_piece_multiplicity(
+	layout: SheetCuttingLayoutDocument,
+	end_pieces: Sequence[EndPieceRow],
+) -> None:
+	if getattr(layout, "status", None) == "Released":
+		return
+	if any(_has_legacy_qty_per_sheet_multiplicity(end_piece) for end_piece in end_pieces):
+		frappe.throw(
+			_(
+				"End piece Qty Per Sheet greater than 1 is legacy data; "
+				"split into duplicate rows before release."
+			)
+		)
+
+
+def _has_legacy_qty_per_sheet_multiplicity(end_piece: EndPieceRow) -> bool:
+	try:
+		return float(getattr(end_piece, "qty_per_sheet", 0) or 0) > 1
+	except (TypeError, ValueError):
+		return False
 
 
 def _validate_end_piece_disposition(end_piece: EndPieceRow) -> None:

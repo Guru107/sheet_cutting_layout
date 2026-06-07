@@ -124,18 +124,10 @@ frappe.provide("sheet_cutting_layout");
 	}
 
 	function calculateEndPieceWeight(frm, row) {
-		const singleWeight = calculateWeight(
+		return calculateWeight(
 			frm.doc.sheet_thickness_mm,
 			row.width_mm,
 			row.length_mm
-		);
-		if (singleWeight === null) {
-			return null;
-		}
-		return Number(
-			(singleWeight * numberOrZero(row.qty_per_sheet || 1)).toFixed(
-				getCalculationPrecision()
-			)
 		);
 	}
 
@@ -367,7 +359,6 @@ frappe.provide("sheet_cutting_layout");
 		width_mm: updateEndPieceWeightsAndConsumption,
 		length_mm: updateEndPieceWeightsAndConsumption,
 		weight_kg: updateConsumptionTrackingFields,
-		qty_per_sheet: updateEndPieceWeightsAndConsumption,
 		disposition: updateEndPieceDispositionAndDerivedFields,
 	});
 })();

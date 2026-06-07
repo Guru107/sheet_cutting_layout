@@ -50,12 +50,10 @@
    "reqd": 1
   },
   {
-   "default": "1",
    "fieldname": "qty_per_sheet",
    "fieldtype": "Float",
-   "in_list_view": 1,
-   "label": "Qty Per Sheet",
-   "reqd": 1
+   "hidden": 1,
+   "label": "Qty Per Sheet"
   },
   {
    "fieldname": "disposition",
