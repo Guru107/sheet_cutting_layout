@@ -43,7 +43,7 @@ Finished part item codes must be alphanumeric and end with `SHR`. Each layout us
 
 ## BOM Mapping
 
-MR Release creates one native ERPNext Shearing BOM for the finished part and submits it immediately. BOM quantity equals `no_of_strips`, raw material quantity is the full sheet weight in Kg, process scrap uses `process_scrap_item`, reusable end pieces do not create Shearing BOM scrap rows, and end pieces marked `Scrap` create separate rows using their row-level `scrap_item`. End-piece BOMs generated from released layouts are also submitted immediately. After release, the layout stores the generated BOM link and audits that BOM against the layout on every save.
+MR Release creates one native ERPNext Shearing BOM for the finished part and submits it immediately. BOM quantity equals `parts_per_sheet`, raw material quantity is the full sheet weight in Kg, process scrap uses `process_scrap_item`, reusable end pieces do not create Shearing BOM scrap rows, and end pieces marked `Scrap` create separate rows using their row-level `scrap_item`. End-piece `qty_per_sheet` is no longer an active input; each row represents one end piece per sheet. End-piece BOMs generated from released layouts are also submitted immediately. After release, the layout stores the generated BOM link and audits that BOM against the layout on every save.
 
 Derived shearing BOMs are layout-owned. `Update Cost` remains allowed through ERPNext, but `New Version`, `Cancel`, and `Amend` must be driven from `Sheet Cutting Layout` instead.
 
