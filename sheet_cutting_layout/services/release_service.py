@@ -321,7 +321,7 @@ def _sync_finished_part_reference_rows(
 	references = [
 		{
 			"finished_part_item": finished_part.finished_part_item,
-			"bom_quantity": bom.quantity,
+			"bom_quantity": _finished_part_bom_quantity(finished_part),
 			"scrap_weight_kg": _sum_bom_qty(bom.scrap_items),
 			"raw_material_weight_kg": _sum_bom_qty(bom.items),
 		}
@@ -332,6 +332,10 @@ def _sync_finished_part_reference_rows(
 		set_child_table("finished_parts", references)
 		return
 	layout.finished_parts = [FinishedPartReferenceRow(**row) for row in references]
+
+
+def _finished_part_bom_quantity(finished_part: FinishedPartRow) -> int:
+	return int(getattr(finished_part, "parts_per_sheet", 0) or 0)
 
 
 def _activate_boms(boms: Sequence[BomRecord]) -> None:

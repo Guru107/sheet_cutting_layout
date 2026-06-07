@@ -16,11 +16,17 @@ class FakeFrappe:
 
 	def __init__(self) -> None:
 		self.float_precision: str | None = None
+		self.generated_bom_doc: object | None = None
 
 	def get_system_settings(self, fieldname: str) -> str | None:
 		if fieldname == "float_precision":
 			return self.float_precision
 		return None
+
+	def get_doc(self, doctype: str, name: str) -> object:
+		if (doctype, name) == ("BOM", "BOM-FG01SHR"):
+			return self.generated_bom_doc
+		raise AssertionError(f"unexpected get_doc({doctype!r}, {name!r})")
 
 	def throw(self, message: str) -> None:
 		raise ValidationError(message)
@@ -137,6 +143,41 @@ class TestValidators(SheetCuttingLayoutTestCase):
 			parts_per_sheet=accounted_finished_part.parts_per_sheet,
 			finished_parts=[],
 			end_pieces=[end_piece or EndPiece()],
+		)
+
+	def _layout_with_generated_bom(self, *, bom_quantity: int) -> Layout:
+		self.fake_frappe.generated_bom_doc = type(
+			"Bom",
+			(),
+			{
+				"item": "FG01SHR",
+				"quantity": bom_quantity,
+				"items": [type("BomItem", (), {"item_code": "RM001", "qty": 77.0})()],
+				"scrap_items": [],
+			},
+		)()
+		return Layout(
+			finished_part_code="FG01SHR",
+			net_weight_per_part_kg=1.0,
+			generated_bom="BOM-FG01SHR",
+			finished_parts=[],
+			end_pieces=[],
+			sheet_thickness_mm=None,
+			sheet_width_mm=None,
+			sheet_length_mm=None,
+			weight_per_sheet_kg=77.0,
+			strip_thickness_mm=None,
+			strip_width_mm=None,
+			strip_length_mm=None,
+			weight_of_strip_kg=7.0,
+			gross_weight_per_part_kg=1.0,
+			scrap_weight_per_part_kg=0.0,
+			parts_per_strip=7,
+			no_of_strips=11,
+			parts_per_sheet=77,
+			consumed_weight_kg=0,
+			leftover_weight_kg=0,
+			consumption_status="",
 		)
 
 	def test_finished_part_item_code_validation_rules(self) -> None:
@@ -305,6 +346,17 @@ class TestValidators(SheetCuttingLayoutTestCase):
 			],
 			end_pieces=[],
 		)
+
+		self.validators.validate_sheet_cutting_layout(layout)
+
+	def test_save_time_audit_rejects_legacy_strip_count_bom_quantity(self) -> None:
+		layout = self._layout_with_generated_bom(bom_quantity=11)
+
+		with self.assertRaisesRegex(ValidationError, "BOM quantity mismatch"):
+			self.validators.validate_sheet_cutting_layout(layout)
+
+	def test_save_time_audit_accepts_corrected_parts_per_sheet_bom_quantity(self) -> None:
+		layout = self._layout_with_generated_bom(bom_quantity=77)
 
 		self.validators.validate_sheet_cutting_layout(layout)
 

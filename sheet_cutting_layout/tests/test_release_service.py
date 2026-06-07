@@ -368,12 +368,12 @@ def test_release_uses_injected_bom_document_factory_for_persisted_boms() -> None
 	from sheet_cutting_layout.services.bom_service import BomDocument
 	from sheet_cutting_layout.services.release_service import release_layout
 
-	layout = Layout()
+	layout = Layout(no_of_strips=11, parts_per_sheet=77, finished_parts=[])
 	created: list[tuple[Layout, object, int]] = []
 
 	def fake_factory(received_layout: Layout, row: object, index: int) -> BomDocument:
 		created.append((received_layout, row, index))
-		return BomDocument(item=row.finished_part_item, name=f"PERSISTED-BOM-{index}")
+		return BomDocument(item=row.finished_part_item, name=f"PERSISTED-BOM-{index}", quantity=11)
 
 	result = release_layout(
 		layout,
@@ -388,7 +388,7 @@ def test_release_uses_injected_bom_document_factory_for_persisted_boms() -> None
 	assert result.generated_boms[0].name == "PERSISTED-BOM-1"
 	assert layout.generated_bom == "PERSISTED-BOM-1"
 	assert [row.finished_part_item for row in layout.finished_parts] == ["PART001SHR"]
-	assert [row.bom_quantity for row in layout.finished_parts] == [1]
+	assert [row.bom_quantity for row in layout.finished_parts] == [77]
 
 
 def test_release_uses_parent_finished_part_contract_without_child_inputs() -> None:
@@ -413,10 +413,10 @@ def test_release_uses_parent_finished_part_contract_without_child_inputs() -> No
 	)
 
 	assert result.generated_boms[0].item == "PART001SHR"
-	assert result.generated_boms[0].quantity == 11
+	assert result.generated_boms[0].quantity == 80
 	assert layout.generated_bom == result.generated_boms[0].name
 	assert [row.finished_part_item for row in layout.finished_parts] == ["PART001SHR"]
-	assert [row.bom_quantity for row in layout.finished_parts] == [11]
+	assert [row.bom_quantity for row in layout.finished_parts] == [80]
 	assert [row.scrap_weight_kg for row in layout.finished_parts] == [20.0]
 	assert [row.raw_material_weight_kg for row in layout.finished_parts] == [100.0]
 
@@ -453,7 +453,7 @@ def test_release_syncs_finished_part_reference_rows_from_saved_bom() -> None:
 
 	self_reference = layout.finished_parts[0]
 	assert self_reference.finished_part_item == "FG01SHR"
-	assert self_reference.bom_quantity == 11
+	assert self_reference.bom_quantity == 77
 	assert self_reference.raw_material_weight_kg == 39.3
 	assert self_reference.scrap_weight_kg == 14.233142
 
@@ -671,7 +671,7 @@ def test_release_generates_bom_for_one_sheet_in_kg_with_scrap_outputs() -> None:
 
 	bom = result.generated_boms[0]
 	assert bom.item == "PART001SHR"
-	assert bom.quantity == 11
+	assert bom.quantity == 80
 	assert [(row.item_code, row.qty, row.row_type) for row in bom.items] == [
 		("RMSHEET001", 100.0, "raw_material")
 	]
