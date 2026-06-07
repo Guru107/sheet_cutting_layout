@@ -51,10 +51,13 @@ def import_bom_service() -> types.ModuleType:
 def test_generated_bom_uses_parts_per_sheet_quantity_and_sheet_weight_raw_qty() -> None:
 	bom_service = import_bom_service()
 
-	bom = bom_service.build_bom_from_layout_row(Layout(), FinishedPart())
+	bom = bom_service.build_bom_from_layout_row(
+		Layout(no_of_strips=11, parts_per_sheet=77),
+		FinishedPart(parts_per_sheet=77),
+	)
 
 	assert bom.item == "FINISHED-SHR"
-	assert bom.quantity == 11
+	assert bom.quantity == 77
 	assert bom.items[0].item_code == "RAW-SHEET"
 	assert bom.items[0].qty == pytest.approx(50)
 	assert bom.items[0].uom == "Kg"
@@ -96,13 +99,15 @@ def test_scrap_endpiece_creates_row_level_scrap_item_separate_from_process_scrap
 
 	bom = bom_service.build_bom_from_layout_row(
 		Layout(
+			no_of_strips=11,
+			parts_per_sheet=77,
 			end_pieces=[EndPiece(weight_kg=8, qty_per_sheet=2, disposition="Scrap", scrap_item="EP-SCRAP")]
 		),
-		FinishedPart(parts_per_sheet=4, scrap_weight_per_part_kg=1),
+		FinishedPart(parts_per_sheet=77, scrap_weight_per_part_kg=1),
 	)
 
 	assert [(row.item_code, row.qty, row.row_type) for row in bom.scrap_items] == [
-		("PROCESS-SCRAP", 4, "process_scrap"),
+		("PROCESS-SCRAP", 77, "process_scrap"),
 		("EP-SCRAP", 8, "end_piece_scrap"),
 	]
 
@@ -117,31 +122,15 @@ def test_scrap_endpiece_requires_scrap_item_before_creating_bom_row() -> None:
 		)
 
 
-def test_bom_quantity_falls_back_to_parts_per_sheet_when_no_of_strips_is_zero() -> None:
+def test_bom_quantity_ignores_no_of_strips_when_parts_per_sheet_is_available() -> None:
 	bom_service = import_bom_service()
 
-	bom = bom_service.build_bom_from_layout_row(Layout(no_of_strips=0), FinishedPart(parts_per_sheet=4))
+	bom = bom_service.build_bom_from_layout_row(
+		Layout(no_of_strips="11", parts_per_sheet=77),
+		FinishedPart(parts_per_sheet=77),
+	)
 
-	assert bom.quantity == 4
-
-
-def test_bom_quantity_coerces_integer_like_no_of_strips() -> None:
-	bom_service = import_bom_service()
-
-	bom = bom_service.build_bom_from_layout_row(Layout(no_of_strips="11"), FinishedPart(parts_per_sheet=4))
-
-	assert bom.quantity == 11
-
-
-@pytest.mark.parametrize("no_of_strips", ["many", 1.5, -1])
-def test_bom_quantity_rejects_invalid_no_of_strips(no_of_strips: object) -> None:
-	bom_service = import_bom_service()
-
-	with pytest.raises(ValueError, match="no_of_strips must be a positive integer"):
-		bom_service.build_bom_from_layout_row(
-			Layout(no_of_strips=no_of_strips),
-			FinishedPart(parts_per_sheet=4),
-		)
+	assert bom.quantity == 77
 
 
 def test_custom_bom_document_factory_is_used() -> None:
@@ -208,7 +197,7 @@ class TestBomService(SheetCuttingLayoutTestCase):
 		bom = bom_service.build_bom_from_layout(layout)
 
 		self.assertEqual(bom.item, "FG01SHR")
-		self.assertEqual(bom.quantity, 11)
+		self.assertEqual(bom.quantity, 77)
 		self.assertAlmostEqual(self._sum_bom_qty(bom.items, "raw_material"), 39.3, places=6)
 		self.assertAlmostEqual(self._sum_bom_qty(bom.scrap_items, "process_scrap"), 14.233142, places=6)
 
@@ -228,7 +217,7 @@ class TestBomService(SheetCuttingLayoutTestCase):
 		expected = bom_service.expected_bom_consumption_from_layout(layout)
 
 		self.assertEqual(expected.item, "FG01SHR")
-		self.assertEqual(expected.quantity, 11)
+		self.assertEqual(expected.quantity, 77)
 		self.assertEqual(
 			[(row.item_code, row.qty, row.row_type) for row in expected.raw_material_rows],
 			[("RM001", 39.3, "raw_material")],
@@ -288,7 +277,7 @@ class TestBomService(SheetCuttingLayoutTestCase):
 					finished_part.gross_weight_per_part_kg - finished_part.scrap_weight_per_part_kg
 				)
 
-				self.assertEqual(bom.quantity, layout.no_of_strips)
+				self.assertEqual(bom.quantity, finished_part.parts_per_sheet)
 				self.assertEqual(self._sum_bom_qty(bom.items, "raw_material"), layout.weight_per_sheet_kg)
 				self.assertEqual(
 					process_scrap_qty,

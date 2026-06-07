@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
-from decimal import Decimal, InvalidOperation
 from typing import Literal, Protocol
 
 import frappe
@@ -207,20 +206,8 @@ def _required_scrap_item(end_piece: EndPieceRow) -> str:
 	return scrap_item
 
 
-def _bom_quantity(layout_doc: LayoutDocument, finished_part_row: FinishedPartRow) -> int:
-	no_of_strips = getattr(layout_doc, "no_of_strips", None)
-	if no_of_strips in (None, 0, "0"):
-		return finished_part_row.parts_per_sheet
-
-	try:
-		quantity = Decimal(str(no_of_strips).strip())
-	except (InvalidOperation, ValueError):
-		raise ValueError("no_of_strips must be a positive integer") from None
-
-	if quantity <= 0 or quantity != quantity.to_integral_value():
-		raise ValueError("no_of_strips must be a positive integer")
-
-	return int(quantity)
+def _bom_quantity(_layout_doc: LayoutDocument, finished_part_row: FinishedPartRow) -> int:
+	return finished_part_row.parts_per_sheet
 
 
 def _sheet_weight_kg(layout_doc: LayoutDocument, finished_part_row: FinishedPartRow) -> float:
