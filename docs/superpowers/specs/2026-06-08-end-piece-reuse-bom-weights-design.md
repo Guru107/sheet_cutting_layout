@@ -34,6 +34,12 @@ bom_scrap_quantity_kg = scrap_weight_per_part_kg * bom_quantity
 End-piece BOM generation uses the row-level `scrap_item` for reuse BOM scrap rows. It no longer
 uses the layout-level `process_scrap_item` for reuse end-piece BOM scrap.
 
+The end-piece BOM builder reuses the main BOM creation logic where the calculations are the same:
+derive raw-material consumption from gross weight, derive finished-good output from net weight, and
+derive scrap from the row-level scrap weight. The key difference is the quantity source: main BOM
+quantity comes from the layout's `parts_per_sheet`, while reuse end-piece BOM quantity comes from the
+user-entered row `bom_quantity`.
+
 ## Validation Rules
 
 For reuse rows:
@@ -56,6 +62,8 @@ For scrap-disposition rows, existing scrap behavior remains unchanged.
 4. Client-side scripts mirror the same formulas for immediate form feedback.
 5. End-piece BOM generation reads the already-derived row values and uses row `scrap_item` for BOM
    scrap rows.
+6. End-piece BOM generation uses the same calculation structure as main BOM generation, with
+   row `bom_quantity` replacing main-layout `parts_per_sheet`.
 
 ## Testing
 
@@ -66,6 +74,8 @@ Add bench-native tests for:
 - Reuse row rejects net weight greater than gross weight.
 - Reuse row requires row-level scrap item when derived scrap is positive.
 - End-piece BOM generation uses row-level scrap item in the BOM scrap row.
+- End-piece BOM generation matches the main BOM raw/net/scrap calculation structure while using the
+  user-entered row `bom_quantity`.
 - Existing scrap-disposition behavior stays unchanged.
 
 ## Trade-offs
