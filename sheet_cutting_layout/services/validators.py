@@ -90,7 +90,7 @@ def validate_sheet_cutting_layout(layout: SheetCuttingLayoutDocument) -> None:
 	apply_parts_per_sheet_formula(layout)
 	_validate_unreleased_legacy_end_piece_multiplicity(layout, end_pieces)
 	apply_end_piece_weight_formulas(layout, end_pieces)
-	apply_end_piece_reuse_weight_formulas(layout, end_pieces)
+	apply_end_piece_reuse_weight_formulas(end_pieces)
 	_validate_parent_finished_part_fields(layout)
 
 	for end_piece in end_pieces:
@@ -192,11 +192,7 @@ def apply_end_piece_weight_formulas(
 			end_piece.weight_kg = _flt(weight)
 
 
-def apply_end_piece_reuse_weight_formulas(
-	layout: SheetCuttingLayoutDocument,
-	end_pieces: Sequence[EndPieceRow],
-) -> None:
-	_ = layout
+def apply_end_piece_reuse_weight_formulas(end_pieces: Sequence[EndPieceRow]) -> None:
 	for end_piece in end_pieces:
 		if not _is_reuse_end_piece(end_piece):
 			continue
@@ -211,8 +207,7 @@ def apply_end_piece_reuse_weight_formulas(
 			continue
 		scrap_weight = _flt(gross_weight - _flt(net_weight))
 		end_piece.scrap_weight_per_part_kg = scrap_weight
-		if scrap_weight >= 0:
-			end_piece.bom_scrap_quantity_kg = _flt(scrap_weight * _flt(bom_quantity))
+		end_piece.bom_scrap_quantity_kg = _flt(scrap_weight * _flt(bom_quantity))
 
 
 def derive_end_piece_item_code(

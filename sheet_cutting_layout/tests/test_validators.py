@@ -496,6 +496,23 @@ class TestValidators(SheetCuttingLayoutTestCase):
 		with self.assertRaisesRegex(ValidationError, "Scrap weight per part cannot be negative"):
 			self.validators.validate_sheet_cutting_layout(layout)
 
+	def test_reuse_end_piece_replaces_stale_bom_scrap_when_net_weight_exceeds_gross_weight(
+		self,
+	) -> None:
+		end_piece = EndPiece(
+			weight_kg=2.5545,
+			bom_quantity=3,
+			net_weight_per_part_kg=0.86,
+			bom_scrap_quantity_kg=99,
+		)
+		layout = self._balanced_layout(end_piece=end_piece)
+
+		with self.assertRaisesRegex(ValidationError, "Scrap weight per part cannot be negative"):
+			self.validators.validate_sheet_cutting_layout(layout)
+
+		self.assertEqual(end_piece.scrap_weight_per_part_kg, -0.0085)
+		self.assertEqual(end_piece.bom_scrap_quantity_kg, -0.0255)
+
 	def test_reuse_end_piece_requires_row_scrap_item_for_positive_derived_scrap(self) -> None:
 		layout = self._balanced_layout(
 			end_piece=EndPiece(
