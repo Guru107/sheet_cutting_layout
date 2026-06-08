@@ -127,6 +127,36 @@ frappe.provide("sheet_cutting_layout");
 		return calculateWeight(frm.doc.sheet_thickness_mm, row.width_mm, row.length_mm);
 	}
 
+	function calculateEndPieceGrossWeightPerPart(row) {
+		const weight = Number(row.weight_kg);
+		const bomQuantity = Number(row.bom_quantity);
+		if (!(weight >= 0 && bomQuantity > 0)) {
+			return null;
+		}
+
+		return Number((weight / bomQuantity).toFixed(getCalculationPrecision()));
+	}
+
+	function calculateEndPieceScrapWeightPerPart(row) {
+		const grossWeight = Number(row.gross_weight_per_part_kg);
+		const netWeight = Number(row.net_weight_per_part_kg);
+		if (!(grossWeight >= 0) || !Number.isFinite(netWeight)) {
+			return null;
+		}
+
+		return Number((grossWeight - netWeight).toFixed(getCalculationPrecision()));
+	}
+
+	function calculateEndPieceBomScrapQuantity(row) {
+		const scrapWeight = Number(row.scrap_weight_per_part_kg);
+		const bomQuantity = Number(row.bom_quantity);
+		if (!(scrapWeight >= 0 && bomQuantity > 0)) {
+			return null;
+		}
+
+		return Number((scrapWeight * bomQuantity).toFixed(getCalculationPrecision()));
+	}
+
 	function hasValue(value) {
 		return value !== null && value !== undefined && value !== "";
 	}
@@ -147,9 +177,6 @@ frappe.provide("sheet_cutting_layout");
 
 		const updates = [];
 		if (row.disposition === "Reuse") {
-			if (row.scrap_item) {
-				updates.push(frappe.model.set_value(cdt, cdn, "scrap_item", ""));
-			}
 			return Promise.all(updates);
 		}
 
@@ -162,6 +189,15 @@ frappe.provide("sheet_cutting_layout");
 		}
 		if (hasValue(row.bom_quantity)) {
 			updates.push(frappe.model.set_value(cdt, cdn, "bom_quantity", null));
+		}
+		if (hasValue(row.net_weight_per_part_kg)) {
+			updates.push(frappe.model.set_value(cdt, cdn, "net_weight_per_part_kg", null));
+		}
+		if (hasValue(row.gross_weight_per_part_kg)) {
+			updates.push(frappe.model.set_value(cdt, cdn, "gross_weight_per_part_kg", null));
+		}
+		if (hasValue(row.scrap_weight_per_part_kg)) {
+			updates.push(frappe.model.set_value(cdt, cdn, "scrap_weight_per_part_kg", null));
 		}
 		if (hasValue(row.bom_scrap_quantity_kg)) {
 			updates.push(frappe.model.set_value(cdt, cdn, "bom_scrap_quantity_kg", null));
@@ -189,6 +225,62 @@ frappe.provide("sheet_cutting_layout");
 				return [];
 			}
 			return [frappe.model.set_value(row.doctype, row.name, "weight_kg", weight)];
+		});
+
+		return Promise.all(updates);
+	}
+
+	function updateEndPieceReuseWeights(frm) {
+		const updates = (frm.doc.end_pieces || []).flatMap((row) => {
+			if (row.disposition !== "Reuse") {
+				return [];
+			}
+
+			const rowUpdates = [];
+			const grossWeight = calculateEndPieceGrossWeightPerPart(row);
+			if (grossWeight !== null && row.gross_weight_per_part_kg !== grossWeight) {
+				rowUpdates.push(
+					frappe.model.set_value(
+						row.doctype,
+						row.name,
+						"gross_weight_per_part_kg",
+						grossWeight
+					)
+				);
+			}
+
+			const scrapWeight = calculateEndPieceScrapWeightPerPart({
+				...row,
+				gross_weight_per_part_kg:
+					grossWeight === null ? row.gross_weight_per_part_kg : grossWeight,
+			});
+			if (scrapWeight !== null && row.scrap_weight_per_part_kg !== scrapWeight) {
+				rowUpdates.push(
+					frappe.model.set_value(
+						row.doctype,
+						row.name,
+						"scrap_weight_per_part_kg",
+						scrapWeight
+					)
+				);
+			}
+
+			const bomScrapQuantity = calculateEndPieceBomScrapQuantity({
+				...row,
+				scrap_weight_per_part_kg:
+					scrapWeight === null ? row.scrap_weight_per_part_kg : scrapWeight,
+			});
+			if (bomScrapQuantity !== null && row.bom_scrap_quantity_kg !== bomScrapQuantity) {
+				rowUpdates.push(
+					frappe.model.set_value(
+						row.doctype,
+						row.name,
+						"bom_scrap_quantity_kg",
+						bomScrapQuantity
+					)
+				);
+			}
+			return rowUpdates;
 		});
 
 		return Promise.all(updates);
@@ -243,6 +335,7 @@ frappe.provide("sheet_cutting_layout");
 	function updateSheetWeightAndDerivedFields(frm) {
 		return updateSheetWeight(frm)
 			.then(() => updateEndPieceWeights(frm))
+			.then(() => updateEndPieceReuseWeights(frm))
 			.then(() => updateConsumptionTracking(frm));
 	}
 
@@ -269,7 +362,9 @@ frappe.provide("sheet_cutting_layout");
 	}
 
 	function updateEndPieceWeightsAndConsumption(frm) {
-		return updateEndPieceWeights(frm).then(() => updateConsumptionTracking(frm));
+		return updateEndPieceWeights(frm)
+			.then(() => updateEndPieceReuseWeights(frm))
+			.then(() => updateConsumptionTracking(frm));
 	}
 
 	function updateEndPieceDispositionAndDerivedFields(frm, cdt, cdn) {
@@ -356,5 +451,7 @@ frappe.provide("sheet_cutting_layout");
 		length_mm: updateEndPieceWeightsAndConsumption,
 		weight_kg: updateConsumptionTrackingFields,
 		disposition: updateEndPieceDispositionAndDerivedFields,
+		bom_quantity: updateEndPieceWeightsAndConsumption,
+		net_weight_per_part_kg: updateEndPieceWeightsAndConsumption,
 	});
 })();

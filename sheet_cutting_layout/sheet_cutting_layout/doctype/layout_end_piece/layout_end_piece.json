@@ -15,6 +15,9 @@
   "scrap_item",
   "used_for_finished_part",
   "bom_quantity",
+  "net_weight_per_part_kg",
+  "gross_weight_per_part_kg",
+  "scrap_weight_per_part_kg",
   "bom_scrap_quantity_kg"
  ],
  "fields": [
@@ -64,7 +67,7 @@
    "options": "\nReuse\nScrap"
   },
   {
-   "depends_on": "eval:doc.disposition==\"Scrap\"",
+   "depends_on": "eval:[\"Reuse\",\"Scrap\"].includes(doc.disposition)",
    "fieldname": "scrap_item",
    "fieldtype": "Link",
    "label": "Scrap Item",
@@ -85,9 +88,30 @@
   },
   {
    "depends_on": "eval:doc.disposition==\"Reuse\"",
+   "fieldname": "net_weight_per_part_kg",
+   "fieldtype": "Float",
+   "label": "Net Weight Per Part Kg"
+  },
+  {
+   "depends_on": "eval:doc.disposition==\"Reuse\"",
+   "fieldname": "gross_weight_per_part_kg",
+   "fieldtype": "Float",
+   "label": "Gross Weight Per Part Kg",
+   "read_only": 1
+  },
+  {
+   "depends_on": "eval:doc.disposition==\"Reuse\"",
+   "fieldname": "scrap_weight_per_part_kg",
+   "fieldtype": "Float",
+   "label": "Scrap Weight Per Part Kg",
+   "read_only": 1
+  },
+  {
+   "depends_on": "eval:doc.disposition==\"Reuse\"",
    "fieldname": "bom_scrap_quantity_kg",
    "fieldtype": "Float",
-   "label": "BOM Scrap Quantity Kg"
+   "label": "BOM Scrap Quantity Kg",
+   "read_only": 1
   }
  ],
  "istable": 1,
