@@ -95,10 +95,12 @@ class FakeDB:
 		existing_items: set[str] | None = None,
 		raw_item_groups: dict[str, str] | None = None,
 		item_hsn_codes: dict[str, str] | None = None,
+		raw_item_valuation_rates: dict[str, float] | None = None,
 	) -> None:
 		self.existing_items = set(existing_items or set())
 		self.raw_item_groups = raw_item_groups or {"RAW-001": "Raw Material"}
 		self.item_hsn_codes = item_hsn_codes or {}
+		self.raw_item_valuation_rates = raw_item_valuation_rates or {}
 
 	def exists(self, doctype: str, name: str) -> bool:
 		return doctype == "Item" and name in self.existing_items
@@ -108,6 +110,8 @@ class FakeDB:
 			return self.raw_item_groups.get(name)
 		if doctype == "Item" and fieldname == "gst_hsn_code":
 			return self.item_hsn_codes.get(name)
+		if doctype == "Item" and fieldname == "valuation_rate":
+			return self.raw_item_valuation_rates.get(name)
 		return None
 
 	def get_default(self, key: str) -> str | None:
@@ -123,11 +127,13 @@ class FakeFrappe:
 		existing_items: set[str] | None = None,
 		raw_item_groups: dict[str, str] | None = None,
 		item_hsn_codes: dict[str, str] | None = None,
+		raw_item_valuation_rates: dict[str, float] | None = None,
 	) -> None:
 		self.db = FakeDB(
 			existing_items=existing_items,
 			raw_item_groups=raw_item_groups,
 			item_hsn_codes=item_hsn_codes,
+			raw_item_valuation_rates=raw_item_valuation_rates,
 		)
 		self.created_docs: list[FakeDoc] = []
 		self.defaults = SimpleNamespace(get_user_default=lambda _key: "")
@@ -154,11 +160,13 @@ class TestEndPieceBomService(SheetCuttingLayoutTestCase):
 		existing_items: set[str] | None = None,
 		raw_item_groups: dict[str, str] | None = None,
 		item_hsn_codes: dict[str, str] | None = None,
+		raw_item_valuation_rates: dict[str, float] | None = None,
 	) -> FakeFrappe:
 		fake_frappe = FakeFrappe(
 			existing_items=existing_items,
 			raw_item_groups=raw_item_groups,
 			item_hsn_codes=item_hsn_codes,
+			raw_item_valuation_rates=raw_item_valuation_rates,
 		)
 		self.frappe_patch = patch.object(self.service, "frappe", fake_frappe)
 		self.translation_patch = patch.object(self.service, "_", lambda message: message)
@@ -215,10 +223,13 @@ class TestEndPieceBomService(SheetCuttingLayoutTestCase):
 		self.assertEqual(bom.scrap_items, [])
 		resolve_rate.assert_not_called()
 
-	def test_generation_creates_missing_item_with_kg_stock_uom(self) -> None:
+	def test_generation_creates_missing_item_with_kg_stock_uom_alternate_nos_and_rm_valuation(
+		self,
+	) -> None:
 		fake_frappe = self._install_fakes(
 			raw_item_groups={"RAW-001": "Sheet Steel"},
 			item_hsn_codes={"FG01SHR": "7208"},
+			raw_item_valuation_rates={"RAW-001": 82.75},
 		)
 		layout = Layout(end_pieces=[EndPiece()])
 
@@ -233,10 +244,25 @@ class TestEndPieceBomService(SheetCuttingLayoutTestCase):
 		self.assertEqual(item.item_name, "FG01SHR-EP-2x100x200")
 		self.assertEqual(item.item_group, "Sheet Steel")
 		self.assertEqual(item.gst_hsn_code, "7208")
-		self.assertEqual(item.stock_uom, "Kg")
-		self.assertEqual(item.is_stock_item, 1)
-		self.assertEqual(item.disabled, 0)
-		self.assertEqual(item.uoms, [{"uom": "Kg", "conversion_factor": 1}])
+		self.assertEqual(
+			(
+				getattr(item, "valuation_rate", None),
+				item.stock_uom,
+				item.is_stock_item,
+				item.disabled,
+				item.uoms,
+			),
+			(
+				82.75,
+				"Kg",
+				1,
+				0,
+				[
+					{"uom": "Kg", "conversion_factor": 1},
+					{"uom": "Nos", "conversion_factor": 0.4},
+				],
+			),
+		)
 		self.assertEqual(fake_frappe.created_docs[1].submit_calls, 1)
 
 	def test_generation_keeps_fractional_end_piece_stock_qty_in_kg(self) -> None:

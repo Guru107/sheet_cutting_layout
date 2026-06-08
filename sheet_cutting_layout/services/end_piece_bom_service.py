@@ -80,13 +80,14 @@ def _ensure_end_piece_item(layout: LayoutDocument, row: EndPieceRow) -> str:
 	item.item_name = item_code
 	item.description = _build_item_description(layout, row)
 	item.item_group = _get_value("Item", getattr(layout, "raw_material_item", None), "item_group")
+	item.valuation_rate = _get_value("Item", getattr(layout, "raw_material_item", None), "valuation_rate")
 	item.gst_hsn_code = _get_value(
 		"Item", _clean(getattr(row, "used_for_finished_part", None)), "gst_hsn_code"
 	)
 	item.stock_uom = "Kg"
 	item.is_stock_item = 1
 	item.disabled = 0
-	item.append("uoms", {"uom": "Kg", "conversion_factor": 1})
+	_append_app_created_item_uoms(item, stock_uom=item.stock_uom, weight_kg=weight_kg)
 	insert_error_types = _item_insert_exception_types()
 	if insert_error_types:
 		try:
@@ -104,6 +105,18 @@ def _ensure_end_piece_item(layout: LayoutDocument, row: EndPieceRow) -> str:
 	else:
 		item.insert(ignore_permissions=True)
 	return item_code
+
+
+def _append_app_created_item_uoms(item: object, *, stock_uom: str, weight_kg: float) -> None:
+	if stock_uom == "Kg":
+		item.append("uoms", {"uom": "Kg", "conversion_factor": 1})
+		item.append("uoms", {"uom": "Nos", "conversion_factor": 1 / weight_kg})
+		return
+	if stock_uom == "Nos":
+		item.append("uoms", {"uom": "Nos", "conversion_factor": 1})
+		item.append("uoms", {"uom": "Kg", "conversion_factor": weight_kg})
+		return
+	_throw(_("Unsupported stock UOM for app-created Item: {0}").format(stock_uom))
 
 
 def _create_end_piece_bom(layout: LayoutDocument, row: EndPieceRow, item_code: str) -> str:
