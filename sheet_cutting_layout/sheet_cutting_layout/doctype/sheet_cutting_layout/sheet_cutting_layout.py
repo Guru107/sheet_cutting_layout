@@ -33,12 +33,15 @@ from sheet_cutting_layout.services.release_service import (
 	get_release_context,
 	release_layout,
 )
-from sheet_cutting_layout.services.validators import validate_sheet_cutting_layout
+from sheet_cutting_layout.services.validators import apply_end_piece_bom_status, validate_sheet_cutting_layout
 from sheet_cutting_layout.services.versioning import create_revision
 from sheet_cutting_layout.services.workflow import record_approval_snapshot
 
 
 class SheetCuttingLayout(Document):
+	def before_insert(self) -> None:
+		_clear_copied_release_artifacts(self)
+
 	def before_workflow_action(self) -> None:
 		action = _get_selected_workflow_action()
 		self._apply_workflow_action_effects(action)
@@ -91,6 +94,26 @@ class SheetCuttingLayout(Document):
 				release_layout(self, release_context=context)
 		if action == "Supersede":
 			deactivate_generated_bom(self)
+
+
+def _clear_copied_release_artifacts(doc: object) -> None:
+	if hasattr(doc, "generated_bom"):
+		doc.generated_bom = None
+	if hasattr(doc, "finished_parts"):
+		doc.finished_parts = []
+	if hasattr(doc, "approval_snapshot"):
+		doc.approval_snapshot = []
+	if hasattr(doc, "status"):
+		doc.status = "Draft"
+	if hasattr(doc, "is_active"):
+		doc.is_active = False
+
+	end_pieces = list(getattr(doc, "end_pieces", []) or [])
+	for end_piece in end_pieces:
+		if hasattr(end_piece, "end_piece_item_code"):
+			end_piece.end_piece_item_code = None
+	if hasattr(doc, "end_piece_bom_status"):
+		apply_end_piece_bom_status(doc, end_pieces)
 
 
 def _get_selected_workflow_action() -> str | None:

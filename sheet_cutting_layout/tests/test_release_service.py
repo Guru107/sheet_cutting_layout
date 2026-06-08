@@ -3,6 +3,7 @@ import sys
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
+from types import SimpleNamespace
 from typing import ClassVar
 
 import sheet_cutting_layout.hooks as hooks
@@ -266,6 +267,67 @@ def test_parent_finished_part_code_is_item_link() -> None:
 
 	assert fields["finished_part_code"]["fieldtype"] == "Link"
 	assert fields["finished_part_code"]["options"] == "Item"
+
+
+def test_generated_release_artifact_fields_are_not_copied() -> None:
+	doctype_path = (
+		Path(__file__).resolve().parents[1]
+		/ "sheet_cutting_layout"
+		/ "doctype"
+		/ "sheet_cutting_layout"
+		/ "sheet_cutting_layout.json"
+	)
+	fields = {
+		row["fieldname"]: row
+		for row in json.loads(doctype_path.read_text(encoding="utf-8"))["fields"]
+		if "fieldname" in row
+	}
+	end_piece_path = (
+		Path(__file__).resolve().parents[1]
+		/ "sheet_cutting_layout"
+		/ "doctype"
+		/ "layout_end_piece"
+		/ "layout_end_piece.json"
+	)
+	end_piece_fields = {
+		row["fieldname"]: row
+		for row in json.loads(end_piece_path.read_text(encoding="utf-8"))["fields"]
+		if "fieldname" in row
+	}
+
+	for fieldname in (
+		"generated_bom",
+		"finished_parts",
+		"approval_snapshot",
+		"is_active",
+		"end_piece_bom_status",
+		"status",
+	):
+		assert fields[fieldname]["no_copy"] == 1
+	assert end_piece_fields["end_piece_item_code"]["no_copy"] == 1
+
+
+def test_controller_before_insert_clears_copied_release_artifacts() -> None:
+	from sheet_cutting_layout.sheet_cutting_layout.doctype.sheet_cutting_layout import sheet_cutting_layout
+
+	doc = object.__new__(sheet_cutting_layout.SheetCuttingLayout)
+	doc.generated_bom = "BOM-OLD"
+	doc.finished_parts = [SimpleNamespace(generated_bom="BOM-OLD")]
+	doc.approval_snapshot = [SimpleNamespace(step_name="MR Approval")]
+	doc.status = "Released"
+	doc.is_active = True
+	doc.end_piece_bom_status = "Generated"
+	doc.end_pieces = [EndPiece(weight_kg=2.5, end_piece_item_code="FG01SHR-EP-1x1250x260")]
+
+	doc.before_insert()
+
+	assert doc.generated_bom is None
+	assert doc.finished_parts == []
+	assert doc.approval_snapshot == []
+	assert doc.status == "Draft"
+	assert doc.is_active is False
+	assert doc.end_piece_bom_status == "Pending"
+	assert doc.end_pieces[0].end_piece_item_code is None
 
 
 def test_release_reaches_released() -> None:

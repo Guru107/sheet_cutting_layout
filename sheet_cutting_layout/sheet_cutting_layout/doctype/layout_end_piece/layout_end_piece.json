@@ -24,6 +24,7 @@
    "fieldtype": "Link",
    "in_list_view": 1,
    "label": "End Piece Item Code",
+   "no_copy": 1,
    "options": "Item",
    "read_only": 1
   },

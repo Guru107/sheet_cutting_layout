@@ -91,6 +91,7 @@
    "fieldtype": "Check",
    "in_list_view": 1,
    "label": "Is Active",
+   "no_copy": 1,
    "read_only": 1
   },
   {
@@ -182,6 +183,7 @@
    "fieldname": "end_piece_bom_status",
    "fieldtype": "Select",
    "label": "End Piece BOM Status",
+   "no_copy": 1,
    "options": "Not Required\nPending\nGenerated",
    "read_only": 1
   },
@@ -267,6 +269,7 @@
    "fieldname": "generated_bom",
    "fieldtype": "Link",
    "label": "Generated BOM",
+   "no_copy": 1,
    "options": "BOM",
    "read_only": 1
   },
@@ -282,6 +285,7 @@
    "fieldtype": "Select",
    "in_list_view": 1,
    "label": "Status",
+   "no_copy": 1,
    "options": "Draft\nSubmitted for Check\nPM Approved\nApproved by Purchase\nReleased\nRejected\nSuperseded",
    "reqd": 1
   },
@@ -295,6 +299,7 @@
    "fieldtype": "Table",
    "depends_on": "eval:doc.generated_bom",
    "label": "Finished Parts",
+   "no_copy": 1,
    "read_only": 1,
    "options": "Layout Finished Part"
   },
@@ -308,6 +313,7 @@
    "fieldname": "approval_snapshot",
    "fieldtype": "Table",
    "label": "Approval Snapshot",
+   "no_copy": 1,
    "options": "Layout Approval Snapshot"
   }
  ],
