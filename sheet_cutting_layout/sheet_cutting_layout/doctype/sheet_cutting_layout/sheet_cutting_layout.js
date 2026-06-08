@@ -237,48 +237,41 @@ frappe.provide("sheet_cutting_layout");
 			}
 
 			const rowUpdates = [];
+			const setRowValue = (fieldname, value) => {
+				if (row[fieldname] !== value) {
+					rowUpdates.push(
+						frappe.model.set_value(row.doctype, row.name, fieldname, value)
+					);
+				}
+			};
 			const grossWeight = calculateEndPieceGrossWeightPerPart(row);
-			if (grossWeight !== null && row.gross_weight_per_part_kg !== grossWeight) {
-				rowUpdates.push(
-					frappe.model.set_value(
-						row.doctype,
-						row.name,
-						"gross_weight_per_part_kg",
-						grossWeight
-					)
-				);
+			if (grossWeight === null) {
+				setRowValue("gross_weight_per_part_kg", null);
+				setRowValue("scrap_weight_per_part_kg", null);
+				setRowValue("bom_scrap_quantity_kg", null);
+				return rowUpdates;
 			}
 
+			setRowValue("gross_weight_per_part_kg", grossWeight);
 			const scrapWeight = calculateEndPieceScrapWeightPerPart({
 				...row,
-				gross_weight_per_part_kg:
-					grossWeight === null ? row.gross_weight_per_part_kg : grossWeight,
+				gross_weight_per_part_kg: grossWeight,
 			});
-			if (scrapWeight !== null && row.scrap_weight_per_part_kg !== scrapWeight) {
-				rowUpdates.push(
-					frappe.model.set_value(
-						row.doctype,
-						row.name,
-						"scrap_weight_per_part_kg",
-						scrapWeight
-					)
-				);
+			if (scrapWeight === null) {
+				setRowValue("scrap_weight_per_part_kg", null);
+				setRowValue("bom_scrap_quantity_kg", null);
+				return rowUpdates;
 			}
 
+			setRowValue("scrap_weight_per_part_kg", scrapWeight);
 			const bomScrapQuantity = calculateEndPieceBomScrapQuantity({
 				...row,
-				scrap_weight_per_part_kg:
-					scrapWeight === null ? row.scrap_weight_per_part_kg : scrapWeight,
+				scrap_weight_per_part_kg: scrapWeight,
 			});
-			if (bomScrapQuantity !== null && row.bom_scrap_quantity_kg !== bomScrapQuantity) {
-				rowUpdates.push(
-					frappe.model.set_value(
-						row.doctype,
-						row.name,
-						"bom_scrap_quantity_kg",
-						bomScrapQuantity
-					)
-				);
+			if (bomScrapQuantity === null) {
+				setRowValue("bom_scrap_quantity_kg", null);
+			} else {
+				setRowValue("bom_scrap_quantity_kg", bomScrapQuantity);
 			}
 			return rowUpdates;
 		});
