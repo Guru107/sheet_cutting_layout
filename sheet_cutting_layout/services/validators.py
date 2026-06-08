@@ -280,8 +280,12 @@ def _validate_parent_finished_part_fields(layout: SheetCuttingLayoutDocument) ->
 	scrap_weight = _flt(getattr(layout, "scrap_weight_per_part_kg", 0))
 	if scrap_weight < 0:
 		frappe.throw(_("Scrap weight per part cannot be negative"))
-	if scrap_weight > 0 and _is_missing(getattr(layout, "process_scrap_item", None)):
-		frappe.throw(_("Process scrap item is required when process scrap weight is positive"))
+	if scrap_weight > 0:
+		process_scrap_item = getattr(layout, "process_scrap_item", None)
+		if _is_missing(process_scrap_item):
+			frappe.throw(_("Process scrap item is required when process scrap weight is positive"))
+		if _same_item_code(process_scrap_item, finished_part_code):
+			frappe.throw(_("Process scrap item cannot be the finished part item"))
 
 
 def _validate_end_piece_required_fields(end_piece: EndPieceRow) -> None:
@@ -558,6 +562,12 @@ def _bom_scrap_row_qty(row: object) -> float:
 
 def _is_missing(value: object) -> bool:
 	return value is None or (isinstance(value, str) and value.strip() == "")
+
+
+def _same_item_code(left: object, right: object) -> bool:
+	if _is_missing(left) or _is_missing(right):
+		return False
+	return str(left).strip().casefold() == str(right).strip().casefold()
 
 
 def _has_non_zero_value(value: object) -> bool:

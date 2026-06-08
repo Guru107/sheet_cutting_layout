@@ -486,6 +486,36 @@ class TestValidators(SheetCuttingLayoutTestCase):
 		with self.assertRaisesRegex(ValidationError, "Process scrap item"):
 			self.validators.validate_sheet_cutting_layout(layout)
 
+	def test_process_scrap_item_cannot_be_finished_part_item(self) -> None:
+		layout = Layout(
+			finished_part_code="FG01SHR",
+			net_weight_per_part_kg=0.289,
+			sheet_thickness_mm=None,
+			sheet_width_mm=None,
+			sheet_length_mm=None,
+			weight_per_sheet_kg=39.3,
+			parts_per_strip=7,
+			no_of_strips=11,
+			weight_of_strip_kg=3.316922,
+			strip_thickness_mm=None,
+			strip_width_mm=None,
+			strip_length_mm=None,
+			process_scrap_item="FG01SHR",
+			end_pieces=[
+				EndPiece(
+					weight_kg=2.813858,
+					disposition="Scrap",
+					used_for_finished_part=None,
+					bom_quantity=0,
+					bom_scrap_quantity_kg=0,
+					scrap_item="MSScrap",
+				)
+			],
+		)
+
+		with self.assertRaisesRegex(ValidationError, "Process scrap item cannot be the finished part item"):
+			self.validators.validate_sheet_cutting_layout(layout)
+
 	def test_qty_per_sheet_is_not_required_for_end_piece_validation(self) -> None:
 		layout = self._balanced_layout(end_piece=EndPiece(qty_per_sheet=None))
 
