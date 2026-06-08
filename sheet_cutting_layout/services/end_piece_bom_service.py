@@ -110,11 +110,11 @@ def _ensure_end_piece_item(layout: LayoutDocument, row: EndPieceRow) -> str:
 def _append_app_created_item_uoms(item: object, *, stock_uom: str, weight_kg: float) -> None:
 	if stock_uom == "Kg":
 		item.append("uoms", {"uom": "Kg", "conversion_factor": 1})
-		item.append("uoms", {"uom": "Nos", "conversion_factor": 1 / weight_kg})
+		item.append("uoms", {"uom": "Nos", "conversion_factor": weight_kg})
 		return
 	if stock_uom == "Nos":
 		item.append("uoms", {"uom": "Nos", "conversion_factor": 1})
-		item.append("uoms", {"uom": "Kg", "conversion_factor": weight_kg})
+		item.append("uoms", {"uom": "Kg", "conversion_factor": 1 / weight_kg})
 		return
 	_throw(_("Unsupported stock UOM for app-created Item: {0}").format(stock_uom))
 

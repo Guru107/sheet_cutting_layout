@@ -139,12 +139,12 @@ self.assertEqual(
 	item.uoms,
 	[
 		{"uom": "Kg", "conversion_factor": 1},
-		{"uom": "Nos", "conversion_factor": 0.4},
+		{"uom": "Nos", "conversion_factor": 2.5},
 	],
 )
 ```
 
-This uses the default `EndPiece.weight_kg = 2.5`, so `Nos` conversion factor is `1 / 2.5 = 0.4`.
+This uses the default `EndPiece.weight_kg = 2.5`, so `Nos` conversion factor is `2.5`.
 
 - [ ] **Step 4: Run focused test to verify it fails**
 
@@ -176,11 +176,11 @@ Add this helper after `_ensure_end_piece_item()`:
 def _append_app_created_item_uoms(item: object, *, stock_uom: str, weight_kg: float) -> None:
 	if stock_uom == "Kg":
 		item.append("uoms", {"uom": "Kg", "conversion_factor": 1})
-		item.append("uoms", {"uom": "Nos", "conversion_factor": 1 / weight_kg})
+		item.append("uoms", {"uom": "Nos", "conversion_factor": weight_kg})
 		return
 	if stock_uom == "Nos":
 		item.append("uoms", {"uom": "Nos", "conversion_factor": 1})
-		item.append("uoms", {"uom": "Kg", "conversion_factor": weight_kg})
+		item.append("uoms", {"uom": "Kg", "conversion_factor": 1 / weight_kg})
 		return
 	_throw(_("Unsupported stock UOM for app-created Item: {0}").format(stock_uom))
 ```

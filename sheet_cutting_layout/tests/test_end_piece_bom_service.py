@@ -244,24 +244,16 @@ class TestEndPieceBomService(SheetCuttingLayoutTestCase):
 		self.assertEqual(item.item_name, "FG01SHR-EP-2x100x200")
 		self.assertEqual(item.item_group, "Sheet Steel")
 		self.assertEqual(item.gst_hsn_code, "7208")
+		self.assertEqual(item.valuation_rate, 82.75)
+		self.assertEqual(item.stock_uom, "Kg")
+		self.assertEqual(item.is_stock_item, 1)
+		self.assertEqual(item.disabled, 0)
 		self.assertEqual(
-			(
-				getattr(item, "valuation_rate", None),
-				item.stock_uom,
-				item.is_stock_item,
-				item.disabled,
-				item.uoms,
-			),
-			(
-				82.75,
-				"Kg",
-				1,
-				0,
-				[
-					{"uom": "Kg", "conversion_factor": 1},
-					{"uom": "Nos", "conversion_factor": 0.4},
-				],
-			),
+			item.uoms,
+			[
+				{"uom": "Kg", "conversion_factor": 1},
+				{"uom": "Nos", "conversion_factor": 2.5},
+			],
 		)
 		self.assertEqual(fake_frappe.created_docs[1].submit_calls, 1)
 

@@ -23,13 +23,13 @@ When the app creates an Item with `stock_uom = "Kg"`:
 
 - Add `Kg` with conversion factor `1`.
 - Add alternate `Nos` using the specific derived piece weight.
-- For generated end-piece Items, the `Nos` conversion factor is `1 / row.weight_kg`.
+- For generated end-piece Items, the `Nos` conversion factor is `row.weight_kg`.
 
 When the app creates an Item with `stock_uom = "Nos"`:
 
 - Add `Nos` with conversion factor `1`.
-- Add alternate `Kg` using the specific derived piece weight.
-- The `Kg` conversion factor is the item weight in kilograms per piece.
+- Add alternate `Kg` using the reciprocal of the specific derived piece weight.
+- The `Kg` conversion factor is `1 / row.weight_kg`.
 
 Generated end-piece BOM rows continue to consume the generated end-piece Item in `Kg`, with `stock_uom = "Kg"`, `stock_qty = qty`, and `conversion_factor = 1`.
 
