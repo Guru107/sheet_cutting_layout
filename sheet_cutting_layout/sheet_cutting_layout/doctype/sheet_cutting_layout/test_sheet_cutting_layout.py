@@ -49,16 +49,8 @@ def _insert_if_missing(
 	return inserted.name
 
 
-def _ensure_layout_dependencies() -> tuple[str, str, str]:
+def _ensure_layout_dependencies() -> tuple[str, str]:
 	assert frappe is not None
-	uom = _insert_if_missing(
-		{
-			"doctype": "UOM",
-			"uom_name": "SCL-TEST-NOS",
-			"must_be_whole_number": 0,
-		},
-		"uom_name",
-	)
 	item_group = _insert_if_missing(
 		{
 			"doctype": "Item Group",
@@ -76,7 +68,7 @@ def _ensure_layout_dependencies() -> tuple[str, str, str]:
 		"project_name",
 		exists_filters={"project_name": "SCL-TEST-PROJECT"},
 	)
-	return uom, item_group, project
+	return item_group, project
 
 
 def _ensure_hsn_code(hsn_code: str) -> str:
@@ -101,6 +93,7 @@ def _ensure_item(item_code: str, *, item_group: str, stock_uom: str) -> str:
 		"item_group": item_group,
 		"stock_uom": stock_uom,
 		"is_stock_item": 1,
+		"valuation_rate": 1,
 	}
 	if frappe.get_meta("Item", cached=True).has_field("gst_hsn_code") and frappe.db.exists(
 		"DocType", "GST HSN Code"
@@ -117,9 +110,9 @@ def make_layout(
 ) -> object:
 	assert frappe is not None
 	unique_suffix = frappe.generate_hash(length=8)
-	uom, item_group, project = _ensure_layout_dependencies()
-	raw_material_item = _ensure_item("SCLTESTRM001", item_group=item_group, stock_uom=uom)
-	_ensure_item(finished_part_code, item_group=item_group, stock_uom=uom)
+	item_group, project = _ensure_layout_dependencies()
+	raw_material_item = _ensure_item("SCLTESTRM001", item_group=item_group, stock_uom="Kg")
+	_ensure_item(finished_part_code, item_group=item_group, stock_uom="Nos")
 	return frappe.get_doc(
 		{
 			"doctype": "Sheet Cutting Layout",
@@ -303,6 +296,29 @@ class TestSheetCuttingLayoutController(SheetCuttingLayoutTestCase):
 			layout.gross_weight_per_part_kg - 0.289,
 			places=6,
 		)
+
+	@skipUnless(frappe is not None, "Frappe bench runtime required")
+	def test_mr_release_generates_native_bom_with_test_uom_items(self) -> None:
+		layout = make_layout(
+			finished_part_code=f"SCLTESTFG{frappe.generate_hash(length=5).upper()}SHR",
+			net_weight_per_part_kg=0.289,
+			generated_bom=None,
+		)
+		layout.parts_per_strip = 1
+		layout.no_of_strips = 1
+		layout.strip_length_mm = 2500
+		layout.insert()
+		register_test_doc("Sheet Cutting Layout", layout.name)
+		layout.db_set("status", "Approved by Purchase", update_modified=False)
+		layout.reload()
+		layout.net_weight_per_part_kg = layout.gross_weight_per_part_kg
+
+		with patch.object(controller, "_get_selected_workflow_action", return_value="MR Release"):
+			layout.validate()
+
+		self.assertEqual(layout.status, "Released")
+		self.assertTrue(layout.generated_bom)
+		register_test_doc("BOM", layout.generated_bom)
 
 	@skipUnless(frappe is not None, "Frappe bench runtime required")
 	def test_unreleased_layout_with_qty_per_sheet_gt_one_is_blocked_until_rows_are_split(
