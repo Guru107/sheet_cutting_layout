@@ -3,7 +3,6 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass, field
 
-import pytest
 from hypothesis import settings
 from hypothesis.stateful import RuleBasedStateMachine, invariant, rule
 
@@ -14,11 +13,11 @@ from sheet_cutting_layout.services.versioning import (
 )
 from sheet_cutting_layout.services.workflow import LayoutWorkflowModel
 from sheet_cutting_layout.tests.base import SheetCuttingLayoutTestCase
-from sheet_cutting_layout.tests.unittest_adapter import add_pytest_style_tests
+from sheet_cutting_layout.tests.unittest_adapter import MonkeyPatch, add_pytest_style_tests, fixture, raises
 
 
-@pytest.fixture(autouse=True)
-def isolate_state_tests_from_frappe_copy_doc(monkeypatch: pytest.MonkeyPatch) -> None:
+@fixture(autouse=True)
+def isolate_state_tests_from_frappe_copy_doc(monkeypatch: MonkeyPatch) -> None:
 	try:
 		import frappe as frappe_module
 	except ImportError:
@@ -59,7 +58,7 @@ def test_purchase_approval_requires_pm_approved() -> None:
 	machine = LayoutWorkflowModel()
 	machine.submit()
 
-	with pytest.raises(AssertionError, match="Expected layout state PM Approved"):
+	with raises(AssertionError, match="Expected layout state PM Approved"):
 		machine.purchase_approves()
 
 
@@ -68,7 +67,7 @@ def test_release_blocked_before_purchase_approval() -> None:
 	machine.submit()
 	machine.project_manager_approves()
 
-	with pytest.raises(AssertionError, match="purchase approval"):
+	with raises(AssertionError, match="purchase approval"):
 		machine.release()
 
 
@@ -181,7 +180,7 @@ class WorkflowStateMachine(RuleBasedStateMachine):
 			update_expected()
 			return
 
-		with pytest.raises(AssertionError):
+		with raises(AssertionError):
 			action()
 
 

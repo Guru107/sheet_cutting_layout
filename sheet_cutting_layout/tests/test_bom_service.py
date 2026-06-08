@@ -5,10 +5,8 @@ import types
 from dataclasses import dataclass, field
 from unittest.mock import patch
 
-import pytest
-
 from sheet_cutting_layout.tests.base import SheetCuttingLayoutTestCase
-from sheet_cutting_layout.tests.unittest_adapter import add_pytest_style_tests
+from sheet_cutting_layout.tests.unittest_adapter import add_pytest_style_tests, approx, fail, raises
 
 
 @dataclass
@@ -45,7 +43,7 @@ def import_bom_service() -> types.ModuleType:
 	try:
 		return importlib.import_module("sheet_cutting_layout.services.bom_service")
 	except ModuleNotFoundError as error:
-		pytest.fail(f"BOM service module is not implemented: {error}")
+		fail(f"BOM service module is not implemented: {error}")
 
 
 def test_generated_bom_uses_parts_per_sheet_quantity_and_sheet_weight_raw_qty() -> None:
@@ -59,7 +57,7 @@ def test_generated_bom_uses_parts_per_sheet_quantity_and_sheet_weight_raw_qty() 
 	assert bom.item == "FINISHED-SHR"
 	assert bom.quantity == 77
 	assert bom.items[0].item_code == "RAW-SHEET"
-	assert bom.items[0].qty == pytest.approx(50)
+	assert bom.items[0].qty == approx(50)
 	assert bom.items[0].uom == "Kg"
 	assert bom.items[0].row_type == "raw_material"
 
@@ -73,7 +71,7 @@ def test_process_scrap_row_is_included_when_scrap_weight_is_positive() -> None:
 	)
 
 	assert bom.scrap_items[0].item_code == "PROCESS-SCRAP"
-	assert bom.scrap_items[0].qty == pytest.approx(5)
+	assert bom.scrap_items[0].qty == approx(5)
 	assert bom.scrap_items[0].uom == "Kg"
 	assert bom.scrap_items[0].row_type == "process_scrap"
 
@@ -115,7 +113,7 @@ def test_scrap_endpiece_creates_row_level_scrap_item_separate_from_process_scrap
 def test_scrap_endpiece_requires_scrap_item_before_creating_bom_row() -> None:
 	bom_service = import_bom_service()
 
-	with pytest.raises(ValueError, match="Scrap end piece requires scrap_item"):
+	with raises(ValueError, match="Scrap end piece requires scrap_item"):
 		bom_service.build_bom_from_layout_row(
 			Layout(end_pieces=[EndPiece(weight_kg=8, disposition="Scrap", scrap_item=None)]),
 			FinishedPart(),
@@ -154,7 +152,7 @@ def test_resolve_scrap_item_rate_reuses_positive_existing_rate_without_lookup() 
 			existing_rate=42.5,
 		)
 
-	assert rate == pytest.approx(42.5)
+	assert rate == approx(42.5)
 	fetch_rate.assert_not_called()
 
 
@@ -172,8 +170,8 @@ def test_resolve_scrap_item_rate_looks_up_when_existing_rate_is_zero_or_invalid(
 			existing_rate="not-a-number",
 		)
 
-	assert rate_zero == pytest.approx(88.25)
-	assert rate_invalid == pytest.approx(88.25)
+	assert rate_zero == approx(88.25)
+	assert rate_invalid == approx(88.25)
 	assert fetch_rate.call_count == 2
 	assert fetch_rate.call_args_list[0].kwargs == {"item_code": "SCRAP-001", "company": "Test Company"}
 	assert fetch_rate.call_args_list[1].kwargs == {"item_code": "SCRAP-001", "company": "Test Company"}

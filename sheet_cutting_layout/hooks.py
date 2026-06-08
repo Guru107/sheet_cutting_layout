@@ -210,7 +210,7 @@ doc_events = {
 # Testing
 # -------
 
-# before_tests = "sheet_cutting_layout.install.before_tests"
+before_tests = "sheet_cutting_layout.tests.test_setup.before_tests"
 
 # Overriding Methods
 # ------------------------------
