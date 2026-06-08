@@ -328,9 +328,15 @@ class TestEndPieceBomService(SheetCuttingLayoutTestCase):
 
 	def test_generation_requires_row_scrap_item_for_positive_bom_scrap_qty(self) -> None:
 		self._install_fakes(existing_items={"FG01SHR-EP-2x100x200"})
-		layout = Layout(process_scrap_item=None, end_pieces=[EndPiece(bom_scrap_quantity_kg=0.75)])
+		layout = Layout(
+			process_scrap_item="PROCESS-SCRAP",
+			end_pieces=[EndPiece(bom_scrap_quantity_kg=0.75, scrap_item=None)],
+		)
 
-		with self.assertRaisesRegex(ValueError, "Scrap item is required"):
+		with self.assertRaisesRegex(
+			ValueError,
+			"Row 1: Scrap item is required when BOM scrap quantity is positive",
+		):
 			self.service.generate_end_piece_boms(layout)
 
 	def test_generation_uses_row_scrap_item_for_reuse_bom_scrap(self) -> None:
