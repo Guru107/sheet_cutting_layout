@@ -434,10 +434,11 @@ def _validate_reuse_weight_split(
 	bom_scrap_quantity = _flt(getattr(end_piece, "bom_scrap_quantity_kg", 0))
 	if bom_scrap_quantity < 0:
 		frappe.throw(_("BOM scrap quantity must be non-negative for reuse end pieces"))
+	scrap_item = getattr(end_piece, "scrap_item", None)
 	if bom_scrap_quantity > 0:
-		scrap_item = getattr(end_piece, "scrap_item", None)
 		if _is_missing(scrap_item):
 			frappe.throw(_("Scrap item is required for reuse end pieces when BOM scrap quantity is positive"))
+	if not _is_missing(scrap_item):
 		if _same_item_code(scrap_item, getattr(end_piece, "used_for_finished_part", None)):
 			frappe.throw(_("Scrap item cannot be the used-for finished part"))
 		_validate_scrap_item_is_not_generated_end_piece_item(layout, end_piece, scrap_item)

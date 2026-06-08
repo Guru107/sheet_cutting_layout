@@ -506,6 +506,36 @@ class TestValidators(SheetCuttingLayoutTestCase):
 		with self.assertRaisesRegex(ValidationError, "Scrap item cannot be the used-for finished part"):
 			self.validators.validate_sheet_cutting_layout(layout)
 
+	def test_reuse_end_piece_rejects_used_for_finished_part_scrap_item_when_derived_scrap_is_zero(
+		self,
+	) -> None:
+		layout = self._balanced_layout(
+			end_piece=EndPiece(
+				weight_kg=2.5545,
+				bom_quantity=3,
+				net_weight_per_part_kg=0.8515,
+				scrap_item="FG01SHR",
+			)
+		)
+
+		with self.assertRaisesRegex(ValidationError, "Scrap item cannot be the used-for finished part"):
+			self.validators.validate_sheet_cutting_layout(layout)
+
+	def test_reuse_end_piece_rejects_generated_end_piece_scrap_item_when_derived_scrap_is_zero(
+		self,
+	) -> None:
+		layout = self._balanced_layout(
+			end_piece=EndPiece(
+				weight_kg=2.5545,
+				bom_quantity=3,
+				net_weight_per_part_kg=0.8515,
+				scrap_item="FG01SHR-EP-1x1250x260",
+			)
+		)
+
+		with self.assertRaisesRegex(ValidationError, "Scrap item cannot be the generated end-piece item"):
+			self.validators.validate_sheet_cutting_layout(layout)
+
 	def test_scrap_requires_scrap_item_and_rejects_reuse_only_fields(self) -> None:
 		layout = self._balanced_layout(
 			end_piece=EndPiece(
