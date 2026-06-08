@@ -1225,6 +1225,114 @@ def test_patch_submits_existing_superseded_layouts(
 	]
 
 
+def test_patch_repairs_checked_workflow_state_to_pm_approved(
+	monkeypatch: MonkeyPatch,
+) -> None:
+	from sheet_cutting_layout.patches import (
+		v1_0_migrate_checked_workflow_state_to_pm_approved,
+	)
+
+	class DbStub:
+		calls: ClassVar[list[tuple[str, dict[str, object], str, str, bool]]] = []
+
+		@classmethod
+		def set_value(
+			cls,
+			doctype: str,
+			filters: dict[str, object],
+			fieldname: str,
+			value: str,
+			update_modified: bool = False,
+		) -> None:
+			cls.calls.append((doctype, filters, fieldname, value, update_modified))
+
+		@staticmethod
+		def has_column(doctype: str, fieldname: str) -> bool:
+			assert doctype == "Sheet Cutting Layout"
+			return fieldname in {"project_manager_ok", "manufacturing_manager_ok"}
+
+	class FrappeStub:
+		db = DbStub
+
+	monkeypatch.setattr(
+		v1_0_migrate_checked_workflow_state_to_pm_approved,
+		"frappe",
+		FrappeStub,
+	)
+
+	v1_0_migrate_checked_workflow_state_to_pm_approved.execute()
+
+	assert DbStub.calls == [
+		(
+			"Sheet Cutting Layout",
+			{"status": "Checked"},
+			"status",
+			"PM Approved",
+			False,
+		),
+		(
+			"Sheet Cutting Layout",
+			{
+				"status": "Submitted for Check",
+				"project_manager_ok": 1,
+				"manufacturing_manager_ok": 1,
+			},
+			"status",
+			"PM Approved",
+			False,
+		),
+	]
+
+
+def test_patch_skips_legacy_hidden_flag_repair_when_columns_are_absent(
+	monkeypatch: MonkeyPatch,
+) -> None:
+	from sheet_cutting_layout.patches import (
+		v1_0_migrate_checked_workflow_state_to_pm_approved,
+	)
+
+	class DbStub:
+		calls: ClassVar[list[tuple[str, dict[str, object], str, str, bool]]] = []
+
+		@classmethod
+		def set_value(
+			cls,
+			doctype: str,
+			filters: dict[str, object],
+			fieldname: str,
+			value: str,
+			update_modified: bool = False,
+		) -> None:
+			cls.calls.append((doctype, filters, fieldname, value, update_modified))
+
+		@staticmethod
+		def has_column(doctype: str, fieldname: str) -> bool:
+			assert doctype == "Sheet Cutting Layout"
+			assert fieldname in {"project_manager_ok", "manufacturing_manager_ok"}
+			return False
+
+	class FrappeStub:
+		db = DbStub
+
+	monkeypatch.setattr(
+		v1_0_migrate_checked_workflow_state_to_pm_approved,
+		"frappe",
+		FrappeStub,
+	)
+
+	v1_0_migrate_checked_workflow_state_to_pm_approved.execute()
+
+	assert DbStub.calls == [
+		(
+			"Sheet Cutting Layout",
+			{"status": "Checked"},
+			"status",
+			"PM Approved",
+			False,
+		)
+	]
+
+
 def test_patch_backfills_missing_mr_approval_snapshots(
 	monkeypatch: MonkeyPatch,
 ) -> None:
