@@ -444,6 +444,22 @@ class TestValidators(SheetCuttingLayoutTestCase):
 		self.assertEqual(end_piece.scrap_weight_per_part_kg, 0.1015)
 		self.assertEqual(end_piece.bom_scrap_quantity_kg, 0.3045)
 
+	def test_validation_allows_positive_reuse_bom_scrap_without_process_scrap_item(self) -> None:
+		end_piece = EndPiece(
+			weight_kg=2.5545,
+			bom_quantity=3,
+			net_weight_per_part_kg=0.75,
+			scrap_item="EP-SCRAP",
+		)
+		layout = self._balanced_layout(end_piece=end_piece)
+		layout.process_scrap_item = ""
+
+		self.validators.validate_sheet_cutting_layout(layout)
+
+		self.assertEqual(end_piece.gross_weight_per_part_kg, 0.8515)
+		self.assertEqual(end_piece.scrap_weight_per_part_kg, 0.1015)
+		self.assertEqual(end_piece.bom_scrap_quantity_kg, 0.3045)
+
 	def test_validation_overrides_stale_manual_reuse_end_piece_scrap_values(self) -> None:
 		end_piece = EndPiece(
 			weight_kg=2.5545,
@@ -572,6 +588,41 @@ class TestValidators(SheetCuttingLayoutTestCase):
 					bom_scrap_quantity_kg=0,
 				),
 				"BOM quantity",
+			),
+			(
+				EndPiece(
+					disposition="Scrap",
+					scrap_item="MS",
+					used_for_finished_part=None,
+					bom_quantity=0,
+					net_weight_per_part_kg=1,
+					bom_scrap_quantity_kg=0,
+				),
+				"Net weight per part",
+			),
+			(
+				EndPiece(
+					disposition="Scrap",
+					scrap_item="MS",
+					used_for_finished_part=None,
+					bom_quantity=0,
+					net_weight_per_part_kg=None,
+					gross_weight_per_part_kg=1,
+					bom_scrap_quantity_kg=0,
+				),
+				"Gross weight per part",
+			),
+			(
+				EndPiece(
+					disposition="Scrap",
+					scrap_item="MS",
+					used_for_finished_part=None,
+					bom_quantity=0,
+					net_weight_per_part_kg=None,
+					scrap_weight_per_part_kg=0.1,
+					bom_scrap_quantity_kg=0,
+				),
+				"Scrap weight per part",
 			),
 			(
 				EndPiece(
