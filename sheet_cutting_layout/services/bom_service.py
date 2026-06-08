@@ -45,6 +45,12 @@ class BomItemRow:
 
 
 @dataclass
+class BomWeightRows:
+	items: list[BomItemRow] = field(default_factory=list)
+	scrap_items: list[BomItemRow] = field(default_factory=list)
+
+
+@dataclass
 class BomDocument:
 	item: str
 	name: str = ""
@@ -111,6 +117,38 @@ def resolve_scrap_item_rate(
 	return rate_value
 
 
+def build_weight_split_bom_rows(
+	*,
+	raw_material_item: str,
+	gross_weight_per_part_kg: float,
+	scrap_weight_per_part_kg: float,
+	quantity: float,
+	scrap_item: str | None,
+	scrap_row_type: BomItemRowType,
+) -> BomWeightRows:
+	rows = BomWeightRows(
+		items=[
+			BomItemRow(
+				item_code=raw_material_item,
+				qty=gross_weight_per_part_kg * quantity,
+				row_type="raw_material",
+			)
+		]
+	)
+	scrap_qty = scrap_weight_per_part_kg * quantity
+	if scrap_qty > 0:
+		if not scrap_item:
+			raise ValueError("Scrap item is required when scrap quantity is positive")
+		rows.scrap_items.append(
+			BomItemRow(
+				item_code=scrap_item,
+				qty=scrap_qty,
+				row_type=scrap_row_type,
+			)
+		)
+	return rows
+
+
 def build_bom_from_layout_row(
 	layout_doc: LayoutDocument,
 	finished_part_row: FinishedPartRow,
@@ -119,23 +157,23 @@ def build_bom_from_layout_row(
 ) -> BomDocument:
 	bom = _new_bom(finished_part_row.finished_part_item, document_factory)
 	bom.quantity = _bom_quantity(layout_doc, finished_part_row)
-	bom.items.append(
-		BomItemRow(
-			item_code=layout_doc.raw_material_item,
-			qty=_sheet_weight_kg(layout_doc, finished_part_row),
-			row_type="raw_material",
-		)
+	quantity = finished_part_row.parts_per_sheet
+	row_quantity = quantity or 1
+	raw_material_weight_per_unit = _sheet_weight_kg(layout_doc, finished_part_row) / row_quantity
+	process_scrap_weight_per_unit = (
+		finished_part_row.scrap_weight_per_part_kg * quantity / row_quantity
 	)
 
-	process_scrap_weight = finished_part_row.scrap_weight_per_part_kg * finished_part_row.parts_per_sheet
-	if process_scrap_weight > 0:
-		bom.scrap_items.append(
-			BomItemRow(
-				item_code=layout_doc.process_scrap_item,
-				qty=process_scrap_weight,
-				row_type="process_scrap",
-			)
-		)
+	weight_rows = build_weight_split_bom_rows(
+		raw_material_item=layout_doc.raw_material_item,
+		gross_weight_per_part_kg=raw_material_weight_per_unit,
+		scrap_weight_per_part_kg=process_scrap_weight_per_unit,
+		quantity=row_quantity,
+		scrap_item=layout_doc.process_scrap_item,
+		scrap_row_type="process_scrap",
+	)
+	bom.items.extend(weight_rows.items)
+	bom.scrap_items.extend(weight_rows.scrap_items)
 
 	for end_piece in layout_doc.end_pieces:
 		if _is_scrap_end_piece(end_piece):

@@ -177,6 +177,26 @@ def test_resolve_scrap_item_rate_looks_up_when_existing_rate_is_zero_or_invalid(
 	assert fetch_rate.call_args_list[1].kwargs == {"item_code": "SCRAP-001", "company": "Test Company"}
 
 
+def test_weight_split_helper_matches_main_bom_raw_and_scrap_rows() -> None:
+	from sheet_cutting_layout.services.bom_service import build_weight_split_bom_rows
+
+	rows = build_weight_split_bom_rows(
+		raw_material_item="RAW-001",
+		gross_weight_per_part_kg=4.0,
+		scrap_weight_per_part_kg=0.75,
+		quantity=3,
+		scrap_item="EP-SCRAP",
+		scrap_row_type="process_scrap",
+	)
+
+	assert [(row.item_code, row.qty, row.row_type) for row in rows.items] == [
+		("RAW-001", 12.0, "raw_material")
+	]
+	assert [(row.item_code, row.qty, row.row_type) for row in rows.scrap_items] == [
+		("EP-SCRAP", 2.25, "process_scrap")
+	]
+
+
 class TestBomService(SheetCuttingLayoutTestCase):
 	def test_main_bom_is_derived_from_parent_finished_part_fields(self) -> None:
 		bom_service = import_bom_service()
