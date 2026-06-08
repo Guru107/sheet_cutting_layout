@@ -83,11 +83,10 @@ def _ensure_end_piece_item(layout: LayoutDocument, row: EndPieceRow) -> str:
 	item.gst_hsn_code = _get_value(
 		"Item", _clean(getattr(row, "used_for_finished_part", None)), "gst_hsn_code"
 	)
-	item.stock_uom = "Nos"
+	item.stock_uom = "Kg"
 	item.is_stock_item = 1
 	item.disabled = 0
-	item.append("uoms", {"uom": "Nos", "conversion_factor": 1})
-	item.append("uoms", {"uom": "Kg", "conversion_factor": 1 / weight_kg})
+	item.append("uoms", {"uom": "Kg", "conversion_factor": 1})
 	insert_error_types = _item_insert_exception_types()
 	if insert_error_types:
 		try:
@@ -124,7 +123,17 @@ def _create_end_piece_bom(layout: LayoutDocument, row: EndPieceRow, item_code: s
 		scrap_row_type="process_scrap",
 	)
 	for item_row in weight_rows.items:
-		bom.append("items", {"item_code": item_row.item_code, "qty": item_row.qty, "uom": item_row.uom})
+		bom.append(
+			"items",
+			{
+				"item_code": item_row.item_code,
+				"qty": item_row.qty,
+				"uom": item_row.uom,
+				"stock_uom": item_row.uom,
+				"stock_qty": item_row.qty,
+				"conversion_factor": 1,
+			},
+		)
 
 	for scrap_row in weight_rows.scrap_items:
 		try:

@@ -199,11 +199,23 @@ class TestEndPieceBomService(SheetCuttingLayoutTestCase):
 		self.assertEqual(bom.custom_operation, "Shearing")
 		self.assertEqual(bom.sheet_cutting_layout, "SCL-001")
 		self.assertTrue(getattr(getattr(bom, "flags", None), "sheet_cutting_layout_allow_bom_update", False))
-		self.assertEqual(bom.items, [{"item_code": existing_code, "qty": 2.5, "uom": "Kg"}])
+		self.assertEqual(
+			bom.items,
+			[
+				{
+					"item_code": existing_code,
+					"qty": 2.5,
+					"uom": "Kg",
+					"stock_uom": "Kg",
+					"stock_qty": 2.5,
+					"conversion_factor": 1,
+				}
+			],
+		)
 		self.assertEqual(bom.scrap_items, [])
 		resolve_rate.assert_not_called()
 
-	def test_generation_creates_missing_item_with_nos_and_kg_uoms(self) -> None:
+	def test_generation_creates_missing_item_with_kg_stock_uom(self) -> None:
 		fake_frappe = self._install_fakes(
 			raw_item_groups={"RAW-001": "Sheet Steel"},
 			item_hsn_codes={"FG01SHR": "7208"},
@@ -221,13 +233,28 @@ class TestEndPieceBomService(SheetCuttingLayoutTestCase):
 		self.assertEqual(item.item_name, "FG01SHR-EP-2x100x200")
 		self.assertEqual(item.item_group, "Sheet Steel")
 		self.assertEqual(item.gst_hsn_code, "7208")
-		self.assertEqual(item.stock_uom, "Nos")
+		self.assertEqual(item.stock_uom, "Kg")
 		self.assertEqual(item.is_stock_item, 1)
 		self.assertEqual(item.disabled, 0)
-		self.assertEqual(
-			item.uoms, [{"uom": "Nos", "conversion_factor": 1}, {"uom": "Kg", "conversion_factor": 0.4}]
-		)
+		self.assertEqual(item.uoms, [{"uom": "Kg", "conversion_factor": 1}])
 		self.assertEqual(fake_frappe.created_docs[1].submit_calls, 1)
+
+	def test_generation_keeps_fractional_end_piece_stock_qty_in_kg(self) -> None:
+		existing_code = "FG01SHR-EP-2x1250x179"
+		fake_frappe = self._install_fakes(existing_items={existing_code})
+		layout = Layout(end_pieces=[EndPiece(width_mm=1250, length_mm=179, weight_kg=2.814)])
+
+		with patch.object(self.service, "resolve_scrap_item_rate", return_value=33.5):
+			self.service.generate_end_piece_boms(layout)
+
+		bom = fake_frappe.created_docs[0]
+		self.assertEqual(len(bom.items), 1)
+		self.assertEqual(bom.items[0]["item_code"], existing_code)
+		self.assertEqual(bom.items[0]["qty"], 2.814)
+		self.assertEqual(bom.items[0]["uom"], "Kg")
+		self.assertEqual(bom.items[0]["stock_uom"], "Kg")
+		self.assertEqual(bom.items[0]["stock_qty"], 2.814)
+		self.assertEqual(bom.items[0]["conversion_factor"], 1)
 
 	def test_generation_uses_default_company_when_layout_company_is_missing(self) -> None:
 		existing_code = "FG01SHR-EP-2x100x200"
@@ -378,7 +405,19 @@ class TestEndPieceBomService(SheetCuttingLayoutTestCase):
 		self.assertEqual(result["items"], [existing_code])
 		bom = fake_frappe.created_docs[0]
 		self.assertEqual(bom.quantity, 3)
-		self.assertEqual(bom.items, [{"item_code": existing_code, "qty": 12.0, "uom": "Kg"}])
+		self.assertEqual(
+			bom.items,
+			[
+				{
+					"item_code": existing_code,
+					"qty": 12.0,
+					"uom": "Kg",
+					"stock_uom": "Kg",
+					"stock_qty": 12.0,
+					"conversion_factor": 1,
+				}
+			],
+		)
 		self.assertEqual(
 			bom.scrap_items,
 			[
