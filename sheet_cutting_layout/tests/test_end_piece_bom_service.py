@@ -19,7 +19,11 @@ class EndPiece:
 	weight_kg: float | None = 2.5
 	used_for_finished_part: str | None = "FG01SHR"
 	bom_quantity: float | None = 1
+	net_weight_per_part_kg: float | None = 2.5
+	gross_weight_per_part_kg: float | None = 2.5
+	scrap_weight_per_part_kg: float | None = 0
 	bom_scrap_quantity_kg: float | None = 0
+	scrap_item: str | None = None
 	db_set_calls: list[tuple[object, object, dict[str, object]]] = field(default_factory=list)
 
 	def db_set(self, fieldname: object, value: object = None, **kwargs: object) -> None:
@@ -243,20 +247,32 @@ class TestEndPieceBomService(SheetCuttingLayoutTestCase):
 	def test_generation_handles_scrap_rows_and_uses_rate_fallback(self) -> None:
 		existing_code = "FG01SHR-EP-2x100x200"
 		fake_frappe = self._install_fakes(existing_items={existing_code})
-		layout = Layout(end_pieces=[EndPiece(bom_scrap_quantity_kg=0.75)])
+		layout = Layout(
+			end_pieces=[
+				EndPiece(
+					weight_kg=12.0,
+					bom_quantity=3,
+					net_weight_per_part_kg=3.25,
+					gross_weight_per_part_kg=4.0,
+					scrap_weight_per_part_kg=0.75,
+					bom_scrap_quantity_kg=2.25,
+					scrap_item="EP-SCRAP",
+				)
+			]
+		)
 
 		with patch.object(self.service, "resolve_scrap_item_rate", return_value=88.25) as resolve_rate:
 			self.service.generate_end_piece_boms(layout)
 
-		resolve_rate.assert_called_once_with(item_code="PROCESS-SCRAP", company="Test Company")
+		resolve_rate.assert_called_once_with(item_code="EP-SCRAP", company="Test Company")
 		bom = fake_frappe.created_docs[0]
 		self.assertEqual(
 			bom.scrap_items,
 			[
 				{
-					"item_code": "PROCESS-SCRAP",
-					"qty": 0.75,
-					"stock_qty": 0.75,
+					"item_code": "EP-SCRAP",
+					"qty": 2.25,
+					"stock_qty": 2.25,
 					"uom": "Kg",
 					"rate": 88.25,
 				}
@@ -285,25 +301,76 @@ class TestEndPieceBomService(SheetCuttingLayoutTestCase):
 	def test_generation_wraps_scrap_rate_resolution_error_with_row_context(self) -> None:
 		existing_code = "FG01SHR-EP-2x100x200"
 		self._install_fakes(existing_items={existing_code})
-		layout = Layout(end_pieces=[EndPiece(bom_scrap_quantity_kg=0.75)])
+		layout = Layout(
+			end_pieces=[
+				EndPiece(
+					weight_kg=12.0,
+					bom_quantity=3,
+					net_weight_per_part_kg=3.25,
+					gross_weight_per_part_kg=4.0,
+					scrap_weight_per_part_kg=0.75,
+					bom_scrap_quantity_kg=2.25,
+					scrap_item="EP-SCRAP",
+				)
+			]
+		)
 
 		with patch.object(
 			self.service,
 			"resolve_scrap_item_rate",
-			side_effect=ValueError("Valuation rate is required for scrap item PROCESS-SCRAP"),
+			side_effect=ValueError("Valuation rate is required for scrap item EP-SCRAP"),
 		):
 			with self.assertRaisesRegex(
 				ValueError,
-				"Row 1: Valuation rate is required for scrap item PROCESS-SCRAP",
+				"Row 1: Valuation rate is required for scrap item EP-SCRAP",
 			):
 				self.service.generate_end_piece_boms(layout)
 
-	def test_generation_requires_process_scrap_item_for_positive_bom_scrap_qty(self) -> None:
+	def test_generation_requires_row_scrap_item_for_positive_bom_scrap_qty(self) -> None:
 		self._install_fakes(existing_items={"FG01SHR-EP-2x100x200"})
 		layout = Layout(process_scrap_item=None, end_pieces=[EndPiece(bom_scrap_quantity_kg=0.75)])
 
-		with self.assertRaisesRegex(ValueError, "Process scrap item is required"):
+		with self.assertRaisesRegex(ValueError, "Scrap item is required"):
 			self.service.generate_end_piece_boms(layout)
+
+	def test_generation_uses_row_scrap_item_for_reuse_bom_scrap(self) -> None:
+		existing_code = "FG01SHR-EP-2x100x200"
+		fake_frappe = self._install_fakes(existing_items={existing_code})
+		layout = Layout(
+			process_scrap_item=None,
+			end_pieces=[
+				EndPiece(
+					weight_kg=12.0,
+					bom_quantity=3,
+					net_weight_per_part_kg=3.25,
+					gross_weight_per_part_kg=4.0,
+					scrap_weight_per_part_kg=0.75,
+					bom_scrap_quantity_kg=2.25,
+					scrap_item="EP-SCRAP",
+				)
+			],
+		)
+
+		with patch.object(self.service, "resolve_scrap_item_rate", return_value=33.5) as resolve_rate:
+			result = self.service.generate_end_piece_boms(layout)
+
+		self.assertEqual(result["items"], [existing_code])
+		bom = fake_frappe.created_docs[0]
+		self.assertEqual(bom.quantity, 3)
+		self.assertEqual(bom.items, [{"item_code": existing_code, "qty": 12.0, "uom": "Kg"}])
+		self.assertEqual(
+			bom.scrap_items,
+			[
+				{
+					"item_code": "EP-SCRAP",
+					"qty": 2.25,
+					"stock_qty": 2.25,
+					"uom": "Kg",
+					"rate": 33.5,
+				}
+			],
+		)
+		resolve_rate.assert_called_once_with(item_code="EP-SCRAP", company="Test Company")
 
 	def test_generation_validates_pending_rows_with_row_numbered_messages(self) -> None:
 		self._install_fakes()

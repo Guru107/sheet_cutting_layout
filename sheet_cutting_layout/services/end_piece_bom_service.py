@@ -7,21 +7,28 @@ import frappe
 
 from sheet_cutting_layout.overrides.bom import APP_CONTROLLED_BOM_UPDATE_FLAG
 from sheet_cutting_layout.services import validators
-from sheet_cutting_layout.services.bom_service import resolve_scrap_item_rate
+from sheet_cutting_layout.services.bom_service import (
+	build_weight_split_bom_rows,
+	resolve_scrap_item_rate,
+)
 
 _ = frappe._
 
 
 class EndPieceRow(Protocol):
 	idx: int
-	disposition: str | None
+	disposition: str
 	end_piece_item_code: str | None
 	width_mm: float | None
 	length_mm: float | None
 	weight_kg: float | None
 	used_for_finished_part: str | None
 	bom_quantity: float | None
+	net_weight_per_part_kg: float | None
+	gross_weight_per_part_kg: float | None
+	scrap_weight_per_part_kg: float | None
 	bom_scrap_quantity_kg: float | None
+	scrap_item: str | None
 
 
 class LayoutDocument(Protocol):
@@ -105,24 +112,29 @@ def _create_end_piece_bom(layout: LayoutDocument, row: EndPieceRow, item_code: s
 	bom.uom = "Kg"
 	bom.custom_operation = "Shearing"
 	bom.sheet_cutting_layout = getattr(layout, "name", None)
-	bom.append("items", {"item_code": item_code, "qty": getattr(row, "weight_kg", None), "uom": "Kg"})
 
-	scrap_qty = getattr(row, "bom_scrap_quantity_kg", None) or 0
-	if scrap_qty > 0:
-		scrap_item = _clean(getattr(layout, "process_scrap_item", None))
-		if scrap_item is None:
-			_throw(_("Row {0}: Process scrap item is required").format(getattr(row, "idx", 0)))
+	weight_rows = build_weight_split_bom_rows(
+		raw_material_item=item_code,
+		raw_material_qty_kg=float(getattr(row, "weight_kg", 0) or 0),
+		scrap_qty_kg=float(getattr(row, "bom_scrap_quantity_kg", 0) or 0),
+		scrap_item=_clean(getattr(row, "scrap_item", None)),
+		scrap_row_type="process_scrap",
+	)
+	for item_row in weight_rows.items:
+		bom.append("items", {"item_code": item_row.item_code, "qty": item_row.qty, "uom": item_row.uom})
+
+	for scrap_row in weight_rows.scrap_items:
 		try:
-			rate = resolve_scrap_item_rate(item_code=scrap_item, company=bom.company)
+			rate = resolve_scrap_item_rate(item_code=scrap_row.item_code, company=bom.company)
 		except ValueError as error:
 			_throw(_("Row {0}: {1}").format(getattr(row, "idx", 0), str(error)))
 		bom.append(
 			"scrap_items",
 			{
-				"item_code": scrap_item,
-				"qty": scrap_qty,
-				"stock_qty": scrap_qty,
-				"uom": "Kg",
+				"item_code": scrap_row.item_code,
+				"qty": scrap_row.qty,
+				"stock_qty": scrap_row.qty,
+				"uom": scrap_row.uom,
 				"rate": rate,
 			},
 		)
@@ -152,10 +164,8 @@ def _validate_pending_row(layout: LayoutDocument, row: EndPieceRow) -> None:
 		_throw(_("Row {0}: BOM scrap quantity must be non-negative").format(row_idx))
 	if getattr(row, "weight_kg", None) is None or row.weight_kg <= 0:
 		_throw(_("Row {0}: End piece weight must be greater than zero").format(row_idx))
-	if row.bom_scrap_quantity_kg > 0 and _is_missing(getattr(layout, "process_scrap_item", None)):
-		_throw(
-			_("Row {0}: Process scrap item is required when BOM scrap quantity is positive").format(row_idx)
-		)
+	if row.bom_scrap_quantity_kg > 0 and _is_missing(getattr(row, "scrap_item", None)):
+		_throw(_("Row {0}: Scrap item is required when BOM scrap quantity is positive").format(row_idx))
 
 
 def _reuse_end_pieces(layout: LayoutDocument) -> list[EndPieceRow]:
