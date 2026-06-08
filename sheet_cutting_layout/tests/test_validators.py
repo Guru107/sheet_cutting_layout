@@ -51,6 +51,9 @@ class EndPiece:
 	disposition: str | None = "Reuse"
 	used_for_finished_part: str | None = "FG01SHR"
 	bom_quantity: float | None = 1
+	net_weight_per_part_kg: float | None = 2.0
+	gross_weight_per_part_kg: float | None = None
+	scrap_weight_per_part_kg: float | None = None
 	bom_scrap_quantity_kg: float | None = 0
 	scrap_item: str | None = ""
 
@@ -417,16 +420,90 @@ class TestValidators(SheetCuttingLayoutTestCase):
 	def test_reuse_requires_used_for_finished_part_suffix(self) -> None:
 		for suffix in ("SHR", "BLK", "DR"):
 			with self.subTest(suffix=suffix):
-				layout = self._balanced_layout(end_piece=EndPiece(used_for_finished_part=f"FG01{suffix}"))
+				layout = self._balanced_layout(
+					end_piece=EndPiece(used_for_finished_part=f"FG01{suffix}", scrap_item="EP-SCRAP")
+				)
 				self.validators.validate_sheet_cutting_layout(layout)
 
 		layout = self._balanced_layout(end_piece=EndPiece(used_for_finished_part="FG01XX"))
 		with self.assertRaisesRegex(ValidationError, "must end with SHR, BLK, or DR"):
 			self.validators.validate_sheet_cutting_layout(layout)
 
-	def test_reuse_rejects_scrap_item_value(self) -> None:
-		layout = self._balanced_layout(end_piece=EndPiece(disposition="Reuse", scrap_item="MS-SCRAP"))
-		with self.assertRaisesRegex(ValidationError, "allowed only for scrap end pieces"):
+	def test_validation_derives_reuse_end_piece_weight_split_and_bom_scrap(self) -> None:
+		end_piece = EndPiece(
+			weight_kg=2.5545,
+			bom_quantity=3,
+			net_weight_per_part_kg=0.75,
+			scrap_item="EP-SCRAP",
+		)
+		layout = self._balanced_layout(end_piece=end_piece)
+
+		self.validators.validate_sheet_cutting_layout(layout)
+
+		self.assertEqual(end_piece.gross_weight_per_part_kg, 0.8515)
+		self.assertEqual(end_piece.scrap_weight_per_part_kg, 0.1015)
+		self.assertEqual(end_piece.bom_scrap_quantity_kg, 0.3045)
+
+	def test_validation_overrides_stale_manual_reuse_end_piece_scrap_values(self) -> None:
+		end_piece = EndPiece(
+			weight_kg=2.5545,
+			bom_quantity=3,
+			net_weight_per_part_kg=0.75,
+			gross_weight_per_part_kg=99,
+			scrap_weight_per_part_kg=99,
+			bom_scrap_quantity_kg=99,
+			scrap_item="EP-SCRAP",
+		)
+		layout = self._balanced_layout(end_piece=end_piece)
+
+		self.validators.validate_sheet_cutting_layout(layout)
+
+		self.assertEqual(end_piece.gross_weight_per_part_kg, 0.8515)
+		self.assertEqual(end_piece.scrap_weight_per_part_kg, 0.1015)
+		self.assertEqual(end_piece.bom_scrap_quantity_kg, 0.3045)
+
+	def test_reuse_end_piece_requires_net_weight(self) -> None:
+		layout = self._balanced_layout(end_piece=EndPiece(net_weight_per_part_kg=None))
+
+		with self.assertRaisesRegex(ValidationError, "Net weight per part is required"):
+			self.validators.validate_sheet_cutting_layout(layout)
+
+	def test_reuse_end_piece_rejects_net_weight_above_gross_weight(self) -> None:
+		layout = self._balanced_layout(
+			end_piece=EndPiece(
+				weight_kg=2.5545,
+				bom_quantity=3,
+				net_weight_per_part_kg=0.86,
+			)
+		)
+
+		with self.assertRaisesRegex(ValidationError, "Scrap weight per part cannot be negative"):
+			self.validators.validate_sheet_cutting_layout(layout)
+
+	def test_reuse_end_piece_requires_row_scrap_item_for_positive_derived_scrap(self) -> None:
+		layout = self._balanced_layout(
+			end_piece=EndPiece(
+				weight_kg=2.5545,
+				bom_quantity=3,
+				net_weight_per_part_kg=0.75,
+				scrap_item="",
+			)
+		)
+
+		with self.assertRaisesRegex(ValidationError, "Scrap item is required for reuse end pieces"):
+			self.validators.validate_sheet_cutting_layout(layout)
+
+	def test_reuse_end_piece_rejects_scrap_item_matching_used_for_finished_part(self) -> None:
+		layout = self._balanced_layout(
+			end_piece=EndPiece(
+				weight_kg=2.5545,
+				bom_quantity=3,
+				net_weight_per_part_kg=0.75,
+				scrap_item="FG01SHR",
+			)
+		)
+
+		with self.assertRaisesRegex(ValidationError, "Scrap item cannot be the used-for finished part"):
 			self.validators.validate_sheet_cutting_layout(layout)
 
 	def test_scrap_requires_scrap_item_and_rejects_reuse_only_fields(self) -> None:
@@ -436,6 +513,7 @@ class TestValidators(SheetCuttingLayoutTestCase):
 				scrap_item="",
 				used_for_finished_part=None,
 				bom_quantity=0,
+				net_weight_per_part_kg=None,
 				bom_scrap_quantity_kg=0,
 			)
 		)
@@ -449,6 +527,7 @@ class TestValidators(SheetCuttingLayoutTestCase):
 					scrap_item="MS",
 					used_for_finished_part="FG01SHR",
 					bom_quantity=0,
+					net_weight_per_part_kg=None,
 					bom_scrap_quantity_kg=0,
 				),
 				"Used for finished part",
@@ -459,6 +538,7 @@ class TestValidators(SheetCuttingLayoutTestCase):
 					scrap_item="MS",
 					used_for_finished_part=None,
 					bom_quantity=1,
+					net_weight_per_part_kg=None,
 					bom_scrap_quantity_kg=0,
 				),
 				"BOM quantity",
@@ -469,6 +549,7 @@ class TestValidators(SheetCuttingLayoutTestCase):
 					scrap_item="MS",
 					used_for_finished_part=None,
 					bom_quantity=0,
+					net_weight_per_part_kg=None,
 					bom_scrap_quantity_kg=0.1,
 				),
 				"BOM scrap quantity",
@@ -478,13 +559,6 @@ class TestValidators(SheetCuttingLayoutTestCase):
 			with self.subTest(message=message):
 				with self.assertRaisesRegex(ValidationError, message):
 					self.validators.validate_sheet_cutting_layout(self._balanced_layout(end_piece=end_piece))
-
-	def test_process_scrap_item_required_when_reuse_bom_scrap_quantity_positive(self) -> None:
-		layout = self._balanced_layout(end_piece=EndPiece(bom_scrap_quantity_kg=0.25))
-		layout.process_scrap_item = ""
-
-		with self.assertRaisesRegex(ValidationError, "Process scrap item"):
-			self.validators.validate_sheet_cutting_layout(layout)
 
 	def test_process_scrap_item_cannot_be_finished_part_item(self) -> None:
 		layout = Layout(
@@ -507,6 +581,7 @@ class TestValidators(SheetCuttingLayoutTestCase):
 					disposition="Scrap",
 					used_for_finished_part=None,
 					bom_quantity=0,
+					net_weight_per_part_kg=None,
 					bom_scrap_quantity_kg=0,
 					scrap_item="MSScrap",
 				)
@@ -517,14 +592,14 @@ class TestValidators(SheetCuttingLayoutTestCase):
 			self.validators.validate_sheet_cutting_layout(layout)
 
 	def test_qty_per_sheet_is_not_required_for_end_piece_validation(self) -> None:
-		layout = self._balanced_layout(end_piece=EndPiece(qty_per_sheet=None))
+		layout = self._balanced_layout(end_piece=EndPiece(qty_per_sheet=None, scrap_item="EP-SCRAP"))
 
 		self.validators.validate_sheet_cutting_layout(layout)
 
 		self.assertEqual(layout.consumption_status, "Balanced")
 
 	def test_stale_qty_per_sheet_payload_is_ignored_for_weight_and_consumption(self) -> None:
-		layout = self._balanced_layout(end_piece=EndPiece(qty_per_sheet=3))
+		layout = self._balanced_layout(end_piece=EndPiece(qty_per_sheet=3, scrap_item="EP-SCRAP"))
 		layout.status = "Released"
 
 		self.validators.validate_sheet_cutting_layout(layout)
@@ -566,6 +641,7 @@ class TestValidators(SheetCuttingLayoutTestCase):
 			disposition="Reuse",
 			used_for_finished_part="FG01SHR",
 			bom_quantity=1,
+			net_weight_per_part_kg=2.5545,
 			bom_scrap_quantity_kg=0,
 			scrap_item="",
 		)
@@ -585,6 +661,7 @@ class TestValidators(SheetCuttingLayoutTestCase):
 			disposition="Reuse",
 			used_for_finished_part="FG01SHR",
 			bom_quantity=1,
+			net_weight_per_part_kg=2.5545,
 			bom_scrap_quantity_kg=0,
 			scrap_item="",
 		)
@@ -594,7 +671,7 @@ class TestValidators(SheetCuttingLayoutTestCase):
 		self.assertEqual(layout.end_piece_bom_status, "Generated")
 
 	def test_consumption_tracking_uses_gross_plus_end_piece_weight_and_sets_balanced(self) -> None:
-		layout = self._balanced_layout()
+		layout = self._balanced_layout(end_piece=EndPiece(scrap_item="EP-SCRAP"))
 		self.validators.validate_sheet_cutting_layout(layout)
 
 		self.assertEqual(layout.consumed_weight_kg, 24.562)
@@ -608,6 +685,7 @@ class TestValidators(SheetCuttingLayoutTestCase):
 				scrap_item="MS-SCRAP",
 				used_for_finished_part=None,
 				bom_quantity=0,
+				net_weight_per_part_kg=None,
 				bom_scrap_quantity_kg=0,
 			)
 		)
@@ -619,7 +697,7 @@ class TestValidators(SheetCuttingLayoutTestCase):
 		self.assertEqual(layout.consumption_status, "Balanced")
 
 	def test_consumption_tracking_accepts_balanced_layout_with_reuse_end_piece(self) -> None:
-		layout = self._balanced_layout(end_piece=EndPiece(disposition="Reuse"))
+		layout = self._balanced_layout(end_piece=EndPiece(disposition="Reuse", scrap_item="EP-SCRAP"))
 
 		self.validators.validate_sheet_cutting_layout(layout)
 
@@ -629,14 +707,14 @@ class TestValidators(SheetCuttingLayoutTestCase):
 
 	def test_consumption_tracking_raises_for_short_and_excess_outside_tolerance(self) -> None:
 		short_layout = self._balanced_layout(
-			end_piece=EndPiece(length_mm=259.338, used_for_finished_part="FG01SHR")
+			end_piece=EndPiece(length_mm=259.338, used_for_finished_part="FG01SHR", scrap_item="EP-SCRAP")
 		)
 		with self.assertRaisesRegex(ValidationError, "no accounting for 0.006 kg"):
 			self.validators.validate_sheet_cutting_layout(short_layout)
 		self.assertEqual(short_layout.consumption_status, "Short")
 
 		excess_layout = self._balanced_layout(
-			end_piece=EndPiece(length_mm=260.560, used_for_finished_part="FG01SHR")
+			end_piece=EndPiece(length_mm=260.560, used_for_finished_part="FG01SHR", scrap_item="EP-SCRAP")
 		)
 		with self.assertRaisesRegex(ValidationError, "exceeds sheet weight by 0.006 kg"):
 			self.validators.validate_sheet_cutting_layout(excess_layout)
@@ -653,6 +731,7 @@ class TestValidators(SheetCuttingLayoutTestCase):
 					end_piece=EndPiece(
 						length_mm=end_piece_length_mm,
 						used_for_finished_part="FG01SHR",
+						scrap_item="EP-SCRAP",
 					)
 				)
 

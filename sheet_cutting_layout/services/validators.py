@@ -34,6 +34,9 @@ class EndPieceRow(Protocol):
 	disposition: str | None
 	used_for_finished_part: str | None
 	bom_quantity: float | None
+	net_weight_per_part_kg: float | None
+	gross_weight_per_part_kg: float | None
+	scrap_weight_per_part_kg: float | None
 	bom_scrap_quantity_kg: float | None
 	scrap_item: str | None
 
@@ -87,16 +90,12 @@ def validate_sheet_cutting_layout(layout: SheetCuttingLayoutDocument) -> None:
 	apply_parts_per_sheet_formula(layout)
 	_validate_unreleased_legacy_end_piece_multiplicity(layout, end_pieces)
 	apply_end_piece_weight_formulas(layout, end_pieces)
+	apply_end_piece_reuse_weight_formulas(layout, end_pieces)
 	_validate_parent_finished_part_fields(layout)
 
 	for end_piece in end_pieces:
 		_validate_end_piece_item_code_is_locked(end_piece)
-		_validate_end_piece_required_fields(end_piece)
-
-	if _requires_process_scrap_item_for_reuse_bom(end_pieces) and _is_missing(
-		getattr(layout, "process_scrap_item", None)
-	):
-		frappe.throw(_("Process scrap item is required when reuse BOM scrap weight is positive"))
+		_validate_end_piece_required_fields(layout, end_piece)
 
 	if end_pieces:
 		_validate_end_piece_distribution(layout, end_pieces)
@@ -191,6 +190,29 @@ def apply_end_piece_weight_formulas(
 		)
 		if weight is not None:
 			end_piece.weight_kg = _flt(weight)
+
+
+def apply_end_piece_reuse_weight_formulas(
+	layout: SheetCuttingLayoutDocument,
+	end_pieces: Sequence[EndPieceRow],
+) -> None:
+	_ = layout
+	for end_piece in end_pieces:
+		if not _is_reuse_end_piece(end_piece):
+			continue
+		weight = getattr(end_piece, "weight_kg", None)
+		bom_quantity = getattr(end_piece, "bom_quantity", None)
+		net_weight = getattr(end_piece, "net_weight_per_part_kg", None)
+		if weight is None or bom_quantity is None or bom_quantity <= 0:
+			continue
+		gross_weight = _flt(_flt(weight) / _flt(bom_quantity))
+		end_piece.gross_weight_per_part_kg = gross_weight
+		if net_weight is None:
+			continue
+		scrap_weight = _flt(gross_weight - _flt(net_weight))
+		end_piece.scrap_weight_per_part_kg = scrap_weight
+		if scrap_weight >= 0:
+			end_piece.bom_scrap_quantity_kg = _flt(scrap_weight * _flt(bom_quantity))
 
 
 def derive_end_piece_item_code(
@@ -288,7 +310,10 @@ def _validate_parent_finished_part_fields(layout: SheetCuttingLayoutDocument) ->
 			frappe.throw(_("Process scrap item cannot be the finished part item"))
 
 
-def _validate_end_piece_required_fields(end_piece: EndPieceRow) -> None:
+def _validate_end_piece_required_fields(
+	layout: SheetCuttingLayoutDocument,
+	end_piece: EndPieceRow,
+) -> None:
 	if end_piece.width_mm is None:
 		frappe.throw(_("End piece width is required"))
 	if end_piece.length_mm is None:
@@ -304,8 +329,7 @@ def _validate_end_piece_required_fields(end_piece: EndPieceRow) -> None:
 		_validate_reuse_suffix(end_piece)
 		if getattr(end_piece, "bom_quantity", None) is None or end_piece.bom_quantity <= 0:
 			frappe.throw(_("BOM quantity must be greater than zero for reuse end pieces"))
-		if getattr(end_piece, "bom_scrap_quantity_kg", None) is None or end_piece.bom_scrap_quantity_kg < 0:
-			frappe.throw(_("BOM scrap quantity must be non-negative for reuse end pieces"))
+		_validate_reuse_weight_split(layout, end_piece)
 	if _is_scrap_end_piece(end_piece) and _is_missing(getattr(end_piece, "scrap_item", None)):
 		frappe.throw(_("Scrap item is required for scrap end pieces"))
 
@@ -346,12 +370,20 @@ def _validate_non_reuse_end_piece_fields_are_empty(end_piece: EndPieceRow) -> No
 		frappe.throw(_("Used for finished part is allowed only for reuse end pieces"))
 	if _has_non_zero_value(getattr(end_piece, "bom_quantity", None)):
 		frappe.throw(_("BOM quantity is allowed only for reuse end pieces"))
+	if _has_non_zero_value(getattr(end_piece, "net_weight_per_part_kg", None)):
+		frappe.throw(_("Net weight per part is only allowed for reuse end pieces"))
+	if _has_non_zero_value(getattr(end_piece, "gross_weight_per_part_kg", None)):
+		frappe.throw(_("Gross weight per part is only allowed for reuse end pieces"))
+	if _has_non_zero_value(getattr(end_piece, "scrap_weight_per_part_kg", None)):
+		frappe.throw(_("Scrap weight per part is only allowed for reuse end pieces"))
 	if _has_non_zero_value(getattr(end_piece, "bom_scrap_quantity_kg", None)):
 		frappe.throw(_("BOM scrap quantity is allowed only for reuse end pieces"))
 
 
 def _validate_non_scrap_end_piece_fields_are_empty(end_piece: EndPieceRow) -> None:
 	if _is_scrap_end_piece(end_piece):
+		return
+	if _is_reuse_end_piece(end_piece):
 		return
 	if not _is_missing(getattr(end_piece, "scrap_item", None)):
 		frappe.throw(_("Scrap item is allowed only for scrap end pieces"))
@@ -384,21 +416,59 @@ def _validate_reuse_suffix(end_piece: EndPieceRow) -> None:
 	frappe.throw(_("Used for finished part must end with SHR, BLK, or DR"))
 
 
+def _validate_reuse_weight_split(
+	layout: SheetCuttingLayoutDocument,
+	end_piece: EndPieceRow,
+) -> None:
+	net_weight = getattr(end_piece, "net_weight_per_part_kg", None)
+	if net_weight is None:
+		frappe.throw(_("Net weight per part is required for reuse end pieces"))
+	if net_weight < 0:
+		frappe.throw(_("Net weight per part must be non-negative for reuse end pieces"))
+	gross_weight = _flt(getattr(end_piece, "gross_weight_per_part_kg", 0))
+	if gross_weight <= 0:
+		frappe.throw(_("Gross weight per part must be greater than zero for reuse end pieces"))
+	scrap_weight = _flt(getattr(end_piece, "scrap_weight_per_part_kg", 0))
+	if scrap_weight < 0:
+		frappe.throw(_("Scrap weight per part cannot be negative for reuse end pieces"))
+	bom_scrap_quantity = _flt(getattr(end_piece, "bom_scrap_quantity_kg", 0))
+	if bom_scrap_quantity < 0:
+		frappe.throw(_("BOM scrap quantity must be non-negative for reuse end pieces"))
+	if bom_scrap_quantity > 0:
+		scrap_item = getattr(end_piece, "scrap_item", None)
+		if _is_missing(scrap_item):
+			frappe.throw(_("Scrap item is required for reuse end pieces when BOM scrap quantity is positive"))
+		if _same_item_code(scrap_item, getattr(end_piece, "used_for_finished_part", None)):
+			frappe.throw(_("Scrap item cannot be the used-for finished part"))
+		_validate_scrap_item_is_not_generated_end_piece_item(layout, end_piece, scrap_item)
+
+
+def _validate_scrap_item_is_not_generated_end_piece_item(
+	layout: SheetCuttingLayoutDocument,
+	end_piece: EndPieceRow,
+	scrap_item: str | None,
+) -> None:
+	if _is_missing(scrap_item):
+		return
+	try:
+		generated_item_code = derive_end_piece_item_code(
+			used_for_finished_part=getattr(end_piece, "used_for_finished_part", None),
+			thickness_mm=getattr(layout, "sheet_thickness_mm", None),
+			width_mm=getattr(end_piece, "width_mm", None),
+			length_mm=getattr(end_piece, "length_mm", None),
+		)
+	except ValueError:
+		return
+	if _same_item_code(scrap_item, generated_item_code):
+		frappe.throw(_("Scrap item cannot be the generated end-piece item"))
+
+
 def _is_reuse_end_piece(end_piece: EndPieceRow) -> bool:
 	return getattr(end_piece, "disposition", None) == "Reuse"
 
 
 def _is_scrap_end_piece(end_piece: EndPieceRow) -> bool:
 	return getattr(end_piece, "disposition", None) == "Scrap"
-
-
-def _requires_process_scrap_item_for_reuse_bom(end_pieces: Sequence[EndPieceRow]) -> bool:
-	return any(
-		_is_reuse_end_piece(end_piece)
-		and getattr(end_piece, "bom_scrap_quantity_kg", None) is not None
-		and end_piece.bom_scrap_quantity_kg > 0
-		for end_piece in end_pieces
-	)
 
 
 def apply_end_piece_bom_status(
