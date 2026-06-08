@@ -32,60 +32,23 @@
   - `sheet_cutting_layout/tests/test_validators.py`
   - `sheet_cutting_layout/tests/test_bom_service.py`
   - `sheet_cutting_layout/tests/test_end_piece_bom_service.py`
-  - `sheet_cutting_layout/tests/test_release_service.py`
 - Run bench commands from bench roots:
   - `/root/workspace/bench15`
   - `/root/workspace/bench16`
 
 ---
 
-### Task 1: DocType Metadata And Client Formulas
+### Task 1: DocType Fields And Client Formulas
 
 **Files:**
 - Modify: `sheet_cutting_layout/sheet_cutting_layout/doctype/layout_end_piece/layout_end_piece.json`
 - Modify: `sheet_cutting_layout/sheet_cutting_layout/doctype/sheet_cutting_layout/sheet_cutting_layout.js`
-- Test: `sheet_cutting_layout/tests/test_release_service.py`
 
-- [ ] **Step 1: Write failing metadata test**
+This task intentionally has no JSON contract test. The DocType fields are verified by the behavior
+tests in Task 2 and Task 4, which create reuse rows, save/validate them, and assert derived values
+and generated BOM rows.
 
-Add this test near the existing DocType JSON contract tests in `sheet_cutting_layout/tests/test_release_service.py`:
-
-```python
-def test_reuse_end_piece_weight_fields_are_configured() -> None:
-	end_piece_path = (
-		Path(__file__).resolve().parents[1]
-		/ "sheet_cutting_layout"
-		/ "doctype"
-		/ "layout_end_piece"
-		/ "layout_end_piece.json"
-	)
-	doctype = json.loads(end_piece_path.read_text(encoding="utf-8"))
-	fields = {row["fieldname"]: row for row in doctype["fields"] if "fieldname" in row}
-
-	assert "net_weight_per_part_kg" in doctype["field_order"]
-	assert "gross_weight_per_part_kg" in doctype["field_order"]
-	assert "scrap_weight_per_part_kg" in doctype["field_order"]
-	assert doctype["field_order"].index("net_weight_per_part_kg") > doctype["field_order"].index(
-		"bom_quantity"
-	)
-	assert fields["net_weight_per_part_kg"]["depends_on"] == 'eval:doc.disposition=="Reuse"'
-	assert fields["gross_weight_per_part_kg"]["read_only"] == 1
-	assert fields["scrap_weight_per_part_kg"]["read_only"] == 1
-	assert fields["bom_scrap_quantity_kg"]["read_only"] == 1
-	assert fields["scrap_item"]["depends_on"] == 'eval:["Reuse","Scrap"].includes(doc.disposition)'
-```
-
-- [ ] **Step 2: Run test to verify it fails**
-
-Run from `/root/workspace/bench15`:
-
-```bash
-bench --site development.localhost run-tests --app sheet_cutting_layout --module sheet_cutting_layout.tests.test_release_service --case TestReleaseService
-```
-
-Expected: FAIL because `net_weight_per_part_kg`, `gross_weight_per_part_kg`, and `scrap_weight_per_part_kg` do not exist on `Layout End Piece`.
-
-- [ ] **Step 3: Update DocType JSON**
+- [ ] **Step 1: Update DocType JSON**
 
 In `sheet_cutting_layout/sheet_cutting_layout/doctype/layout_end_piece/layout_end_piece.json`, update `field_order` to:
 
@@ -156,7 +119,7 @@ Change `bom_scrap_quantity_kg` to:
 }
 ```
 
-- [ ] **Step 4: Add client-side reuse row formulas**
+- [ ] **Step 2: Add client-side reuse row formulas**
 
 In `sheet_cutting_layout/sheet_cutting_layout/doctype/sheet_cutting_layout/sheet_cutting_layout.js`, add these helpers after `calculateEndPieceWeight(frm, row)`:
 
@@ -298,20 +261,20 @@ Add child field handlers:
 		net_weight_per_part_kg: updateEndPieceWeightsAndConsumption,
 ```
 
-- [ ] **Step 5: Run metadata test to verify it passes**
+- [ ] **Step 3: Run syntax and JSON checks**
 
-Run from `/root/workspace/bench15`:
+Run from `/root/workspace/sheet_cutting_layout`:
 
 ```bash
-bench --site development.localhost run-tests --app sheet_cutting_layout --module sheet_cutting_layout.tests.test_release_service --case TestReleaseService
+PYTHONPATH=/tmp/precommit-runner PRE_COMMIT_HOME=/tmp/precommit-cache npm_config_cache=/tmp/npm-cache python -m pre_commit run --all-files
 ```
 
-Expected: PASS.
+Expected: all hooks pass. Behavior verification follows in Task 2 and Task 4.
 
-- [ ] **Step 6: Commit metadata and client feedback**
+- [ ] **Step 4: Commit field and client feedback support**
 
 ```bash
-git add sheet_cutting_layout/sheet_cutting_layout/doctype/layout_end_piece/layout_end_piece.json sheet_cutting_layout/sheet_cutting_layout/doctype/sheet_cutting_layout/sheet_cutting_layout.js sheet_cutting_layout/tests/test_release_service.py
+git add sheet_cutting_layout/sheet_cutting_layout/doctype/layout_end_piece/layout_end_piece.json sheet_cutting_layout/sheet_cutting_layout/doctype/sheet_cutting_layout/sheet_cutting_layout.js
 git commit -m "feat: add reuse end piece weight fields"
 ```
 
@@ -345,28 +308,43 @@ class EndPiece:
 	scrap_item: str | None = ""
 ```
 
-- [ ] **Step 2: Write failing formula and validation tests**
+- [ ] **Step 2: Write failing behavior and validation tests**
 
 Add these tests to `TestValidators`:
 
 ```python
-	def test_reuse_end_piece_derives_weight_split_and_bom_scrap(self) -> None:
+	def test_validation_derives_reuse_end_piece_weight_split_and_bom_scrap(self) -> None:
 		end_piece = EndPiece(
-			weight_kg=12.0,
+			weight_kg=2.5545,
 			bom_quantity=3,
-			net_weight_per_part_kg=3.25,
+			net_weight_per_part_kg=0.75,
 			scrap_item="EP-SCRAP",
 		)
-		layout = self._balanced_layout(
-			finished_part=FinishedPart("AB12SHR", 2, 11.004, 0),
-			end_piece=end_piece,
+		layout = self._balanced_layout(end_piece=end_piece)
+
+		self.validators.validate_sheet_cutting_layout(layout)
+
+		self.assertEqual(end_piece.gross_weight_per_part_kg, 0.8515)
+		self.assertEqual(end_piece.scrap_weight_per_part_kg, 0.1015)
+		self.assertEqual(end_piece.bom_scrap_quantity_kg, 0.3045)
+
+	def test_validation_overrides_stale_manual_reuse_end_piece_scrap_values(self) -> None:
+		end_piece = EndPiece(
+			weight_kg=2.5545,
+			bom_quantity=3,
+			net_weight_per_part_kg=0.75,
+			gross_weight_per_part_kg=99,
+			scrap_weight_per_part_kg=99,
+			bom_scrap_quantity_kg=99,
+			scrap_item="EP-SCRAP",
 		)
+		layout = self._balanced_layout(end_piece=end_piece)
 
-		self.validators.apply_end_piece_reuse_weight_formulas(layout, layout.end_pieces)
+		self.validators.validate_sheet_cutting_layout(layout)
 
-		self.assertEqual(end_piece.gross_weight_per_part_kg, 4.0)
-		self.assertEqual(end_piece.scrap_weight_per_part_kg, 0.75)
-		self.assertEqual(end_piece.bom_scrap_quantity_kg, 2.25)
+		self.assertEqual(end_piece.gross_weight_per_part_kg, 0.8515)
+		self.assertEqual(end_piece.scrap_weight_per_part_kg, 0.1015)
+		self.assertEqual(end_piece.bom_scrap_quantity_kg, 0.3045)
 
 	def test_reuse_end_piece_requires_net_weight(self) -> None:
 		layout = self._balanced_layout(end_piece=EndPiece(net_weight_per_part_kg=None))
@@ -377,9 +355,9 @@ Add these tests to `TestValidators`:
 	def test_reuse_end_piece_rejects_net_weight_above_gross_weight(self) -> None:
 		layout = self._balanced_layout(
 			end_piece=EndPiece(
-				weight_kg=10.0,
-				bom_quantity=5,
-				net_weight_per_part_kg=2.01,
+				weight_kg=2.5545,
+				bom_quantity=3,
+				net_weight_per_part_kg=0.86,
 			)
 		)
 
@@ -389,9 +367,9 @@ Add these tests to `TestValidators`:
 	def test_reuse_end_piece_requires_row_scrap_item_for_positive_derived_scrap(self) -> None:
 		layout = self._balanced_layout(
 			end_piece=EndPiece(
-				weight_kg=12.0,
+				weight_kg=2.5545,
 				bom_quantity=3,
-				net_weight_per_part_kg=3.25,
+				net_weight_per_part_kg=0.75,
 				scrap_item="",
 			)
 		)
@@ -402,9 +380,9 @@ Add these tests to `TestValidators`:
 	def test_reuse_end_piece_rejects_scrap_item_matching_used_for_finished_part(self) -> None:
 		layout = self._balanced_layout(
 			end_piece=EndPiece(
-				weight_kg=12.0,
+				weight_kg=2.5545,
 				bom_quantity=3,
-				net_weight_per_part_kg=3.25,
+				net_weight_per_part_kg=0.75,
 				scrap_item="FG01SHR",
 			)
 		)
@@ -421,7 +399,7 @@ Run from `/root/workspace/bench15`:
 bench --site development.localhost run-tests --app sheet_cutting_layout --module sheet_cutting_layout.tests.test_validators --case TestValidators
 ```
 
-Expected: FAIL because `apply_end_piece_reuse_weight_formulas` does not exist and validation does not require reuse net weight.
+Expected: FAIL because validation does not derive reuse end-piece gross/scrap values or require reuse net weight yet.
 
 - [ ] **Step 4: Implement server formulas**
 
@@ -984,12 +962,12 @@ git log --oneline -5
 
 Expected: no unstaged changes except intentional work before the final commit; `git diff --check` prints nothing.
 
-- [ ] **Step 6: Final commit if verification changed generated metadata**
+- [ ] **Step 6: Final commit if verification changed generated schema or formatted files**
 
 If migration or formatting changed files after the task commits, commit only those intentional changes:
 
 ```bash
-git add sheet_cutting_layout/sheet_cutting_layout/doctype/layout_end_piece/layout_end_piece.json sheet_cutting_layout/sheet_cutting_layout/doctype/sheet_cutting_layout/sheet_cutting_layout.js sheet_cutting_layout/services/validators.py sheet_cutting_layout/services/bom_service.py sheet_cutting_layout/services/end_piece_bom_service.py sheet_cutting_layout/tests/test_validators.py sheet_cutting_layout/tests/test_bom_service.py sheet_cutting_layout/tests/test_end_piece_bom_service.py sheet_cutting_layout/tests/test_release_service.py
+git add sheet_cutting_layout/sheet_cutting_layout/doctype/layout_end_piece/layout_end_piece.json sheet_cutting_layout/sheet_cutting_layout/doctype/sheet_cutting_layout/sheet_cutting_layout.js sheet_cutting_layout/services/validators.py sheet_cutting_layout/services/bom_service.py sheet_cutting_layout/services/end_piece_bom_service.py sheet_cutting_layout/tests/test_validators.py sheet_cutting_layout/tests/test_bom_service.py sheet_cutting_layout/tests/test_end_piece_bom_service.py
 git commit -m "chore: finalize reuse end piece bom weights"
 ```
 
