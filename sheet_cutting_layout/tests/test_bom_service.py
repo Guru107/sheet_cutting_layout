@@ -182,9 +182,8 @@ def test_weight_split_helper_matches_main_bom_raw_and_scrap_rows() -> None:
 
 	rows = build_weight_split_bom_rows(
 		raw_material_item="RAW-001",
-		gross_weight_per_part_kg=4.0,
-		scrap_weight_per_part_kg=0.75,
-		quantity=3,
+		raw_material_qty_kg=12.0,
+		scrap_qty_kg=2.25,
 		scrap_item="EP-SCRAP",
 		scrap_row_type="process_scrap",
 	)
@@ -195,6 +194,23 @@ def test_weight_split_helper_matches_main_bom_raw_and_scrap_rows() -> None:
 	assert [(row.item_code, row.qty, row.row_type) for row in rows.scrap_items] == [
 		("EP-SCRAP", 2.25, "process_scrap")
 	]
+
+
+def test_weight_split_helper_skips_scrap_row_when_scrap_quantity_is_zero() -> None:
+	from sheet_cutting_layout.services.bom_service import build_weight_split_bom_rows
+
+	rows = build_weight_split_bom_rows(
+		raw_material_item="RAW-001",
+		raw_material_qty_kg=12.0,
+		scrap_qty_kg=0,
+		scrap_item=None,
+		scrap_row_type="process_scrap",
+	)
+
+	assert [(row.item_code, row.qty, row.row_type) for row in rows.items] == [
+		("RAW-001", 12.0, "raw_material")
+	]
+	assert rows.scrap_items == []
 
 
 class TestBomService(SheetCuttingLayoutTestCase):
@@ -218,6 +234,21 @@ class TestBomService(SheetCuttingLayoutTestCase):
 		self.assertEqual(bom.quantity, 77)
 		self.assertAlmostEqual(self._sum_bom_qty(bom.items, "raw_material"), 39.3, places=6)
 		self.assertAlmostEqual(self._sum_bom_qty(bom.scrap_items, "process_scrap"), 14.233142, places=6)
+
+	def test_main_bom_uses_exact_sheet_weight_raw_quantity(self) -> None:
+		bom_service = import_bom_service()
+		layout = Layout(
+			weight_per_sheet_kg=123.456789,
+			parts_per_sheet=3,
+			gross_weight_per_part_kg=41.152263,
+		)
+
+		bom = bom_service.build_bom_from_layout_row(
+			layout,
+			FinishedPart(parts_per_sheet=3, gross_weight_per_part_kg=41.152263),
+		)
+
+		self.assertEqual(bom.items[0].qty, layout.weight_per_sheet_kg)
 
 	def test_main_bom_expected_consumption_helper_matches_parent_fields(self) -> None:
 		bom_service = import_bom_service()
