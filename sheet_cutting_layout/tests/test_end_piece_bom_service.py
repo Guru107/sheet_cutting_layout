@@ -94,9 +94,11 @@ class FakeDB:
 		*,
 		existing_items: set[str] | None = None,
 		raw_item_groups: dict[str, str] | None = None,
+		item_hsn_codes: dict[str, str] | None = None,
 	) -> None:
 		self.existing_items = set(existing_items or set())
 		self.raw_item_groups = raw_item_groups or {"RAW-001": "Raw Material"}
+		self.item_hsn_codes = item_hsn_codes or {}
 
 	def exists(self, doctype: str, name: str) -> bool:
 		return doctype == "Item" and name in self.existing_items
@@ -104,6 +106,8 @@ class FakeDB:
 	def get_value(self, doctype: str, name: str, fieldname: str) -> object:
 		if doctype == "Item" and fieldname == "item_group":
 			return self.raw_item_groups.get(name)
+		if doctype == "Item" and fieldname == "gst_hsn_code":
+			return self.item_hsn_codes.get(name)
 		return None
 
 	def get_default(self, key: str) -> str | None:
@@ -118,8 +122,13 @@ class FakeFrappe:
 		*,
 		existing_items: set[str] | None = None,
 		raw_item_groups: dict[str, str] | None = None,
+		item_hsn_codes: dict[str, str] | None = None,
 	) -> None:
-		self.db = FakeDB(existing_items=existing_items, raw_item_groups=raw_item_groups)
+		self.db = FakeDB(
+			existing_items=existing_items,
+			raw_item_groups=raw_item_groups,
+			item_hsn_codes=item_hsn_codes,
+		)
 		self.created_docs: list[FakeDoc] = []
 		self.defaults = SimpleNamespace(get_user_default=lambda _key: "")
 		self.ValidationError = ValueError
@@ -144,10 +153,12 @@ class TestEndPieceBomService(SheetCuttingLayoutTestCase):
 		*,
 		existing_items: set[str] | None = None,
 		raw_item_groups: dict[str, str] | None = None,
+		item_hsn_codes: dict[str, str] | None = None,
 	) -> FakeFrappe:
 		fake_frappe = FakeFrappe(
 			existing_items=existing_items,
 			raw_item_groups=raw_item_groups,
+			item_hsn_codes=item_hsn_codes,
 		)
 		self.frappe_patch = patch.object(self.service, "frappe", fake_frappe)
 		self.translation_patch = patch.object(self.service, "_", lambda message: message)
@@ -193,7 +204,10 @@ class TestEndPieceBomService(SheetCuttingLayoutTestCase):
 		resolve_rate.assert_not_called()
 
 	def test_generation_creates_missing_item_with_nos_and_kg_uoms(self) -> None:
-		fake_frappe = self._install_fakes(raw_item_groups={"RAW-001": "Sheet Steel"})
+		fake_frappe = self._install_fakes(
+			raw_item_groups={"RAW-001": "Sheet Steel"},
+			item_hsn_codes={"FG01SHR": "7208"},
+		)
 		layout = Layout(end_pieces=[EndPiece()])
 
 		with patch.object(self.service, "resolve_scrap_item_rate", return_value=33.5):
@@ -206,6 +220,7 @@ class TestEndPieceBomService(SheetCuttingLayoutTestCase):
 		self.assertEqual(item.item_code, "FG01SHR-EP-2x100x200")
 		self.assertEqual(item.item_name, "FG01SHR-EP-2x100x200")
 		self.assertEqual(item.item_group, "Sheet Steel")
+		self.assertEqual(item.gst_hsn_code, "7208")
 		self.assertEqual(item.stock_uom, "Nos")
 		self.assertEqual(item.is_stock_item, 1)
 		self.assertEqual(item.disabled, 0)

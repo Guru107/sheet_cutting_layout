@@ -80,6 +80,9 @@ def _ensure_end_piece_item(layout: LayoutDocument, row: EndPieceRow) -> str:
 	item.item_name = item_code
 	item.description = _build_item_description(layout, row)
 	item.item_group = _get_value("Item", getattr(layout, "raw_material_item", None), "item_group")
+	item.gst_hsn_code = _get_value(
+		"Item", _clean(getattr(row, "used_for_finished_part", None)), "gst_hsn_code"
+	)
 	item.stock_uom = "Nos"
 	item.is_stock_item = 1
 	item.disabled = 0
