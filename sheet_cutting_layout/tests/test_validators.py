@@ -44,6 +44,7 @@ class FinishedPart:
 @dataclass
 class EndPiece:
 	end_piece_item_code: str | None = None
+	generated_end_piece_bom: str | None = None
 	weight_kg: float | None = 2.5545
 	qty_per_sheet: float | None = 1
 	width_mm: float | None = 1250
@@ -722,7 +723,7 @@ class TestValidators(SheetCuttingLayoutTestCase):
 		self.assertEqual(layout.leftover_weight_kg, 0.0)
 		self.assertEqual(layout.consumption_status, "Balanced")
 
-	def test_apply_end_piece_bom_status_uses_end_piece_item_code_presence(self) -> None:
+	def test_apply_end_piece_bom_status_uses_generated_bom_presence(self) -> None:
 		no_reuse = self._balanced_layout(
 			end_piece=EndPiece(
 				disposition="Scrap",
@@ -732,8 +733,13 @@ class TestValidators(SheetCuttingLayoutTestCase):
 				bom_scrap_quantity_kg=0,
 			)
 		)
-		pending = self._balanced_layout(end_piece=EndPiece(end_piece_item_code=None))
-		generated = self._balanced_layout(end_piece=EndPiece(end_piece_item_code="FG01SHR-EP-1x1250x260"))
+		pending = self._balanced_layout(end_piece=EndPiece(end_piece_item_code="FG01SHR-EP-1x1250x260"))
+		generated = self._balanced_layout(
+			end_piece=EndPiece(
+				end_piece_item_code="FG01SHR-EP-1x1250x260",
+				generated_end_piece_bom="BOM-EP-001",
+			)
+		)
 
 		self.validators.apply_end_piece_bom_status(no_reuse, no_reuse.end_pieces)
 		self.validators.apply_end_piece_bom_status(pending, pending.end_pieces)
@@ -781,7 +787,7 @@ class TestValidators(SheetCuttingLayoutTestCase):
 		layout = self._balanced_layout(end_piece=end_piece)
 
 		self.validators.validate_sheet_cutting_layout(layout)
-		self.assertEqual(layout.end_piece_bom_status, "Generated")
+		self.assertEqual(layout.end_piece_bom_status, "Pending")
 
 	def test_consumption_tracking_uses_gross_plus_end_piece_weight_and_sets_balanced(self) -> None:
 		layout = self._balanced_layout(end_piece=EndPiece(scrap_item="EP-SCRAP"))

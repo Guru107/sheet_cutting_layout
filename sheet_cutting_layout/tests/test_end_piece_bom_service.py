@@ -14,6 +14,7 @@ class EndPiece:
 	idx: int = 1
 	disposition: str = "Reuse"
 	end_piece_item_code: str | None = None
+	generated_end_piece_bom: str | None = None
 	width_mm: float | None = 100
 	length_mm: float | None = 200
 	weight_kg: float | None = 2.5
@@ -202,6 +203,7 @@ class TestEndPieceBomService(SheetCuttingLayoutTestCase):
 		self.assertEqual(len(result["boms"]), 1)
 		self.assertEqual([doc.doctype for doc in fake_frappe.created_docs], ["BOM"])
 		self.assertEqual(layout.end_pieces[0].end_piece_item_code, existing_code)
+		self.assertEqual(layout.end_pieces[0].generated_end_piece_bom, result["boms"][0])
 		self.assertEqual(layout.end_piece_bom_status, "Generated")
 		self.assertEqual(layout.save_calls, [{"ignore_permissions": True}])
 
@@ -229,6 +231,27 @@ class TestEndPieceBomService(SheetCuttingLayoutTestCase):
 		)
 		self.assertEqual(bom.scrap_items, [])
 		resolve_rate.assert_not_called()
+
+	def test_generation_uses_linked_item_when_end_piece_bom_is_missing(self) -> None:
+		existing_code = "FG01SHR-EP-2x100x200"
+		fake_frappe = self._install_fakes(existing_items={existing_code})
+		row = EndPiece(end_piece_item_code=existing_code, generated_end_piece_bom=None)
+		layout = Layout(end_pieces=[row])
+
+		with (
+			patch.object(self.service, "ensure_end_piece_item") as ensure_item,
+			patch.object(self.service, "resolve_scrap_item_rate", return_value=33.5),
+		):
+			result = self.service.generate_end_piece_boms(layout)
+
+		ensure_item.assert_not_called()
+		self.assertEqual(result["items"], [])
+		self.assertEqual(len(result["boms"]), 1)
+		self.assertEqual([doc.doctype for doc in fake_frappe.created_docs], ["BOM"])
+		self.assertEqual(row.end_piece_item_code, existing_code)
+		self.assertEqual(row.generated_end_piece_bom, result["boms"][0])
+		self.assertEqual(layout.end_piece_bom_status, "Generated")
+		self.assertEqual(layout.save_calls, [{"ignore_permissions": True}])
 
 	def test_generation_normalizes_used_for_finished_part_in_generated_item_code(self) -> None:
 		existing_code = "FG01SHR-EP-2x100x200"
@@ -314,9 +337,13 @@ class TestEndPieceBomService(SheetCuttingLayoutTestCase):
 
 		self.assertEqual(result["items"], [existing_code])
 		self.assertEqual(row.end_piece_item_code, existing_code)
+		self.assertEqual(row.generated_end_piece_bom, result["boms"][0])
 		self.assertEqual(
 			row.db_set_calls,
-			[("end_piece_item_code", existing_code, {"update_modified": False, "notify": False})],
+			[
+				("end_piece_item_code", existing_code, {"update_modified": False, "notify": False}),
+				("generated_end_piece_bom", result["boms"][0], {"update_modified": False, "notify": False}),
+			],
 		)
 		self.assertEqual(
 			layout.db_set_calls,
@@ -484,7 +511,7 @@ class TestEndPieceBomService(SheetCuttingLayoutTestCase):
 				with self.assertRaisesRegex(ValueError, expected_message):
 					self.service.generate_end_piece_boms(Layout(end_pieces=[row]))
 
-	def test_generation_skips_non_reuse_and_already_linked_rows(self) -> None:
+	def test_generation_skips_non_reuse_and_already_generated_rows(self) -> None:
 		existing_code = "FG01SHR-EP-2x100x200"
 		self._install_fakes(existing_items={existing_code})
 		layout = Layout(
@@ -496,7 +523,12 @@ class TestEndPieceBomService(SheetCuttingLayoutTestCase):
 					bom_quantity=0,
 					bom_scrap_quantity_kg=0,
 				),
-				EndPiece(idx=2, disposition="Reuse", end_piece_item_code=existing_code),
+				EndPiece(
+					idx=2,
+					disposition="Reuse",
+					end_piece_item_code=existing_code,
+					generated_end_piece_bom="BOM-EXISTING",
+				),
 				EndPiece(idx=3, disposition="Reuse", end_piece_item_code=None),
 			]
 		)
@@ -507,12 +539,18 @@ class TestEndPieceBomService(SheetCuttingLayoutTestCase):
 		self.assertEqual(result["items"], [existing_code])
 		self.assertEqual(len(result["boms"]), 1)
 		self.assertEqual(layout.end_pieces[1].end_piece_item_code, existing_code)
+		self.assertEqual(layout.end_pieces[1].generated_end_piece_bom, "BOM-EXISTING")
 		self.assertEqual(layout.end_pieces[2].end_piece_item_code, existing_code)
+		self.assertEqual(layout.end_pieces[2].generated_end_piece_bom, result["boms"][0])
 
-	def test_generation_is_noop_when_all_reuse_rows_are_already_linked(self) -> None:
+	def test_generation_is_noop_when_all_reuse_rows_already_have_boms(self) -> None:
 		existing_code = "FG01SHR-EP-2x100x200"
 		self._install_fakes(existing_items={existing_code})
-		layout = Layout(end_pieces=[EndPiece(end_piece_item_code=existing_code)])
+		layout = Layout(
+			end_pieces=[
+				EndPiece(end_piece_item_code=existing_code, generated_end_piece_bom="BOM-EXISTING")
+			]
+		)
 
 		result = self.service.generate_end_piece_boms(layout)
 

@@ -20,6 +20,7 @@ class EndPieceRow(Protocol):
 	idx: int
 	disposition: str
 	end_piece_item_code: str | None
+	generated_end_piece_bom: str | None
 	width_mm: float | None
 	length_mm: float | None
 	weight_kg: float | None
@@ -50,17 +51,23 @@ def generate_end_piece_boms(layout: LayoutDocument) -> dict[str, list[str]]:
 	generated_items: list[str] = []
 	generated_boms: list[str] = []
 	reuse_rows = _reuse_end_pieces(layout)
-	pending_rows = [row for row in reuse_rows if _is_missing(getattr(row, "end_piece_item_code", None))]
+	pending_rows = [
+		row for row in reuse_rows if _is_missing(getattr(row, "generated_end_piece_bom", None))
+	]
 
 	for row in pending_rows:
 		_validate_pending_row(layout, row)
-		item_code = ensure_end_piece_item(layout, row)
+		item_code = _clean(getattr(row, "end_piece_item_code", None))
+		if not item_code:
+			item_code = ensure_end_piece_item(layout, row)
+			row.end_piece_item_code = item_code
+			generated_items.append(item_code)
 		bom_name = _create_end_piece_bom(layout, row, item_code)
-		row.end_piece_item_code = item_code
-		generated_items.append(item_code)
+		if hasattr(row, "generated_end_piece_bom"):
+			row.generated_end_piece_bom = bom_name
 		generated_boms.append(bom_name)
 
-	if generated_items:
+	if generated_boms:
 		_apply_end_piece_bom_status(layout)
 		_persist_generated_links(layout, pending_rows)
 
@@ -162,6 +169,13 @@ def _persist_generated_links(layout: LayoutDocument, rows: Sequence[EndPieceRow]
 				getattr(row, "end_piece_item_code", None),
 				update_modified=False,
 			)
+			if hasattr(row, "generated_end_piece_bom"):
+				_db_set(
+					row,
+					"generated_end_piece_bom",
+					getattr(row, "generated_end_piece_bom", None),
+					update_modified=False,
+				)
 		_db_set(
 			layout,
 			"end_piece_bom_status",
