@@ -44,6 +44,7 @@ class FinishedPart:
 @dataclass
 class EndPiece:
 	end_piece_item_code: str | None = None
+	generated_end_piece_item: str | None = None
 	generated_end_piece_bom: str | None = None
 	weight_kg: float | None = 2.5545
 	qty_per_sheet: float | None = 1
@@ -753,6 +754,7 @@ class TestValidators(SheetCuttingLayoutTestCase):
 		end_piece = ExistingEndPiece(
 			previous_code="FG01SHR-EP-1x1250x260",
 			current_code="FG01SHR-EP-1x1250x261",
+			generated_end_piece_item="FG01SHR-EP-1x1250x260",
 			weight_kg=2.5545,
 			qty_per_sheet=1,
 			width_mm=1250,
@@ -768,6 +770,26 @@ class TestValidators(SheetCuttingLayoutTestCase):
 
 		with self.assertRaisesRegex(ValidationError, "End piece item code cannot be changed"):
 			self.validators.validate_sheet_cutting_layout(layout)
+
+	def test_end_piece_item_code_can_change_before_generation(self) -> None:
+		end_piece = ExistingEndPiece(
+			previous_code="FG01SHR-EP-1x1250x260",
+			current_code="FG01SHR-EP-1x1250x261",
+			weight_kg=2.5545,
+			qty_per_sheet=1,
+			width_mm=1250,
+			length_mm=260,
+			disposition="Reuse",
+			used_for_finished_part="FG01SHR",
+			bom_quantity=1,
+			net_weight_per_part_kg=2.5545,
+			bom_scrap_quantity_kg=0,
+			scrap_item="",
+		)
+		layout = self._balanced_layout(end_piece=end_piece)
+
+		self.validators.validate_sheet_cutting_layout(layout)
+		self.assertEqual(layout.end_piece_bom_status, "Pending")
 
 	def test_end_piece_item_code_can_be_set_when_previous_value_is_empty(self) -> None:
 		end_piece = ExistingEndPiece(

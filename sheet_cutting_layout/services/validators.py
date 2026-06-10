@@ -473,10 +473,14 @@ def _validate_end_piece_item_code_is_locked(end_piece: EndPieceRow) -> None:
 	has_value_changed = getattr(end_piece, "has_value_changed", None)
 	if not callable(has_value_changed) or not has_value_changed("end_piece_item_code"):
 		return
-	previous_value_getter = getattr(end_piece, "get_db_value", None)
-	previous_value = previous_value_getter("end_piece_item_code") if callable(previous_value_getter) else None
-	if not _is_missing(previous_value):
+	if _has_generated_end_piece_records(end_piece):
 		frappe.throw(_("End piece item code cannot be changed after generated records exist"))
+
+
+def _has_generated_end_piece_records(end_piece: EndPieceRow) -> bool:
+	return not _is_missing(getattr(end_piece, "generated_end_piece_item", None)) or not _is_missing(
+		getattr(end_piece, "generated_end_piece_bom", None)
+	)
 
 
 def _validate_complete_sheet_consumption(
