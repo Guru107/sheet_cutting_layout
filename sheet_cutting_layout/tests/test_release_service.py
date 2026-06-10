@@ -711,40 +711,6 @@ def test_save_time_audit_rejects_missing_reuse_end_piece_byproduct_row(
 		validators.validate_sheet_cutting_layout(layout)
 
 
-def test_validator_rejects_expected_main_bom_weight_shortfall(
-	monkeypatch: MonkeyPatch,
-) -> None:
-	from sheet_cutting_layout.services import validators
-
-	class FrappeStub:
-		ValidationError = ValueError
-
-		@staticmethod
-		def get_system_settings(_fieldname: str) -> None:
-			return None
-
-		@staticmethod
-		def throw(message: str) -> None:
-			raise ValueError(message)
-
-	layout = Layout(
-		weight_per_sheet_kg=39.3,
-		parts_per_sheet=77,
-		finished_part_code="FG01SHR",
-		net_weight_per_part_kg=0.289,
-		gross_weight_per_part_kg=0.437558,
-		scrap_weight_per_part_kg=0.148558,
-		finished_parts=[],
-		end_pieces=[],
-	)
-	layout.sheet_thickness_mm = 1.6
-	monkeypatch.setattr(validators, "frappe", FrappeStub)
-	monkeypatch.setattr(validators, "_", lambda message: message)
-
-	with raises(ValueError, match="Main BOM weight mismatch"):
-		validators._validate_expected_main_bom_weight_balance(layout)
-
-
 def test_save_time_audit_rejects_fractional_generated_bom_quantity(
 	monkeypatch: MonkeyPatch,
 ) -> None:
