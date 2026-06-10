@@ -11,6 +11,7 @@ from sheet_cutting_layout.services.bom_service import (
 	build_weight_split_bom_rows,
 	resolve_scrap_item_rate,
 )
+from sheet_cutting_layout.services.end_piece_item_service import ensure_end_piece_item
 
 _ = frappe._
 
@@ -53,7 +54,7 @@ def generate_end_piece_boms(layout: LayoutDocument) -> dict[str, list[str]]:
 
 	for row in pending_rows:
 		_validate_pending_row(layout, row)
-		item_code = _ensure_end_piece_item(layout, row)
+		item_code = ensure_end_piece_item(layout, row)
 		bom_name = _create_end_piece_bom(layout, row, item_code)
 		row.end_piece_item_code = item_code
 		generated_items.append(item_code)
@@ -64,59 +65,6 @@ def generate_end_piece_boms(layout: LayoutDocument) -> dict[str, list[str]]:
 		_persist_generated_links(layout, pending_rows)
 
 	return {"items": generated_items, "boms": generated_boms}
-
-
-def _ensure_end_piece_item(layout: LayoutDocument, row: EndPieceRow) -> str:
-	item_code = _derived_item_code(layout, row)
-	if _item_exists(item_code):
-		return item_code
-
-	weight_kg = getattr(row, "weight_kg", None)
-	if weight_kg is None or weight_kg <= 0:
-		_throw(_("Row {0}: End piece weight must be greater than zero").format(getattr(row, "idx", 0)))
-
-	item = frappe.new_doc("Item")
-	item.item_code = item_code
-	item.item_name = item_code
-	item.description = _build_item_description(layout, row)
-	item.item_group = _get_value("Item", getattr(layout, "raw_material_item", None), "item_group")
-	item.valuation_rate = _get_value("Item", getattr(layout, "raw_material_item", None), "valuation_rate")
-	item.gst_hsn_code = _get_value(
-		"Item", _clean(getattr(row, "used_for_finished_part", None)), "gst_hsn_code"
-	)
-	item.stock_uom = "Kg"
-	item.is_stock_item = 1
-	item.disabled = 0
-	_append_app_created_item_uoms(item, stock_uom=item.stock_uom, weight_kg=weight_kg)
-	insert_error_types = _item_insert_exception_types()
-	if insert_error_types:
-		try:
-			item.insert(ignore_permissions=True)
-		except insert_error_types as error:
-			_log_item_insert_error(item_code=item_code, row=row, error=error)
-			error_message = str(error)
-			_throw(
-				_("Row {0}: Failed to create end piece item '{1}': {2}").format(
-					getattr(row, "idx", 0),
-					item_code,
-					error_message,
-				)
-			)
-	else:
-		item.insert(ignore_permissions=True)
-	return item_code
-
-
-def _append_app_created_item_uoms(item: object, *, stock_uom: str, weight_kg: float) -> None:
-	if stock_uom == "Kg":
-		item.append("uoms", {"uom": "Kg", "conversion_factor": 1})
-		item.append("uoms", {"uom": "Nos", "conversion_factor": weight_kg})
-		return
-	if stock_uom == "Nos":
-		item.append("uoms", {"uom": "Nos", "conversion_factor": 1})
-		item.append("uoms", {"uom": "Kg", "conversion_factor": 1 / weight_kg})
-		return
-	_throw(_("Unsupported stock UOM for app-created Item: {0}").format(stock_uom))
 
 
 def _create_end_piece_bom(layout: LayoutDocument, row: EndPieceRow, item_code: str) -> str:
@@ -199,80 +147,6 @@ def _reuse_end_pieces(layout: LayoutDocument) -> list[EndPieceRow]:
 
 def _is_reuse(row: EndPieceRow) -> bool:
 	return str(getattr(row, "disposition", "") or "").strip().lower() == "reuse"
-
-
-def _derived_item_code(layout: LayoutDocument, row: EndPieceRow) -> str:
-	try:
-		item_code = validators.derive_end_piece_item_code(
-			used_for_finished_part=getattr(row, "used_for_finished_part", None),
-			thickness_mm=getattr(layout, "sheet_thickness_mm", None),
-			width_mm=getattr(row, "width_mm", None),
-			length_mm=getattr(row, "length_mm", None),
-		)
-	except ValueError as error:
-		_throw(_("Row {0}: {1}").format(getattr(row, "idx", 0), str(error)))
-
-	max_item_code_length = 140
-	if len(item_code) > max_item_code_length:
-		_throw(
-			_("Row {0}: Generated end piece item code for '{1}' exceeds {2} characters").format(
-				getattr(row, "idx", 0),
-				_clean(getattr(row, "used_for_finished_part", None)),
-				max_item_code_length,
-			)
-		)
-	return item_code
-
-
-def _build_item_description(layout: LayoutDocument, row: EndPieceRow) -> str:
-	raw_material_item = _clean(getattr(layout, "raw_material_item", None)) or "Unknown raw material"
-	thickness_mm = validators.format_code_number(getattr(layout, "sheet_thickness_mm", 0))
-	width_mm = validators.format_code_number(getattr(row, "width_mm", 0))
-	length_mm = validators.format_code_number(getattr(row, "length_mm", 0))
-	return f"Derived from {raw_material_item}; End Piece {thickness_mm}x{width_mm}x{length_mm} mm"
-
-
-def _item_insert_exception_types() -> tuple[type[Exception], ...]:
-	exception_types: list[type[Exception]] = []
-	for attr in ("ValidationError", "DuplicateEntryError"):
-		error_type = getattr(frappe, attr, None)
-		if isinstance(error_type, type) and issubclass(error_type, Exception):
-			exception_types.append(error_type)
-	return tuple(dict.fromkeys(exception_types))
-
-
-def _log_item_insert_error(*, item_code: str, row: EndPieceRow, error: Exception) -> None:
-	log_error = getattr(frappe, "log_error", None)
-	if not callable(log_error):
-		return
-	get_traceback = getattr(frappe, "get_traceback", None)
-	traceback = get_traceback() if callable(get_traceback) else str(error)
-	log_error(
-		message=traceback,
-		title=f"Row {getattr(row, 'idx', 0)}: Failed to create end piece item '{item_code}'",
-	)
-
-
-def _item_exists(item_code: str) -> bool:
-	db = getattr(frappe, "db", None)
-	exists = getattr(db, "exists", None)
-	if callable(exists):
-		return bool(exists("Item", item_code))
-	db_exists = getattr(frappe, "db_exists", None)
-	if callable(db_exists):
-		return bool(db_exists("Item", item_code))
-	return False
-
-
-def _get_value(doctype: str, name: str | None, fieldname: str) -> object:
-	db = getattr(frappe, "db", None)
-	get_value = getattr(db, "get_value", None)
-	if callable(get_value):
-		return get_value(doctype, name, fieldname)
-	get_value = getattr(frappe, "get_value", None)
-	if callable(get_value):
-		return get_value(doctype, name, fieldname)
-	return None
 
 
 def _apply_end_piece_bom_status(layout: LayoutDocument) -> None:

@@ -153,6 +153,7 @@ class TestEndPieceBomService(SheetCuttingLayoutTestCase):
 	def setUp(self) -> None:
 		super().setUp()
 		self.service = importlib.import_module("sheet_cutting_layout.services.end_piece_bom_service")
+		self.item_service = importlib.import_module("sheet_cutting_layout.services.end_piece_item_service")
 
 	def _install_fakes(
 		self,
@@ -170,10 +171,16 @@ class TestEndPieceBomService(SheetCuttingLayoutTestCase):
 		)
 		self.frappe_patch = patch.object(self.service, "frappe", fake_frappe)
 		self.translation_patch = patch.object(self.service, "_", lambda message: message)
+		self.item_frappe_patch = patch.object(self.item_service, "frappe", fake_frappe)
+		self.item_translation_patch = patch.object(self.item_service, "_", lambda message: message)
 		self.frappe_patch.start()
 		self.translation_patch.start()
+		self.item_frappe_patch.start()
+		self.item_translation_patch.start()
 		self.addCleanup(self.frappe_patch.stop)
 		self.addCleanup(self.translation_patch.stop)
+		self.addCleanup(self.item_frappe_patch.stop)
+		self.addCleanup(self.item_translation_patch.stop)
 		return fake_frappe
 
 	def test_generation_requires_released_layout(self) -> None:

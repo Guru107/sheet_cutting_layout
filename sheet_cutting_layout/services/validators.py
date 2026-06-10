@@ -5,6 +5,10 @@ from collections.abc import Sequence
 from typing import Protocol
 
 from sheet_cutting_layout.services.bom_service import BomItemRow, expected_bom_consumption_from_layout
+from sheet_cutting_layout.services.end_piece_item_service import (
+	derive_end_piece_item_code,
+	format_code_number,
+)
 
 try:
 	import frappe
@@ -208,27 +212,6 @@ def apply_end_piece_reuse_weight_formulas(end_pieces: Sequence[EndPieceRow]) -> 
 		scrap_weight = _flt(gross_weight - _flt(net_weight))
 		end_piece.scrap_weight_per_part_kg = scrap_weight
 		end_piece.bom_scrap_quantity_kg = _flt(scrap_weight * _flt(bom_quantity))
-
-
-def derive_end_piece_item_code(
-	*,
-	used_for_finished_part: str | None,
-	thickness_mm: float | None,
-	width_mm: float | None,
-	length_mm: float | None,
-) -> str:
-	prefix = str(used_for_finished_part or "").strip().upper()
-	if _is_missing(prefix):
-		raise ValueError("Used for finished part is required")
-	thickness = _coerce_positive_number(
-		thickness_mm, error_message="End piece thickness must be greater than zero"
-	)
-	width = _coerce_positive_number(width_mm, error_message="End piece width must be greater than zero")
-	length = _coerce_positive_number(length_mm, error_message="End piece length must be greater than zero")
-	return (
-		f"{prefix}-EP-"
-		f"{format_code_number(thickness)}x{format_code_number(width)}x{format_code_number(length)}"
-	)
 
 
 def calculate_sheet_weight_kg(
@@ -447,12 +430,7 @@ def _validate_scrap_item_is_not_generated_end_piece_item(
 	if _is_missing(scrap_item):
 		return
 	try:
-		generated_item_code = derive_end_piece_item_code(
-			used_for_finished_part=getattr(end_piece, "used_for_finished_part", None),
-			thickness_mm=getattr(layout, "sheet_thickness_mm", None),
-			width_mm=getattr(end_piece, "width_mm", None),
-			length_mm=getattr(end_piece, "length_mm", None),
-		)
+		generated_item_code = derive_end_piece_item_code(layout, end_piece)
 	except ValueError:
 		return
 	if _same_item_code(scrap_item, generated_item_code):
@@ -672,20 +650,6 @@ def _sheet_consumption_flt(value: float | int | str | None) -> float:
 
 def _format_sheet_consumption_weight(value: float) -> str:
 	return f"{_sheet_consumption_flt(value):.{SHEET_CONSUMPTION_PRECISION}f}"
-
-
-def _coerce_positive_number(value: float | int | str | None, *, error_message: str) -> float:
-	try:
-		number = float(value)
-	except (TypeError, ValueError):
-		raise ValueError(error_message) from None
-	if number <= 0:
-		raise ValueError(error_message)
-	return number
-
-
-def format_code_number(value: float | int | str) -> str:
-	return f"{float(value):.6f}".rstrip("0").rstrip(".")
 
 
 def _consumption_status(leftover_weight: float) -> str:
