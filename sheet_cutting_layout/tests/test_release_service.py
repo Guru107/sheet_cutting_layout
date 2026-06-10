@@ -62,6 +62,15 @@ class EndPiece:
 	disposition: str = "Reuse"
 	scrap_item: str | None = None
 	end_piece_item_code: str | None = None
+	used_for_finished_part: str | None = "FG002SHR"
+	width_mm: float | None = 1250
+	length_mm: float | None = 179
+	idx: int = 1
+	bom_quantity: float | None = 1
+	net_weight_per_part_kg: float | None = 0
+	gross_weight_per_part_kg: float | None = 0
+	scrap_weight_per_part_kg: float | None = 0
+	bom_scrap_quantity_kg: float | None = 0
 
 
 @dataclass
@@ -1497,6 +1506,100 @@ def test_frappe_bom_insert_wraps_scrap_rate_resolution_error(
 		),
 	):
 		release_service._insert_frappe_bom(bom)
+
+
+def test_default_release_creates_reuse_end_piece_byproduct_row(
+	monkeypatch: MonkeyPatch,
+) -> None:
+	from sheet_cutting_layout.services import release_service
+
+	created_boms: list[object] = []
+
+	class FrappeBom:
+		def __init__(self) -> None:
+			self.name = ""
+			self.items: list[dict[str, object]] = []
+			self.scrap_items: list[dict[str, object]] = []
+			self.flags = type("Flags", (), {})()
+
+		def append(self, fieldname: str, row: dict[str, object]) -> None:
+			getattr(self, fieldname).append(row)
+
+		def insert(self) -> None:
+			self.name = self.name or "BOM-FG01SHR-001"
+			created_boms.append(self)
+
+		def submit(self) -> None:
+			self.docstatus = 1
+
+	class FrappeStub:
+		@staticmethod
+		def new_doc(doctype: str) -> FrappeBom:
+			assert doctype == "BOM"
+			return FrappeBom()
+
+		@staticmethod
+		def throw(message: str) -> None:
+			raise ValueError(message)
+
+	layout = Layout(
+		name="002-R2",
+		weight_per_sheet_kg=39.3,
+		parts_per_sheet=77,
+		finished_part_code="FG01SHR",
+		net_weight_per_part_kg=0.289,
+		gross_weight_per_part_kg=0.473846,
+		scrap_weight_per_part_kg=0.184846,
+		finished_parts=[],
+		end_pieces=[
+			EndPiece(
+				weight_kg=2.81388,
+				disposition="Reuse",
+				used_for_finished_part="FG002SHR",
+				width_mm=1250,
+				length_mm=179,
+			)
+		],
+	)
+	layout.company = "Test Company"
+	layout.sheet_thickness_mm = 1.6
+
+	def fake_ensure(_layout: object, row: object) -> str:
+		item_code = "FG002SHR-EP-1.6x1250x179"
+		row.end_piece_item_code = item_code
+		return item_code
+
+	monkeypatch.setattr(release_service, "frappe", FrappeStub)
+	monkeypatch.setattr(release_service, "ensure_end_piece_item", fake_ensure)
+	monkeypatch.setattr(release_service, "resolve_scrap_item_rate", lambda **_kwargs: 62.0)
+
+	result = release_service.release_layout(
+		layout,
+		validators=[lambda _layout: None],
+		release_context=release_service.ReleaseContext(layouts=(), boms=[]),
+	)
+
+	assert result.generated_boms[0].name == "BOM-002-R2-001-FG01SHR"
+	assert layout.end_pieces[0].end_piece_item_code == "FG002SHR-EP-1.6x1250x179"
+	assert len(created_boms) == 1
+	assert created_boms[0].scrap_items == [
+		{
+			"item_code": "PROCESSSCRAP001",
+			"stock_qty": 14.233142,
+			"qty": 14.233142,
+			"uom": "Kg",
+			"rate": 62.0,
+		},
+		{
+			"item_code": "FG002SHR-EP-1.6x1250x179",
+			"stock_qty": 2.81388,
+			"qty": 2.81388,
+			"uom": "Kg",
+			"rate": 62.0,
+		},
+	]
+	assert round(layout.finished_parts[0].scrap_weight_kg, 6) == 17.047022
+	assert layout.finished_parts[0].raw_material_weight_kg == 39.3
 
 
 def test_get_release_context_requires_frappe_outside_tests(monkeypatch: MonkeyPatch) -> None:

@@ -10,6 +10,7 @@ from sheet_cutting_layout.services.bom_service import (
 	build_bom_from_layout_row,
 	resolve_scrap_item_rate,
 )
+from sheet_cutting_layout.services.end_piece_item_service import ensure_end_piece_item
 from sheet_cutting_layout.services.validators import validate_sheet_cutting_layout
 from sheet_cutting_layout.services.versioning import finalize_new_revision_release
 
@@ -213,7 +214,11 @@ def _default_bom_document_factory(
 	index: int,
 	bom_name_factory: Callable[[ReleaseLayoutDocument, FinishedPartRow, int], str] | None,
 ) -> BomDocument:
-	bom = build_bom_from_layout_row(layout, finished_part)  # type: ignore[arg-type]
+	bom = build_bom_from_layout_row(
+		layout,
+		finished_part,
+		end_piece_item_code_resolver=_ensure_and_link_end_piece_item,
+	)  # type: ignore[arg-type]
 	bom.name = (
 		bom_name_factory(layout, finished_part, index)
 		if bom_name_factory is not None
@@ -226,6 +231,13 @@ def _default_bom_document_factory(
 		raise RuntimeError("Frappe is required to persist generated BOM documents")
 
 	return _insert_frappe_bom(bom)
+
+
+def _ensure_and_link_end_piece_item(layout: ReleaseLayoutDocument, row: object) -> str:
+	item_code = ensure_end_piece_item(layout, row)  # type: ignore[arg-type]
+	if hasattr(row, "end_piece_item_code"):
+		setattr(row, "end_piece_item_code", item_code)
+	return item_code
 
 
 def _insert_frappe_bom(bom: BomDocument) -> BomDocument:
