@@ -7,6 +7,7 @@ from typing import Protocol
 from sheet_cutting_layout.services.bom_service import BomItemRow, expected_bom_consumption_from_layout
 from sheet_cutting_layout.services.end_piece_item_service import (
 	derive_end_piece_item_code,
+	format_code_number,
 )
 
 try:
