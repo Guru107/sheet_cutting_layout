@@ -1564,10 +1564,8 @@ def test_default_release_creates_reuse_end_piece_byproduct_row(
 	layout.company = "Test Company"
 	layout.sheet_thickness_mm = 1.6
 
-	def fake_ensure(_layout: object, row: object) -> str:
-		item_code = "FG002SHR-EP-1.6x1250x179"
-		row.end_piece_item_code = item_code
-		return item_code
+	def fake_ensure(_layout: object, _row: object) -> str:
+		return "FG002SHR-EP-1.6x1250x179"
 
 	monkeypatch.setattr(release_service, "frappe", FrappeStub)
 	monkeypatch.setattr(release_service, "ensure_end_piece_item", fake_ensure)
@@ -1600,6 +1598,110 @@ def test_default_release_creates_reuse_end_piece_byproduct_row(
 	]
 	assert round(layout.finished_parts[0].scrap_weight_kg, 6) == 17.047022
 	assert layout.finished_parts[0].raw_material_weight_kg == 39.3
+
+
+def test_default_release_persists_generated_end_piece_item_code_on_saved_layout(
+	monkeypatch: MonkeyPatch,
+) -> None:
+	from sheet_cutting_layout.services import release_service
+
+	created_boms: list[object] = []
+
+	class SavableLayout(Layout):
+		def __init__(self, **kwargs: object) -> None:
+			super().__init__(**kwargs)
+			self.save_calls = 0
+
+		def save(self, **kwargs: object) -> None:
+			assert kwargs == {"ignore_permissions": True}
+			self.save_calls += 1
+
+	class FrappeBom:
+		def __init__(self) -> None:
+			self.name = ""
+			self.items: list[dict[str, object]] = []
+			self.scrap_items: list[dict[str, object]] = []
+			self.flags = type("Flags", (), {})()
+
+		def append(self, fieldname: str, row: dict[str, object]) -> None:
+			getattr(self, fieldname).append(row)
+
+		def insert(self) -> None:
+			self.name = self.name or "BOM-FG01SHR-001"
+			created_boms.append(self)
+
+		def submit(self) -> None:
+			self.docstatus = 1
+
+	class FrappeStub:
+		@staticmethod
+		def new_doc(doctype: str) -> FrappeBom:
+			assert doctype == "BOM"
+			return FrappeBom()
+
+		@staticmethod
+		def throw(message: str) -> None:
+			raise ValueError(message)
+
+	layout = Layout(
+		name="002-R2",
+		weight_per_sheet_kg=39.3,
+		parts_per_sheet=77,
+		finished_part_code="FG01SHR",
+		net_weight_per_part_kg=0.289,
+		gross_weight_per_part_kg=0.473846,
+		scrap_weight_per_part_kg=0.184846,
+		finished_parts=[],
+		end_pieces=[
+			EndPiece(
+				weight_kg=2.81388,
+				disposition="Reuse",
+				used_for_finished_part="FG002SHR",
+				width_mm=1250,
+				length_mm=179,
+			)
+		],
+	)
+	layout.company = "Test Company"
+	layout.sheet_thickness_mm = 1.6
+
+	persisted_layout = SavableLayout(
+		name=layout.name,
+		weight_per_sheet_kg=layout.weight_per_sheet_kg,
+		parts_per_sheet=layout.parts_per_sheet,
+		finished_part_code=layout.finished_part_code,
+		net_weight_per_part_kg=layout.net_weight_per_part_kg,
+		gross_weight_per_part_kg=layout.gross_weight_per_part_kg,
+		scrap_weight_per_part_kg=layout.scrap_weight_per_part_kg,
+		finished_parts=[],
+		end_pieces=[
+			EndPiece(
+				weight_kg=2.81388,
+				disposition="Reuse",
+				used_for_finished_part="FG002SHR",
+				width_mm=1250,
+				length_mm=179,
+			)
+		],
+	)
+	assert persisted_layout is not layout
+
+	def fake_ensure(_layout: object, _row: object) -> str:
+		return "FG002SHR-EP-1.6x1250x179"
+
+	monkeypatch.setattr(release_service, "frappe", FrappeStub)
+	monkeypatch.setattr(release_service, "ensure_end_piece_item", fake_ensure)
+	monkeypatch.setattr(release_service, "resolve_scrap_item_rate", lambda **_kwargs: 62.0)
+
+	release_service.release_layout(
+		layout,
+		validators=[lambda _layout: None],
+		release_context=release_service.ReleaseContext(layouts=(persisted_layout,), boms=[]),
+	)
+
+	assert layout.end_pieces[0].end_piece_item_code == "FG002SHR-EP-1.6x1250x179"
+	assert persisted_layout.save_calls == 1
+	assert persisted_layout.end_pieces[0].end_piece_item_code == "FG002SHR-EP-1.6x1250x179"
 
 
 def test_get_release_context_requires_frappe_outside_tests(monkeypatch: MonkeyPatch) -> None:
