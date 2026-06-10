@@ -117,6 +117,62 @@ def test_reuse_end_pieces_create_main_bom_byproduct_rows() -> None:
 	]
 
 
+def test_existing_reuse_end_piece_item_code_wins_over_resolver() -> None:
+	bom_service = import_bom_service()
+
+	def fail_resolver(_layout: object, _row: object) -> str:
+		raise AssertionError("resolver should not run when row is already linked")
+
+	bom = bom_service.build_bom_from_layout_row(
+		Layout(end_pieces=[EndPiece(weight_kg=2.5, end_piece_item_code=" LINKED-EP ")]),
+		FinishedPart(),
+		end_piece_item_code_resolver=fail_resolver,
+	)
+
+	assert [(row.item_code, row.qty, row.row_type) for row in bom.scrap_items] == [
+		("LINKED-EP", 2.5, "end_piece_byproduct"),
+	]
+
+
+def test_reuse_end_piece_resolver_runs_before_pure_derivation() -> None:
+	bom_service = import_bom_service()
+
+	def resolver(_layout: object, _row: object) -> str:
+		return "RESOLVED-EP"
+
+	bom = bom_service.build_bom_from_layout_row(
+		Layout(sheet_thickness_mm=None, end_pieces=[EndPiece(weight_kg=2.5)]),
+		FinishedPart(),
+		end_piece_item_code_resolver=resolver,
+	)
+
+	assert [(row.item_code, row.qty, row.row_type) for row in bom.scrap_items] == [
+		("RESOLVED-EP", 2.5, "end_piece_byproduct"),
+	]
+
+
+def test_reuse_end_piece_resolver_must_return_item_code() -> None:
+	bom_service = import_bom_service()
+
+	for resolver_result in ("   ", None):
+		created_boms = []
+
+		def capture_bom(item: str) -> object:
+			bom = bom_service.BomDocument(item=item)
+			created_boms.append(bom)
+			return bom
+
+		with raises(ValueError, match="Reusable end piece requires generated item code"):
+			bom_service.build_bom_from_layout_row(
+				Layout(end_pieces=[EndPiece(weight_kg=2.5)]),
+				FinishedPart(),
+				document_factory=capture_bom,
+				end_piece_item_code_resolver=lambda _layout, _row: resolver_result,
+			)
+
+		assert created_boms[0].scrap_items == []
+
+
 def test_scrap_endpiece_creates_row_level_scrap_item_separate_from_process_scrap() -> None:
 	bom_service = import_bom_service()
 
