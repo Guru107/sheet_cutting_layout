@@ -23,6 +23,10 @@ class EndPiece:
 	qty_per_sheet: float = 1
 	disposition: str = "Reuse"
 	scrap_item: str | None = None
+	end_piece_item_code: str | None = None
+	used_for_finished_part: str | None = "FG002SHR"
+	width_mm: float | None = 1250
+	length_mm: float | None = 179
 
 
 @dataclass
@@ -36,6 +40,7 @@ class Layout:
 	gross_weight_per_part_kg: float = 12.5
 	scrap_weight_per_part_kg: float = 0
 	parts_per_sheet: int = 4
+	sheet_thickness_mm: float | None = 1.6
 	end_pieces: list[EndPiece] = field(default_factory=list)
 
 
@@ -76,20 +81,40 @@ def test_process_scrap_row_is_included_when_scrap_weight_is_positive() -> None:
 	assert bom.scrap_items[0].row_type == "process_scrap"
 
 
-def test_reuse_end_pieces_do_not_create_shearing_bom_scrap_rows() -> None:
+def test_process_scrap_and_reuse_end_piece_byproduct_rows_are_both_included() -> None:
 	bom_service = import_bom_service()
 
 	bom = bom_service.build_bom_from_layout_row(
 		Layout(
-			end_pieces=[
-				EndPiece(weight_kg=3, qty_per_sheet=2),
-				EndPiece(weight_kg=1.5, qty_per_sheet=4),
-			]
+			process_scrap_item="MSScrap",
+			sheet_thickness_mm=1.6,
+			end_pieces=[EndPiece(weight_kg=2.81388, used_for_finished_part="FG002SHR")],
 		),
-		FinishedPart(parts_per_sheet=6),
+		FinishedPart(parts_per_sheet=77, scrap_weight_per_part_kg=0.184846),
 	)
 
-	assert bom.scrap_items == []
+	assert [(row.item_code, row.qty, row.row_type) for row in bom.scrap_items] == [
+		("MSScrap", 14.233142, "process_scrap"),
+		("FG002SHR-EP-1.6x1250x179", 2.81388, "end_piece_byproduct"),
+	]
+
+
+def test_reuse_end_pieces_create_main_bom_byproduct_rows() -> None:
+	bom_service = import_bom_service()
+
+	bom = bom_service.build_bom_from_layout_row(
+		Layout(
+			sheet_thickness_mm=1.6,
+			end_pieces=[
+				EndPiece(weight_kg=2.81388, used_for_finished_part="FG002SHR"),
+			],
+		),
+		FinishedPart(parts_per_sheet=77),
+	)
+
+	assert [(row.item_code, row.qty, row.uom, row.row_type) for row in bom.scrap_items] == [
+		("FG002SHR-EP-1.6x1250x179", 2.81388, "Kg", "end_piece_byproduct"),
+	]
 
 
 def test_scrap_endpiece_creates_row_level_scrap_item_separate_from_process_scrap() -> None:
@@ -261,6 +286,14 @@ class TestBomService(SheetCuttingLayoutTestCase):
 			weight_per_sheet_kg=39.3,
 			gross_weight_per_part_kg=0.473846,
 			scrap_weight_per_part_kg=0.184846,
+			end_pieces=[
+				EndPiece(
+					weight_kg=2.81388,
+					used_for_finished_part="FG002SHR",
+					width_mm=1250,
+					length_mm=179,
+				)
+			],
 		)
 
 		expected = bom_service.expected_bom_consumption_from_layout(layout)
@@ -273,9 +306,42 @@ class TestBomService(SheetCuttingLayoutTestCase):
 		)
 		self.assertEqual(
 			[(row.item_code, row.qty, row.row_type) for row in expected.scrap_rows],
-			[("PROCESS-SCRAP", 14.233142, "process_scrap")],
+			[
+				("PROCESS-SCRAP", 14.233142, "process_scrap"),
+				("FG002SHR-EP-1.6x1250x179", 2.81388, "end_piece_byproduct"),
+			],
 		)
-		self.assertAlmostEqual(expected.total_scrap_qty, 14.233142, places=6)
+		self.assertAlmostEqual(expected.total_scrap_qty, 17.047022, places=6)
+
+	def test_expected_main_bom_weight_balance_includes_reuse_end_piece_byproducts(self) -> None:
+		bom_service = import_bom_service()
+		layout = Layout(
+			raw_material_item="RM001",
+			process_scrap_item="MSScrap",
+			finished_part_code="FG01SHR",
+			net_weight_per_part_kg=0.289,
+			parts_per_sheet=77,
+			no_of_strips=11,
+			weight_per_sheet_kg=39.3,
+			gross_weight_per_part_kg=0.473846,
+			scrap_weight_per_part_kg=0.184846,
+			sheet_thickness_mm=1.6,
+			end_pieces=[
+				EndPiece(
+					weight_kg=2.81388,
+					used_for_finished_part="FG002SHR",
+					width_mm=1250,
+					length_mm=179,
+				)
+			],
+		)
+
+		balance = bom_service.expected_main_bom_weight_balance(layout)
+
+		self.assertAlmostEqual(balance.raw_material_weight_kg, 39.3, places=6)
+		self.assertAlmostEqual(balance.finished_part_weight_kg, 22.253, places=6)
+		self.assertAlmostEqual(balance.scrap_and_byproduct_weight_kg, 17.047022, places=6)
+		self.assertAlmostEqual(balance.difference_kg, -0.000022, places=6)
 
 	def test_bom_invariants_hold_for_representative_layouts(self) -> None:
 		bom_service = import_bom_service()
