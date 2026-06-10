@@ -7,7 +7,6 @@ from typing import Protocol
 from sheet_cutting_layout.services.bom_service import BomItemRow, expected_bom_consumption_from_layout
 from sheet_cutting_layout.services.end_piece_item_service import (
 	derive_end_piece_item_code,
-	format_code_number,
 )
 
 try:
@@ -430,7 +429,12 @@ def _validate_scrap_item_is_not_generated_end_piece_item(
 	if _is_missing(scrap_item):
 		return
 	try:
-		generated_item_code = derive_end_piece_item_code(layout, end_piece)
+		generated_item_code = derive_end_piece_item_code(
+			used_for_finished_part=getattr(end_piece, "used_for_finished_part", None),
+			thickness_mm=getattr(layout, "sheet_thickness_mm", None),
+			width_mm=getattr(end_piece, "width_mm", None),
+			length_mm=getattr(end_piece, "length_mm", None),
+		)
 	except ValueError:
 		return
 	if _same_item_code(scrap_item, generated_item_code):

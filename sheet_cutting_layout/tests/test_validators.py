@@ -365,10 +365,10 @@ class TestValidators(SheetCuttingLayoutTestCase):
 
 	def test_derive_end_piece_item_code_uses_used_for_finished_part_and_trimmed_numbers(self) -> None:
 		derived = self.validators.derive_end_piece_item_code(
-			used_for_finished_part="fg01shr",
-			thickness_mm=1.6,
-			width_mm=1250.0,
-			length_mm=179.000000,
+			used_for_finished_part=" fg01shr ",
+			thickness_mm="1.600000",
+			width_mm="1250.0",
+			length_mm="179.000000",
 		)
 		self.assertEqual(derived, "FG01SHR-EP-1.6x1250x179")
 
@@ -568,6 +568,21 @@ class TestValidators(SheetCuttingLayoutTestCase):
 
 		with self.assertRaisesRegex(ValidationError, "Scrap item cannot be the generated end-piece item"):
 			self.validators.validate_sheet_cutting_layout(layout)
+
+	def test_reuse_end_piece_ignores_generated_scrap_check_when_dimensions_are_invalid(
+		self,
+	) -> None:
+		layout = self._balanced_layout(
+			end_piece=EndPiece(
+				width_mm="abc",
+				weight_kg=2.5545,
+				bom_quantity=3,
+				net_weight_per_part_kg=0.8515,
+				scrap_item="EP-SCRAP",
+			)
+		)
+
+		self.validators.validate_sheet_cutting_layout(layout)
 
 	def test_scrap_requires_scrap_item_and_rejects_reuse_only_fields(self) -> None:
 		layout = self._balanced_layout(

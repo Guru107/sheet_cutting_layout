@@ -230,6 +230,18 @@ class TestEndPieceBomService(SheetCuttingLayoutTestCase):
 		self.assertEqual(bom.scrap_items, [])
 		resolve_rate.assert_not_called()
 
+	def test_generation_normalizes_used_for_finished_part_in_generated_item_code(self) -> None:
+		existing_code = "FG01SHR-EP-2x100x200"
+		fake_frappe = self._install_fakes(existing_items={existing_code})
+		layout = Layout(end_pieces=[EndPiece(used_for_finished_part=" fg01shr ")])
+
+		with patch.object(self.service, "resolve_scrap_item_rate", return_value=33.5):
+			result = self.service.generate_end_piece_boms(layout)
+
+		self.assertEqual(result["items"], [existing_code])
+		self.assertEqual([doc.doctype for doc in fake_frappe.created_docs], ["BOM"])
+		self.assertEqual(layout.end_pieces[0].end_piece_item_code, existing_code)
+
 	def test_generation_creates_missing_item_with_kg_stock_uom_alternate_nos_and_rm_valuation(
 		self,
 	) -> None:

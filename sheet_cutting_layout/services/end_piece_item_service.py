@@ -25,9 +25,44 @@ def format_code_number(value: float | int | str) -> str:
 	return f"{float(value):.6f}".rstrip("0").rstrip(".")
 
 
-def derive_end_piece_item_code(layout: LayoutDocument, row: EndPieceRow) -> str:
+def derive_end_piece_item_code(
+	*,
+	used_for_finished_part: str | None,
+	thickness_mm: float | int | str | None,
+	width_mm: float | int | str | None,
+	length_mm: float | int | str | None,
+) -> str:
+	finished_part = _clean(used_for_finished_part)
+	if finished_part is None:
+		raise ValueError("Used for finished part is required")
+	finished_part = finished_part.upper()
+
+	thickness = _coerce_positive_number(
+		value=thickness_mm,
+		field_label="Sheet thickness",
+		message="Sheet thickness is required to derive end piece item code",
+	)
+	width = _coerce_positive_number(
+		value=width_mm,
+		field_label="End piece width",
+		message="End piece width must be greater than zero",
+	)
+	length = _coerce_positive_number(
+		value=length_mm,
+		field_label="End piece length",
+		message="End piece length must be greater than zero",
+	)
+	return (
+		f"{finished_part}-EP-"
+		f"{format_code_number(thickness)}x"
+		f"{format_code_number(width)}x"
+		f"{format_code_number(length)}"
+	)
+
+
+def derive_end_piece_item_code_from_row(layout: LayoutDocument, row: EndPieceRow) -> str:
 	try:
-		item_code = _derive_end_piece_item_code(
+		item_code = derive_end_piece_item_code(
 			used_for_finished_part=getattr(row, "used_for_finished_part", None),
 			thickness_mm=getattr(layout, "sheet_thickness_mm", None),
 			width_mm=getattr(row, "width_mm", None),
@@ -49,7 +84,7 @@ def derive_end_piece_item_code(layout: LayoutDocument, row: EndPieceRow) -> str:
 
 
 def ensure_end_piece_item(layout: LayoutDocument, row: EndPieceRow) -> str:
-	item_code = derive_end_piece_item_code(layout, row)
+	item_code = derive_end_piece_item_code_from_row(layout, row)
 	if _item_exists(item_code):
 		return item_code
 
@@ -88,28 +123,19 @@ def ensure_end_piece_item(layout: LayoutDocument, row: EndPieceRow) -> str:
 	return item_code
 
 
-def _derive_end_piece_item_code(
+def _coerce_positive_number(
 	*,
-	used_for_finished_part: str | None,
-	thickness_mm: float | None,
-	width_mm: float | None,
-	length_mm: float | None,
-) -> str:
-	finished_part = _clean(used_for_finished_part)
-	if finished_part is None:
-		raise ValueError("Used for finished part is required")
-	if thickness_mm is None or thickness_mm <= 0:
-		raise ValueError("Sheet thickness is required to derive end piece item code")
-	if width_mm is None or width_mm <= 0:
-		raise ValueError("End piece width must be greater than zero")
-	if length_mm is None or length_mm <= 0:
-		raise ValueError("End piece length must be greater than zero")
-	return (
-		f"{finished_part}-EP-"
-		f"{format_code_number(thickness_mm)}x"
-		f"{format_code_number(width_mm)}x"
-		f"{format_code_number(length_mm)}"
-	)
+	value: float | int | str | None,
+	field_label: str,
+	message: str,
+) -> float:
+	try:
+		number = float(value)
+	except (TypeError, ValueError):
+		raise ValueError(f"{field_label} must be a number") from None
+	if number <= 0:
+		raise ValueError(message)
+	return number
 
 
 def _append_app_created_item_uoms(item: object, *, stock_uom: str, weight_kg: float) -> None:
