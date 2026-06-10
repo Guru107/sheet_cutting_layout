@@ -364,6 +364,7 @@ class TestBomService(SheetCuttingLayoutTestCase):
 				),
 				11.25,
 				2.5,
+				1.25,
 			),
 			(
 				"reuse_end_piece",
@@ -380,14 +381,23 @@ class TestBomService(SheetCuttingLayoutTestCase):
 				),
 				12,
 				0,
+				3.75,
 			),
 		]
-		for name, layout, finished_part, expected_derived_fg_weight_kg, expected_end_piece_scrap_qty in cases:
+		for (
+			name,
+			layout,
+			finished_part,
+			expected_derived_fg_weight_kg,
+			expected_end_piece_scrap_qty,
+			expected_end_piece_byproduct_qty,
+		) in cases:
 			with self.subTest(name=name):
 				bom = bom_service.build_bom_from_layout_row(layout, finished_part)
 				process_scrap_qty = self._sum_bom_qty(bom.scrap_items, "process_scrap")
 				end_piece_scrap_qty = self._sum_bom_qty(bom.scrap_items, "end_piece_scrap")
-				total_scrap_qty = process_scrap_qty + end_piece_scrap_qty
+				end_piece_byproduct_qty = self._sum_bom_qty(bom.scrap_items, "end_piece_byproduct")
+				total_scrap_qty = process_scrap_qty + end_piece_scrap_qty + end_piece_byproduct_qty
 				derived_fg_weight_kg = (
 					finished_part.gross_weight_per_part_kg - finished_part.scrap_weight_per_part_kg
 				)
@@ -399,10 +409,12 @@ class TestBomService(SheetCuttingLayoutTestCase):
 					finished_part.scrap_weight_per_part_kg * finished_part.parts_per_sheet,
 				)
 				self.assertEqual(end_piece_scrap_qty, expected_end_piece_scrap_qty)
+				self.assertEqual(end_piece_byproduct_qty, expected_end_piece_byproduct_qty)
 				self.assertEqual(
 					total_scrap_qty,
 					finished_part.scrap_weight_per_part_kg * finished_part.parts_per_sheet
-					+ expected_end_piece_scrap_qty,
+					+ expected_end_piece_scrap_qty
+					+ expected_end_piece_byproduct_qty,
 				)
 				self.assertEqual(derived_fg_weight_kg, expected_derived_fg_weight_kg)
 

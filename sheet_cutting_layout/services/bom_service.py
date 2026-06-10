@@ -6,6 +6,8 @@ from typing import Literal, Protocol
 
 import frappe
 
+from sheet_cutting_layout.services.end_piece_item_service import derive_end_piece_item_code_from_row
+
 
 class FinishedPartRow(Protocol):
 	finished_part_item: str
@@ -19,6 +21,10 @@ class EndPieceRow(Protocol):
 	qty_per_sheet: float
 	disposition: str
 	scrap_item: str | None
+	end_piece_item_code: str | None
+	used_for_finished_part: str | None
+	width_mm: float | None
+	length_mm: float | None
 
 
 class LayoutDocument(Protocol):
@@ -30,10 +36,11 @@ class LayoutDocument(Protocol):
 	parts_per_sheet: int
 	gross_weight_per_part_kg: float
 	scrap_weight_per_part_kg: float
+	sheet_thickness_mm: float | None
 	end_pieces: Sequence[EndPieceRow]
 
 
-BomItemRowType = Literal["raw_material", "process_scrap", "end_piece_scrap"]
+BomItemRowType = Literal["raw_material", "process_scrap", "end_piece_scrap", "end_piece_byproduct"]
 
 
 @dataclass
@@ -81,7 +88,16 @@ class ExpectedBomConsumption:
 	total_scrap_qty: float
 
 
+@dataclass
+class ExpectedBomWeightBalance:
+	raw_material_weight_kg: float
+	finished_part_weight_kg: float
+	scrap_and_byproduct_weight_kg: float
+	difference_kg: float
+
+
 BomDocumentFactory = Callable[[str], BomDocument]
+EndPieceItemCodeResolver = Callable[[LayoutDocument, EndPieceRow], str]
 
 
 def resolve_scrap_item_rate(
@@ -150,6 +166,7 @@ def build_bom_from_layout_row(
 	finished_part_row: FinishedPartRow,
 	*,
 	document_factory: BomDocumentFactory | None = None,
+	end_piece_item_code_resolver: EndPieceItemCodeResolver | None = None,
 ) -> BomDocument:
 	bom = _new_bom(finished_part_row.finished_part_item, document_factory)
 	bom.quantity = _bom_quantity(layout_doc, finished_part_row)
@@ -174,6 +191,20 @@ def build_bom_from_layout_row(
 					row_type="end_piece_scrap",
 				)
 			)
+			continue
+		if _is_reuse_end_piece(end_piece):
+			item_code = _end_piece_byproduct_item_code(
+				layout_doc,
+				end_piece,
+				end_piece_item_code_resolver,
+			)
+			bom.scrap_items.append(
+				BomItemRow(
+					item_code=item_code,
+					qty=end_piece.weight_kg,
+					row_type="end_piece_byproduct",
+				)
+			)
 
 	return bom
 
@@ -182,11 +213,13 @@ def build_bom_from_layout(
 	layout_doc: LayoutDocument,
 	*,
 	document_factory: BomDocumentFactory | None = None,
+	end_piece_item_code_resolver: EndPieceItemCodeResolver | None = None,
 ) -> BomDocument:
 	return build_bom_from_layout_row(
 		layout_doc,
 		_parent_finished_part_row(layout_doc),
 		document_factory=document_factory,
+		end_piece_item_code_resolver=end_piece_item_code_resolver,
 	)
 
 
@@ -201,6 +234,22 @@ def expected_bom_consumption_from_layout(layout_doc: LayoutDocument) -> Expected
 		scrap_rows=list(bom.scrap_items),
 		total_raw_material_qty=total_raw_material_qty,
 		total_scrap_qty=total_scrap_qty,
+	)
+
+
+def expected_main_bom_weight_balance(layout_doc: LayoutDocument) -> ExpectedBomWeightBalance:
+	finished_part = _parent_finished_part_row(layout_doc)
+	bom = build_bom_from_layout_row(layout_doc, finished_part)
+	raw_material_weight = sum(row.qty for row in bom.items)
+	scrap_and_byproduct_weight = sum(row.qty for row in bom.scrap_items)
+	net_weight_per_part = finished_part.gross_weight_per_part_kg - finished_part.scrap_weight_per_part_kg
+	finished_part_weight = net_weight_per_part * finished_part.parts_per_sheet
+	difference = raw_material_weight - finished_part_weight - scrap_and_byproduct_weight
+	return ExpectedBomWeightBalance(
+		raw_material_weight_kg=raw_material_weight,
+		finished_part_weight_kg=finished_part_weight,
+		scrap_and_byproduct_weight_kg=scrap_and_byproduct_weight,
+		difference_kg=difference,
 	)
 
 
@@ -224,6 +273,23 @@ def _new_bom(item: str, document_factory: BomDocumentFactory | None) -> BomDocum
 
 def _is_scrap_end_piece(end_piece: EndPieceRow) -> bool:
 	return str(getattr(end_piece, "disposition", "") or "").strip().lower() == "scrap"
+
+
+def _is_reuse_end_piece(end_piece: EndPieceRow) -> bool:
+	return str(getattr(end_piece, "disposition", "") or "").strip().lower() == "reuse"
+
+
+def _end_piece_byproduct_item_code(
+	layout_doc: LayoutDocument,
+	end_piece: EndPieceRow,
+	end_piece_item_code_resolver: EndPieceItemCodeResolver | None,
+) -> str:
+	existing_item_code = str(getattr(end_piece, "end_piece_item_code", "") or "").strip()
+	if existing_item_code:
+		return existing_item_code
+	if end_piece_item_code_resolver is not None:
+		return end_piece_item_code_resolver(layout_doc, end_piece)
+	return derive_end_piece_item_code_from_row(layout_doc, end_piece)
 
 
 def _required_scrap_item(end_piece: EndPieceRow) -> str:
