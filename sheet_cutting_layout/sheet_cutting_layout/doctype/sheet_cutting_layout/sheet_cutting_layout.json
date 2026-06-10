@@ -286,7 +286,7 @@
    "in_list_view": 1,
    "label": "Status",
    "no_copy": 1,
-   "options": "Draft\nSubmitted for Check\nPM Approved\nApproved by Purchase\nReleased\nRejected\nSuperseded",
+   "options": "Draft\nSubmitted for Check\nPM Approved\nApproved by Purchase\nReleased\nRejected\nSuperseded\nCancel",
    "reqd": 1
   },
   {

@@ -20,6 +20,7 @@ fixtures = [
 					"Released",
 					"Rejected",
 					"Superseded",
+					"Cancel",
 				],
 			]
 		],

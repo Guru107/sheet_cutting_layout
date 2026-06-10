@@ -102,6 +102,7 @@ class FakeDB:
 		self.raw_item_groups = raw_item_groups or {"RAW-001": "Raw Material"}
 		self.item_hsn_codes = item_hsn_codes or {}
 		self.raw_item_valuation_rates = raw_item_valuation_rates or {}
+		self.set_value_calls: list[tuple[str, str, str, object, dict[str, object]]] = []
 
 	def exists(self, doctype: str, name: str) -> bool:
 		return doctype == "Item" and name in self.existing_items
@@ -114,6 +115,18 @@ class FakeDB:
 		if doctype == "Item" and fieldname == "valuation_rate":
 			return self.raw_item_valuation_rates.get(name)
 		return None
+
+	def set_value(
+		self,
+		doctype: str,
+		name: str,
+		fieldname: str,
+		value: object,
+		**kwargs: object,
+	) -> None:
+		self.set_value_calls.append((doctype, name, fieldname, value, kwargs))
+		if doctype == "Item" and fieldname == "valuation_rate":
+			self.raw_item_valuation_rates[name] = value  # type: ignore[assignment]
 
 	def get_default(self, key: str) -> str | None:
 		if key == "company":
@@ -298,6 +311,25 @@ class TestEndPieceBomService(SheetCuttingLayoutTestCase):
 			],
 		)
 		self.assertEqual(fake_frappe.created_docs[1].submit_calls, 1)
+
+	def test_existing_generated_item_with_zero_valuation_is_repaired_from_raw_material(self) -> None:
+		existing_code = "FG01SHR-EP-2x100x200"
+		fake_frappe = self._install_fakes(
+			existing_items={existing_code},
+			raw_item_valuation_rates={
+				"RAW-001": 82.75,
+				existing_code: 0,
+			},
+		)
+
+		item_code = self.item_service.ensure_end_piece_item(Layout(), EndPiece())
+
+		self.assertEqual(item_code, existing_code)
+		self.assertEqual(fake_frappe.created_docs, [])
+		self.assertEqual(
+			fake_frappe.db.set_value_calls,
+			[("Item", existing_code, "valuation_rate", 82.75, {"update_modified": True})],
+		)
 
 	def test_generation_keeps_fractional_end_piece_stock_qty_in_kg(self) -> None:
 		existing_code = "FG01SHR-EP-2x1250x179"
@@ -547,9 +579,7 @@ class TestEndPieceBomService(SheetCuttingLayoutTestCase):
 		existing_code = "FG01SHR-EP-2x100x200"
 		self._install_fakes(existing_items={existing_code})
 		layout = Layout(
-			end_pieces=[
-				EndPiece(end_piece_item_code=existing_code, generated_end_piece_bom="BOM-EXISTING")
-			]
+			end_pieces=[EndPiece(end_piece_item_code=existing_code, generated_end_piece_bom="BOM-EXISTING")]
 		)
 
 		result = self.service.generate_end_piece_boms(layout)

@@ -203,6 +203,7 @@ def test_hooks_exposes_required_fixtures() -> None:
 						"Released",
 						"Rejected",
 						"Superseded",
+						"Cancel",
 					],
 				]
 			],
@@ -276,6 +277,30 @@ def test_parent_finished_part_code_is_item_link() -> None:
 
 	assert fields["finished_part_code"]["fieldtype"] == "Link"
 	assert fields["finished_part_code"]["options"] == "Item"
+
+
+def test_status_options_include_cancel_state() -> None:
+	doctype_path = (
+		Path(__file__).resolve().parents[1]
+		/ "sheet_cutting_layout"
+		/ "doctype"
+		/ "sheet_cutting_layout"
+		/ "sheet_cutting_layout.json"
+	)
+	fields = {
+		row["fieldname"]: row
+		for row in json.loads(doctype_path.read_text(encoding="utf-8"))["fields"]
+		if "fieldname" in row
+	}
+	workflow_states = {
+		row["state"]: row
+		for row in json.loads(
+			(Path(__file__).resolve().parents[1] / "fixtures" / "workflow.json").read_text(encoding="utf-8")
+		)[0]["states"]
+	}
+
+	assert "Cancel" in fields["status"]["options"].splitlines()
+	assert workflow_states["Cancel"]["doc_status"] == "2"
 
 
 def test_generated_release_artifact_fields_are_not_copied() -> None:
@@ -1327,6 +1352,66 @@ def test_patch_submits_existing_superseded_layouts(
 	]
 
 
+def test_patch_marks_cancelled_layouts_and_unlinks_generated_boms(
+	monkeypatch: MonkeyPatch,
+) -> None:
+	from sheet_cutting_layout.patches import v1_0_mark_cancelled_layouts_and_unlink_boms
+
+	class DbStub:
+		set_value_calls: ClassVar[list[tuple[str, object, object, object, bool]]] = []
+
+		@staticmethod
+		def get_all(
+			doctype: str,
+			filters: dict[str, object],
+			fields: list[str] | None = None,
+			pluck: str | None = None,
+		) -> list[object]:
+			if doctype == "Sheet Cutting Layout":
+				assert filters == {"docstatus": 2}
+				assert fields == ["name", "generated_bom"]
+				return [{"name": "002-R2", "generated_bom": "BOM-FG01SHR-004"}]
+			if doctype == "BOM":
+				assert filters == {"docstatus": 2, "sheet_cutting_layout": ["is", "set"]}
+				assert pluck == "name"
+				return ["BOM-CANCELLED-LINKED"]
+			raise AssertionError(doctype)
+
+		@staticmethod
+		def exists(doctype: str, name: str) -> bool:
+			return (doctype, name) == ("BOM", "BOM-FG01SHR-004")
+
+		@classmethod
+		def set_value(
+			cls,
+			doctype: str,
+			name: object,
+			fieldname: object,
+			value: object = None,
+			update_modified: bool = False,
+		) -> None:
+			cls.set_value_calls.append((doctype, name, fieldname, value, update_modified))
+
+	class FrappeStub:
+		db = DbStub
+
+	monkeypatch.setattr(v1_0_mark_cancelled_layouts_and_unlink_boms, "frappe", FrappeStub)
+
+	v1_0_mark_cancelled_layouts_and_unlink_boms.execute()
+
+	assert DbStub.set_value_calls == [
+		(
+			"Sheet Cutting Layout",
+			"002-R2",
+			{"status": "Cancel", "generated_bom": None},
+			None,
+			False,
+		),
+		("BOM", "BOM-FG01SHR-004", "sheet_cutting_layout", None, False),
+		("BOM", "BOM-CANCELLED-LINKED", "sheet_cutting_layout", None, False),
+	]
+
+
 def test_patch_repairs_checked_workflow_state_to_pm_approved(
 	monkeypatch: MonkeyPatch,
 ) -> None:
@@ -2300,6 +2385,219 @@ def test_deactivate_generated_bom_uses_db_set_for_submitted_bom(
 	assert bom_doc.save_calls == []
 
 
+def test_deactivate_generated_bom_deactivates_every_bom_linked_to_layout(
+	monkeypatch: MonkeyPatch,
+) -> None:
+	from sheet_cutting_layout.services import release_service
+	from sheet_cutting_layout.services.release_service import deactivate_generated_bom
+
+	class BomDoc:
+		docstatus = 1
+
+		def __init__(self, name: str) -> None:
+			self.name = name
+			self.is_active = 1
+			self.disabled = 0
+			self.status = "Active"
+			self.db_set_calls: list[tuple[dict[str, object], bool, bool]] = []
+
+		def db_set(
+			self,
+			values: dict[str, object],
+			update_modified: bool = True,
+			notify: bool = False,
+		) -> None:
+			self.db_set_calls.append((values, update_modified, notify))
+
+	bom_docs = {
+		"BOM-MAIN-001": BomDoc("BOM-MAIN-001"),
+		"BOM-ENDPIECE-001": BomDoc("BOM-ENDPIECE-001"),
+	}
+
+	class FrappeStub:
+		class db:
+			@staticmethod
+			def get_all(doctype: str, filters: dict[str, object], pluck: str) -> list[str]:
+				assert doctype == "BOM"
+				assert filters == {"sheet_cutting_layout": "SCL-001"}
+				assert pluck == "name"
+				return ["BOM-MAIN-001", "BOM-ENDPIECE-001"]
+
+		@staticmethod
+		def get_doc(doctype: str, name: str) -> BomDoc:
+			assert doctype == "BOM"
+			return bom_docs[name]
+
+	monkeypatch.setattr(release_service, "frappe", FrappeStub)
+
+	layout = type(
+		"Layout",
+		(),
+		{"doctype": "Sheet Cutting Layout", "name": "SCL-001", "generated_bom": "BOM-MAIN-001"},
+	)()
+
+	result = deactivate_generated_bom(layout)
+
+	assert result is bom_docs["BOM-MAIN-001"]
+	assert bom_docs["BOM-MAIN-001"].db_set_calls == [
+		({"is_active": 0, "disabled": 1, "status": "Superseded"}, True, False)
+	]
+	assert bom_docs["BOM-ENDPIECE-001"].db_set_calls == [
+		({"is_active": 0, "disabled": 1, "status": "Superseded"}, True, False)
+	]
+
+
+def test_cancel_generated_bom_cancels_submitted_bom_with_app_control_flag(
+	monkeypatch: MonkeyPatch,
+) -> None:
+	from sheet_cutting_layout.overrides.bom import APP_CONTROLLED_BOM_UPDATE_FLAG
+	from sheet_cutting_layout.services import release_service
+	from sheet_cutting_layout.services.release_service import cancel_generated_bom
+
+	class BomDoc:
+		docstatus = 1
+		custom_operation = "Shearing"
+		sheet_cutting_layout = "SCL-001"
+
+		def __init__(self) -> None:
+			self.name = "BOM-PART001SHR-001"
+			self.flags = type("Flags", (), {})()
+			self.is_active = 1
+			self.disabled = 0
+			self.status = "Superseded"
+			self.cancel_calls = 0
+
+		def cancel(self) -> None:
+			assert getattr(self.flags, APP_CONTROLLED_BOM_UPDATE_FLAG, False) is True
+			assert getattr(self.flags, "ignore_links", False) is False
+			self.cancel_calls += 1
+			self.docstatus = 2
+
+	bom_doc = BomDoc()
+
+	class FrappeStub:
+		class db:
+			set_value_calls: ClassVar[list[tuple[str, str, object, object, bool]]] = []
+
+			@classmethod
+			def set_value(
+				cls,
+				doctype: str,
+				name: str,
+				fieldname: object,
+				value: object = None,
+				update_modified: bool = True,
+			) -> None:
+				cls.set_value_calls.append((doctype, name, fieldname, value, update_modified))
+
+		@staticmethod
+		def get_doc(doctype: str, name: str) -> BomDoc:
+			assert (doctype, name) == ("BOM", "BOM-PART001SHR-001")
+			return bom_doc
+
+	monkeypatch.setattr(release_service, "frappe", FrappeStub)
+
+	layout = type(
+		"Layout",
+		(),
+		{"doctype": "Sheet Cutting Layout", "name": "SCL-001", "generated_bom": "BOM-PART001SHR-001"},
+	)()
+
+	result = cancel_generated_bom(layout)
+
+	assert result is bom_doc
+	assert layout.generated_bom is None
+	assert bom_doc.is_active == 0
+	assert bom_doc.disabled == 1
+	assert bom_doc.sheet_cutting_layout is None
+	assert bom_doc.cancel_calls == 1
+	assert bom_doc.docstatus == 2
+	assert FrappeStub.db.set_value_calls == [
+		("Sheet Cutting Layout", "SCL-001", "generated_bom", None, False),
+		("BOM", "BOM-PART001SHR-001", "sheet_cutting_layout", None, False),
+	]
+
+
+def test_cancel_generated_bom_cancels_every_bom_linked_to_layout(
+	monkeypatch: MonkeyPatch,
+) -> None:
+	from sheet_cutting_layout.overrides.bom import APP_CONTROLLED_BOM_UPDATE_FLAG
+	from sheet_cutting_layout.services import release_service
+	from sheet_cutting_layout.services.release_service import cancel_generated_bom
+
+	class BomDoc:
+		docstatus = 1
+		custom_operation = "Shearing"
+		sheet_cutting_layout = "SCL-001"
+
+		def __init__(self, name: str) -> None:
+			self.name = name
+			self.flags = type("Flags", (), {})()
+			self.is_active = 1
+			self.disabled = 0
+			self.cancel_calls = 0
+
+		def cancel(self) -> None:
+			assert getattr(self.flags, APP_CONTROLLED_BOM_UPDATE_FLAG, False) is True
+			assert getattr(self.flags, "ignore_links", False) is False
+			self.cancel_calls += 1
+			self.docstatus = 2
+
+	bom_docs = {
+		"BOM-MAIN-001": BomDoc("BOM-MAIN-001"),
+		"BOM-ENDPIECE-001": BomDoc("BOM-ENDPIECE-001"),
+	}
+
+	class FrappeStub:
+		class db:
+			set_value_calls: ClassVar[list[tuple[str, str, object, object, bool]]] = []
+
+			@staticmethod
+			def get_all(doctype: str, filters: dict[str, object], pluck: str) -> list[str]:
+				assert doctype == "BOM"
+				assert filters == {"sheet_cutting_layout": "SCL-001"}
+				assert pluck == "name"
+				return ["BOM-MAIN-001", "BOM-ENDPIECE-001"]
+
+			@classmethod
+			def set_value(
+				cls,
+				doctype: str,
+				name: str,
+				fieldname: object,
+				value: object = None,
+				update_modified: bool = True,
+			) -> None:
+				cls.set_value_calls.append((doctype, name, fieldname, value, update_modified))
+
+		@staticmethod
+		def get_doc(doctype: str, name: str) -> BomDoc:
+			assert doctype == "BOM"
+			return bom_docs[name]
+
+	monkeypatch.setattr(release_service, "frappe", FrappeStub)
+
+	layout = type(
+		"Layout",
+		(),
+		{"doctype": "Sheet Cutting Layout", "name": "SCL-001", "generated_bom": "BOM-MAIN-001"},
+	)()
+
+	result = cancel_generated_bom(layout)
+
+	assert result is bom_docs["BOM-MAIN-001"]
+	assert layout.generated_bom is None
+	assert bom_docs["BOM-MAIN-001"].cancel_calls == 1
+	assert bom_docs["BOM-ENDPIECE-001"].cancel_calls == 1
+	assert bom_docs["BOM-MAIN-001"].sheet_cutting_layout is None
+	assert bom_docs["BOM-ENDPIECE-001"].sheet_cutting_layout is None
+	assert FrappeStub.db.set_value_calls == [
+		("Sheet Cutting Layout", "SCL-001", "generated_bom", None, False),
+		("BOM", "BOM-MAIN-001", "sheet_cutting_layout", None, False),
+		("BOM", "BOM-ENDPIECE-001", "sheet_cutting_layout", None, False),
+	]
+
+
 def test_controller_supersede_action_deactivates_generated_bom(monkeypatch: MonkeyPatch) -> None:
 	from sheet_cutting_layout.sheet_cutting_layout.doctype.sheet_cutting_layout import sheet_cutting_layout
 
@@ -2317,6 +2615,43 @@ def test_controller_supersede_action_deactivates_generated_bom(monkeypatch: Monk
 	doc.before_workflow_action()
 
 	assert calls == [doc]
+
+
+def test_controller_before_cancel_cancels_generated_bom(monkeypatch: MonkeyPatch) -> None:
+	from sheet_cutting_layout.sheet_cutting_layout.doctype.sheet_cutting_layout import sheet_cutting_layout
+
+	calls: list[object] = []
+	monkeypatch.setattr(
+		sheet_cutting_layout,
+		"cancel_generated_bom",
+		lambda layout: calls.append(layout),
+	)
+
+	doc = _new_sheet_cutting_layout_doc(sheet_cutting_layout)
+	doc.status = "Superseded"
+	doc.generated_bom = "BOM-PART001SHR-001"
+	doc.before_cancel()
+
+	assert calls == [doc]
+	assert doc.status == "Cancel"
+
+
+def test_form_cancel_lets_layout_controller_cancel_linked_bom() -> None:
+	content = (
+		Path(__file__)
+		.resolve()
+		.parents[1]
+		.joinpath(
+			"sheet_cutting_layout",
+			"doctype",
+			"sheet_cutting_layout",
+			"sheet_cutting_layout.js",
+		)
+		.read_text(encoding="utf-8")
+	)
+
+	assert "ignoreBomInGenericCancelAll(frm);" in content
+	assert 'frm.ignore_doctypes_on_cancel_all || []), "BOM"' in content
 
 
 def test_readme_mentions_release_gate_and_bom_qty_parts_per_sheet() -> None:

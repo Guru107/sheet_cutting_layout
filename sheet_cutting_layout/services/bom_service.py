@@ -290,7 +290,9 @@ def _end_piece_byproduct_item_code(
 	if end_piece_item_code_resolver is not None:
 		resolved_item_code = str(end_piece_item_code_resolver(layout_doc, end_piece) or "").strip()
 		if not resolved_item_code:
-			raise ValueError("Reusable end piece requires generated item code before creating BOM byproduct row")
+			raise ValueError(
+				"Reusable end piece requires generated item code before creating BOM byproduct row"
+			)
 		return resolved_item_code
 	return derive_end_piece_item_code_from_row(layout_doc, end_piece)
 

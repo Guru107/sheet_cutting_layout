@@ -462,8 +462,7 @@ def apply_end_piece_bom_status(
 		layout.end_piece_bom_status = "Not Required"
 		return
 	if all(
-		not _is_missing(getattr(end_piece, "generated_end_piece_bom", None))
-		for end_piece in reuse_end_pieces
+		not _is_missing(getattr(end_piece, "generated_end_piece_bom", None)) for end_piece in reuse_end_pieces
 	):
 		layout.end_piece_bom_status = "Generated"
 		return

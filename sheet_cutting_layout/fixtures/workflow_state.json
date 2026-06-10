@@ -47,5 +47,12 @@
   "name": "Superseded",
   "style": "Warning",
   "workflow_state_name": "Superseded"
+ },
+ {
+  "doctype": "Workflow State",
+  "icon": "remove",
+  "name": "Cancel",
+  "style": "Danger",
+  "workflow_state_name": "Cancel"
  }
 ]

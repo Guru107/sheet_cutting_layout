@@ -29,6 +29,7 @@ from sheet_cutting_layout.services.end_piece_bom_service import (
 	generate_end_piece_boms,
 )
 from sheet_cutting_layout.services.release_service import (
+	cancel_generated_bom,
 	deactivate_generated_bom,
 	get_release_context,
 	release_layout,
@@ -50,6 +51,10 @@ class SheetCuttingLayout(Document):
 		action = _get_selected_workflow_action()
 		self._apply_workflow_action_effects(action)
 		validate_sheet_cutting_layout(self)
+
+	def before_cancel(self) -> None:
+		cancel_generated_bom(self)
+		self.status = "Cancel"
 
 	def on_trash(self) -> None:
 		if getattr(self, "status", None) != "Rejected" or not frappe:

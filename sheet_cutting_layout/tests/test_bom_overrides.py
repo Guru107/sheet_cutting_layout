@@ -56,3 +56,6 @@ class TestBomOverrides(SheetCuttingLayoutTestCase):
 			"workflow instead of cancelling or amending this BOM",
 		):
 			validate_shearing_bom_source(_bom("Shearing", "SCL-001"), "before_cancel")
+
+	def test_app_controlled_cancel_is_allowed_for_layout_generated_bom(self) -> None:
+		validate_shearing_bom_source(_bom("Shearing", "SCL-001", allow_app_update=True), "before_cancel")

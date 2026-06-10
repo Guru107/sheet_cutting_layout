@@ -388,8 +388,15 @@ frappe.provide("sheet_cutting_layout");
 		});
 	}
 
+	function ignoreBomInGenericCancelAll(frm) {
+		frm.ignore_doctypes_on_cancel_all = Array.from(
+			new Set([...(frm.ignore_doctypes_on_cancel_all || []), "BOM"])
+		);
+	}
+
 	frappe.ui.form.on("Sheet Cutting Layout", {
 		refresh(frm) {
+			ignoreBomInGenericCancelAll(frm);
 			addEndPieceBomButtons(frm);
 			if (!frm.is_new() && ["Released", "Superseded"].includes(frm.doc.status)) {
 				frm.add_custom_button(__("New Version"), () => {

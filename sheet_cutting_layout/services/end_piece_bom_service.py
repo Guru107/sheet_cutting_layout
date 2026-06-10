@@ -51,9 +51,7 @@ def generate_end_piece_boms(layout: LayoutDocument) -> dict[str, list[str]]:
 	generated_items: list[str] = []
 	generated_boms: list[str] = []
 	reuse_rows = _reuse_end_pieces(layout)
-	pending_rows = [
-		row for row in reuse_rows if _is_missing(getattr(row, "generated_end_piece_bom", None))
-	]
+	pending_rows = [row for row in reuse_rows if _is_missing(getattr(row, "generated_end_piece_bom", None))]
 
 	for row in pending_rows:
 		_validate_pending_row(layout, row)

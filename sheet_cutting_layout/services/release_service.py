@@ -150,27 +150,116 @@ def release_layout(
 
 
 def deactivate_generated_bom(layout: object) -> object | None:
-	generated_bom = str(getattr(layout, "generated_bom", "") or "").strip()
-	if not generated_bom or not frappe:
+	bom_names = _layout_bom_names(layout)
+	if not bom_names or not frappe:
 		return None
 
-	bom_doc = frappe.get_doc("BOM", generated_bom)
-	_set_frappe_field_if_supported(bom_doc, "is_active", 0)
-	_set_frappe_field_if_supported(bom_doc, "disabled", 1)
-	_set_frappe_field_if_supported(bom_doc, "status", "Superseded")
-	if _is_submitted_document(bom_doc) and hasattr(bom_doc, "db_set"):
-		# Submitted BOMs cannot be safely re-saved through the layout flow here.
-		# Persist the retirement fields directly and leave broader ERPNext BOM-update
-		# orchestration to the explicit submitted-BOM lifecycle follow-up.
-		bom_doc.db_set(
-			{"is_active": 0, "disabled": 1, "status": "Superseded"},
-			update_modified=True,
-			notify=False,
-		)
-	else:
+	deactivated_boms = []
+	for bom_name in bom_names:
+		bom_doc = frappe.get_doc("BOM", bom_name)
+		deactivated_boms.append(bom_doc)
+		_set_frappe_field_if_supported(bom_doc, "is_active", 0)
+		_set_frappe_field_if_supported(bom_doc, "disabled", 1)
+		_set_frappe_field_if_supported(bom_doc, "status", "Superseded")
+		if _is_submitted_document(bom_doc) and hasattr(bom_doc, "db_set"):
+			# Submitted BOMs cannot be safely re-saved through the layout flow here.
+			# Persist the retirement fields directly and leave broader ERPNext BOM-update
+			# orchestration to the explicit submitted-BOM lifecycle follow-up.
+			bom_doc.db_set(
+				{"is_active": 0, "disabled": 1, "status": "Superseded"},
+				update_modified=True,
+				notify=False,
+			)
+		else:
+			_mark_bom_app_controlled(bom_doc)
+			bom_doc.save(ignore_permissions=True)
+	return deactivated_boms[0]
+
+
+def cancel_generated_bom(layout: object) -> object | None:
+	bom_names = _layout_bom_names(layout)
+	if not bom_names or not frappe:
+		return None
+
+	cancelled_boms = []
+	for bom_name in bom_names:
+		bom_doc = frappe.get_doc("BOM", bom_name)
+		cancelled_boms.append(bom_doc)
+		if _is_cancelled_document(bom_doc):
+			_unlink_layout_bom_reference_fields(layout, bom_name)
+			_unlink_layout_from_generated_bom(bom_doc)
+			continue
+
+		_set_frappe_field_if_supported(bom_doc, "is_active", 0)
+		_set_frappe_field_if_supported(bom_doc, "disabled", 1)
 		_mark_bom_app_controlled(bom_doc)
-		bom_doc.save(ignore_permissions=True)
-	return bom_doc
+		_unlink_layout_bom_reference_fields(layout, bom_name)
+
+		if _is_submitted_document(bom_doc):
+			cancel = getattr(bom_doc, "cancel", None)
+			if callable(cancel):
+				cancel()
+				_unlink_layout_from_generated_bom(bom_doc)
+				continue
+			raise RuntimeError(f"Submitted generated BOM {bom_name} cannot be cancelled")
+
+		save = getattr(bom_doc, "save", None)
+		_unlink_layout_from_generated_bom(bom_doc)
+		if callable(save):
+			save(ignore_permissions=True)
+
+	return cancelled_boms[0]
+
+
+def _layout_bom_names(layout: object) -> list[str]:
+	names: list[str] = []
+
+	_append_unique_clean(names, getattr(layout, "generated_bom", None))
+	for row in getattr(layout, "finished_parts", []) or []:
+		_append_unique_clean(names, getattr(row, "generated_bom", None))
+	for row in getattr(layout, "end_pieces", []) or []:
+		_append_unique_clean(names, getattr(row, "generated_end_piece_bom", None))
+
+	layout_name = str(getattr(layout, "name", "") or "").strip()
+	db = getattr(frappe, "db", None) if frappe else None
+	get_all = getattr(db, "get_all", None)
+	if layout_name and callable(get_all):
+		for bom_name in get_all("BOM", filters={"sheet_cutting_layout": layout_name}, pluck="name"):
+			_append_unique_clean(names, bom_name)
+
+	return names
+
+
+def _append_unique_clean(values: list[str], value: object) -> None:
+	clean_value = str(value or "").strip()
+	if clean_value and clean_value not in values:
+		values.append(clean_value)
+
+
+def _unlink_layout_bom_reference_fields(layout: object, bom_name: str) -> None:
+	_unlink_generated_bom_from_layout(layout, bom_name)
+	for row in getattr(layout, "finished_parts", []) or []:
+		if getattr(row, "generated_bom", None) == bom_name:
+			row.generated_bom = None
+			_db_set_child_field(row, "generated_bom", None)
+	for row in getattr(layout, "end_pieces", []) or []:
+		if getattr(row, "generated_end_piece_bom", None) == bom_name:
+			row.generated_end_piece_bom = None
+			_db_set_child_field(row, "generated_end_piece_bom", None)
+
+
+def _db_set_child_field(row: object, fieldname: str, value: object) -> None:
+	db_set = getattr(row, "db_set", None)
+	if callable(db_set):
+		db_set(fieldname, value, update_modified=False)
+		return
+
+	db = getattr(frappe, "db", None)
+	set_value = getattr(db, "set_value", None)
+	doctype = getattr(row, "doctype", None)
+	name = getattr(row, "name", None)
+	if callable(set_value) and doctype and name:
+		set_value(doctype, name, fieldname, value, update_modified=False)
 
 
 def get_release_context(layout: ReleaseLayoutDocument) -> ReleaseContext:
@@ -236,7 +325,7 @@ def _default_bom_document_factory(
 def _ensure_and_link_end_piece_item(layout: ReleaseLayoutDocument, row: object) -> str:
 	item_code = ensure_end_piece_item(layout, row)  # type: ignore[arg-type]
 	if hasattr(row, "end_piece_item_code"):
-		setattr(row, "end_piece_item_code", item_code)
+		row.end_piece_item_code = item_code
 	return item_code
 
 
@@ -376,7 +465,7 @@ def _copy_generated_end_piece_item_links(*, source: object, target: object) -> N
 	for source_row, target_row in zip(source_rows, target_rows, strict=False):
 		item_code = getattr(source_row, "end_piece_item_code", None)
 		if item_code and hasattr(target_row, "end_piece_item_code"):
-			setattr(target_row, "end_piece_item_code", item_code)
+			target_row.end_piece_item_code = item_code
 
 
 def _get_same_project_layouts(layout: ReleaseLayoutDocument) -> list[object]:
@@ -457,6 +546,14 @@ def _is_submitted_document(doc: object) -> bool:
 	return bool(callable(is_submitted) and is_submitted())
 
 
+def _is_cancelled_document(doc: object) -> bool:
+	docstatus = getattr(doc, "docstatus", None)
+	if docstatus == 2:
+		return True
+	is_cancelled = getattr(docstatus, "is_cancelled", None)
+	return bool(callable(is_cancelled) and is_cancelled())
+
+
 def _company_for_layout(layout: object | None) -> str:
 	if layout is not None:
 		company = getattr(layout, "company", None)
@@ -499,3 +596,32 @@ def _mark_bom_app_controlled(bom_doc: object) -> None:
 		flags = type("Flags", (), {})()
 		bom_doc.flags = flags
 	setattr(flags, APP_CONTROLLED_BOM_UPDATE_FLAG, True)
+
+
+def _unlink_generated_bom_from_layout(layout: object, generated_bom: str) -> None:
+	if getattr(layout, "generated_bom", None) != generated_bom:
+		return
+
+	layout.generated_bom = None
+
+	db = getattr(frappe, "db", None)
+	set_value = getattr(db, "set_value", None)
+	doctype = getattr(layout, "doctype", None)
+	name = getattr(layout, "name", None)
+	if callable(set_value) and doctype and name:
+		set_value(doctype, name, "generated_bom", None, update_modified=False)
+
+
+def _unlink_layout_from_generated_bom(bom_doc: object) -> None:
+	if hasattr(bom_doc, "sheet_cutting_layout"):
+		bom_doc.sheet_cutting_layout = None
+
+	db_set = getattr(bom_doc, "db_set", None)
+	if callable(db_set):
+		db_set("sheet_cutting_layout", None, update_modified=False, notify=False)
+		return
+
+	db = getattr(frappe, "db", None)
+	set_value = getattr(db, "set_value", None)
+	if callable(set_value):
+		set_value("BOM", getattr(bom_doc, "name", None), "sheet_cutting_layout", None, update_modified=False)

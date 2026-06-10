@@ -86,6 +86,7 @@ def derive_end_piece_item_code_from_row(layout: LayoutDocument, row: EndPieceRow
 def ensure_end_piece_item(layout: LayoutDocument, row: EndPieceRow) -> str:
 	item_code = derive_end_piece_item_code_from_row(layout, row)
 	if _item_exists(item_code):
+		_ensure_existing_item_valuation_rate(item_code, layout)
 		return item_code
 
 	weight_kg = getattr(row, "weight_kg", None)
@@ -150,12 +151,37 @@ def _append_app_created_item_uoms(item: object, *, stock_uom: str, weight_kg: fl
 	_throw(_("Unsupported stock UOM for app-created Item: {0}").format(stock_uom))
 
 
+def _ensure_existing_item_valuation_rate(item_code: str, layout: LayoutDocument) -> None:
+	if _is_positive_number(_get_value("Item", item_code, "valuation_rate")):
+		return
+
+	raw_material_valuation_rate = _get_value(
+		"Item",
+		getattr(layout, "raw_material_item", None),
+		"valuation_rate",
+	)
+	if not _is_positive_number(raw_material_valuation_rate):
+		return
+
+	db = getattr(frappe, "db", None)
+	set_value = getattr(db, "set_value", None)
+	if callable(set_value):
+		set_value("Item", item_code, "valuation_rate", raw_material_valuation_rate, update_modified=True)
+
+
 def _build_item_description(layout: LayoutDocument, row: EndPieceRow) -> str:
 	raw_material_item = _clean(getattr(layout, "raw_material_item", None)) or "Unknown raw material"
 	thickness_mm = format_code_number(getattr(layout, "sheet_thickness_mm", 0))
 	width_mm = format_code_number(getattr(row, "width_mm", 0))
 	length_mm = format_code_number(getattr(row, "length_mm", 0))
 	return f"Derived from {raw_material_item}; End Piece {thickness_mm}x{width_mm}x{length_mm} mm"
+
+
+def _is_positive_number(value: object) -> bool:
+	try:
+		return float(value) > 0
+	except (TypeError, ValueError):
+		return False
 
 
 def _item_exists(item_code: str) -> bool:
