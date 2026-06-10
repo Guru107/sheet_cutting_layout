@@ -618,6 +618,133 @@ def test_save_time_audit_rejects_generated_bom_quantity_drift(
 		validators.validate_sheet_cutting_layout(layout)
 
 
+def test_save_time_audit_rejects_missing_reuse_end_piece_byproduct_row(
+	monkeypatch: MonkeyPatch,
+) -> None:
+	from sheet_cutting_layout.services import validators
+
+	class FrappeStub:
+		ValidationError = ValueError
+
+		@staticmethod
+		def get_system_settings(_fieldname: str) -> None:
+			return None
+
+		@staticmethod
+		def get_doc(doctype: str, name: str) -> object:
+			assert (doctype, name) == ("BOM", "BOM-FG01SHR")
+			return type(
+				"Bom",
+				(),
+				{
+					"item": "FG01SHR",
+					"quantity": 77,
+					"items": [type("BomItem", (), {"item_code": "RMSHEET001", "qty": 39.3})()],
+					"scrap_items": [
+						type(
+							"ScrapItem",
+							(),
+							{"item_code": "PROCESSSCRAP001", "stock_qty": 14.233142, "qty": 14.233142},
+						)(),
+					],
+				},
+			)()
+
+		@staticmethod
+		def throw(message: str) -> None:
+			raise ValueError(message)
+
+	layout = type(
+		"AuditLayout",
+		(),
+		{
+			"finished_part_code": "FG01SHR",
+			"net_weight_per_part_kg": 0.289,
+			"generated_bom": "BOM-FG01SHR",
+			"end_pieces": [
+				type(
+					"EndPieceRow",
+					(),
+					{
+						"idx": 1,
+						"end_piece_item_code": None,
+						"weight_kg": 2.81388,
+						"qty_per_sheet": 1,
+						"width_mm": 1250,
+						"length_mm": 179,
+						"disposition": "Reuse",
+						"scrap_item": None,
+						"used_for_finished_part": "FG002SHR",
+						"bom_quantity": 1,
+						"net_weight_per_part_kg": 2.81388,
+						"gross_weight_per_part_kg": 2.81388,
+						"scrap_weight_per_part_kg": 0,
+						"bom_scrap_quantity_kg": 0,
+					},
+				)()
+			],
+			"raw_material_item": "RMSHEET001",
+			"process_scrap_item": "PROCESSSCRAP001",
+			"end_piece_bom_status": "",
+			"sheet_thickness_mm": 1.6,
+			"sheet_width_mm": None,
+			"sheet_length_mm": None,
+			"weight_per_sheet_kg": 39.3,
+			"strip_thickness_mm": None,
+			"strip_width_mm": None,
+			"strip_length_mm": None,
+			"weight_of_strip_kg": None,
+			"gross_weight_per_part_kg": 0.473846,
+			"scrap_weight_per_part_kg": 0.184846,
+			"parts_per_strip": 7,
+			"no_of_strips": 11,
+			"parts_per_sheet": 77,
+			"consumed_weight_kg": None,
+			"leftover_weight_kg": None,
+			"consumption_status": None,
+		},
+	)()
+	monkeypatch.setattr(validators, "frappe", FrappeStub)
+	monkeypatch.setattr(validators, "_", lambda message: message)
+
+	with raises(ValueError, match="BOM scrap item mismatch"):
+		validators.validate_sheet_cutting_layout(layout)
+
+
+def test_validator_rejects_expected_main_bom_weight_shortfall(
+	monkeypatch: MonkeyPatch,
+) -> None:
+	from sheet_cutting_layout.services import validators
+
+	class FrappeStub:
+		ValidationError = ValueError
+
+		@staticmethod
+		def get_system_settings(_fieldname: str) -> None:
+			return None
+
+		@staticmethod
+		def throw(message: str) -> None:
+			raise ValueError(message)
+
+	layout = Layout(
+		weight_per_sheet_kg=39.3,
+		parts_per_sheet=77,
+		finished_part_code="FG01SHR",
+		net_weight_per_part_kg=0.289,
+		gross_weight_per_part_kg=0.437558,
+		scrap_weight_per_part_kg=0.148558,
+		finished_parts=[],
+		end_pieces=[],
+	)
+	layout.sheet_thickness_mm = 1.6
+	monkeypatch.setattr(validators, "frappe", FrappeStub)
+	monkeypatch.setattr(validators, "_", lambda message: message)
+
+	with raises(ValueError, match="Main BOM weight mismatch"):
+		validators._validate_expected_main_bom_weight_balance(layout)
+
+
 def test_save_time_audit_rejects_fractional_generated_bom_quantity(
 	monkeypatch: MonkeyPatch,
 ) -> None:

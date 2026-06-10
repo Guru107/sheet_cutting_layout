@@ -4,7 +4,11 @@ import re
 from collections.abc import Sequence
 from typing import Protocol
 
-from sheet_cutting_layout.services.bom_service import BomItemRow, expected_bom_consumption_from_layout
+from sheet_cutting_layout.services.bom_service import (
+	BomItemRow,
+	expected_bom_consumption_from_layout,
+	expected_main_bom_weight_balance,
+)
 from sheet_cutting_layout.services.end_piece_item_service import (
 	derive_end_piece_item_code,
 	format_code_number,
@@ -109,6 +113,7 @@ def validate_sheet_cutting_layout(layout: SheetCuttingLayoutDocument) -> None:
 	)
 	apply_end_piece_bom_status(layout, end_pieces)
 	_validate_complete_sheet_consumption(layout, end_pieces)
+	_validate_expected_main_bom_weight_balance(layout)
 	_validate_generated_bom_matches_layout(layout)
 
 
@@ -499,6 +504,24 @@ def _validate_complete_sheet_consumption(
 				_format_sheet_consumption_weight(abs(unaccounted_weight))
 			)
 		)
+
+
+def _validate_expected_main_bom_weight_balance(layout: SheetCuttingLayoutDocument) -> None:
+	balance = expected_main_bom_weight_balance(layout)  # type: ignore[arg-type]
+	difference = _sheet_consumption_flt(balance.difference_kg)
+	if abs(difference) <= SHEET_CONSUMPTION_TOLERANCE_KG:
+		return
+	frappe.throw(
+		_(
+			"Main BOM weight mismatch: raw material {0} kg, finished parts {1} kg, "
+			"scrap/byproduct {2} kg, difference {3} kg"
+		).format(
+			_format_sheet_consumption_weight(balance.raw_material_weight_kg),
+			_format_sheet_consumption_weight(balance.finished_part_weight_kg),
+			_format_sheet_consumption_weight(balance.scrap_and_byproduct_weight_kg),
+			_format_sheet_consumption_weight(abs(difference)),
+		)
+	)
 
 
 def _validate_generated_bom_matches_layout(layout: SheetCuttingLayoutDocument) -> None:
