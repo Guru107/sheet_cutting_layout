@@ -2,13 +2,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from types import SimpleNamespace
-from unittest import skipUnless
 from unittest.mock import patch
 
-try:
-	import frappe
-except ImportError:
-	frappe = None
+import frappe
 
 from sheet_cutting_layout.tests.base import SheetCuttingLayoutTestCase
 from sheet_cutting_layout.tests.factories import register_test_doc
@@ -38,7 +34,6 @@ def _insert_if_missing(
 	*,
 	exists_filters: dict[str, object] | None = None,
 ) -> str:
-	assert frappe is not None
 	name = str(doc[name_field])
 	existing_name = frappe.db.exists(str(doc["doctype"]), exists_filters or name)
 	if existing_name:
@@ -50,7 +45,6 @@ def _insert_if_missing(
 
 
 def _ensure_layout_dependencies() -> tuple[str, str]:
-	assert frappe is not None
 	item_group = _insert_if_missing(
 		{
 			"doctype": "Item Group",
@@ -72,7 +66,6 @@ def _ensure_layout_dependencies() -> tuple[str, str]:
 
 
 def _ensure_hsn_code(hsn_code: str) -> str:
-	assert frappe is not None
 	if not frappe.db.exists("DocType", "GST HSN Code"):
 		raise RuntimeError("GST HSN Code DocType is not available on this site")
 	return _insert_if_missing(
@@ -85,7 +78,6 @@ def _ensure_hsn_code(hsn_code: str) -> str:
 
 
 def _ensure_item(item_code: str, *, item_group: str, stock_uom: str) -> str:
-	assert frappe is not None
 	doc = {
 		"doctype": "Item",
 		"item_code": item_code,
@@ -108,7 +100,6 @@ def make_layout(
 	net_weight_per_part_kg: float,
 	generated_bom: str | None,
 ) -> object:
-	assert frappe is not None
 	unique_suffix = frappe.generate_hash(length=8)
 	item_group, project = _ensure_layout_dependencies()
 	raw_material_item = _ensure_item("SCLTESTRM001", item_group=item_group, stock_uom="Kg")
@@ -246,7 +237,6 @@ class TestSheetCuttingLayoutController(SheetCuttingLayoutTestCase):
 		)
 		self.assertFalse(hasattr(flags, "selected_workflow_action"))
 
-	@skipUnless(frappe is not None, "Frappe bench runtime required")
 	def test_parent_finished_part_inputs_persist_without_child_rows(self) -> None:
 		layout = make_layout(
 			finished_part_code="FG01SHR",
@@ -265,7 +255,6 @@ class TestSheetCuttingLayoutController(SheetCuttingLayoutTestCase):
 		self.assertEqual(layout.net_weight_per_part_kg, 0.289)
 		self.assertFalse(layout.finished_parts)
 
-	@skipUnless(frappe is not None, "Frappe bench runtime required")
 	def test_parent_formulas_derive_weights_without_child_inputs(self) -> None:
 		layout = make_layout(
 			finished_part_code="FG01SHR",
@@ -295,7 +284,6 @@ class TestSheetCuttingLayoutController(SheetCuttingLayoutTestCase):
 			places=6,
 		)
 
-	@skipUnless(frappe is not None, "Frappe bench runtime required")
 	def test_mr_release_generates_native_bom_with_test_uom_items(self) -> None:
 		layout = make_layout(
 			finished_part_code=f"SCLTESTFG{frappe.generate_hash(length=5).upper()}SHR",
@@ -318,11 +306,9 @@ class TestSheetCuttingLayoutController(SheetCuttingLayoutTestCase):
 		self.assertTrue(layout.generated_bom)
 		register_test_doc("BOM", layout.generated_bom)
 
-	@skipUnless(frappe is not None, "Frappe bench runtime required")
 	def test_unreleased_layout_with_qty_per_sheet_gt_one_is_blocked_until_rows_are_split(
 		self,
 	) -> None:
-		assert frappe is not None
 		layout = make_layout(
 			finished_part_code="FG01SHR",
 			net_weight_per_part_kg=11.004,

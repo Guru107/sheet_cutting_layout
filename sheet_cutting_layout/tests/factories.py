@@ -3,10 +3,7 @@ from __future__ import annotations
 import atexit
 from collections import defaultdict
 
-try:
-	import frappe
-except ImportError:
-	frappe = None
+import frappe
 
 TEST_PREFIX = "SCL-TEST-"
 ITEM_CODE_PREFIX = "SCLTEST"
@@ -32,8 +29,6 @@ def cleanup_order() -> list[str]:
 
 
 def _ensure_connection() -> bool:
-	if frappe is None:
-		return False
 	site = getattr(frappe.local, "site", None)
 	if not site:
 		return False
