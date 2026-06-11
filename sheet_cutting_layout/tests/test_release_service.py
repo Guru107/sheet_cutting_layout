@@ -170,7 +170,7 @@ class ReleaseServiceIsolatedTestCase(SheetCuttingLayoutTestCase):
 
 	def setUp(self) -> None:
 		super().setUp()
-		frappe_patcher = patch.object(release_service, "frappe", None)
+		frappe_patcher = patch.object(release_service, "frappe", new=None)
 		frappe_patcher.start()
 		self.addCleanup(frappe_patcher.stop)
 		# frappe.copy_doc may not exist in this runtime; force the deepcopy fallback in _copy_layout.
@@ -341,6 +341,418 @@ class TestReleaseContracts(SheetCuttingLayoutTestCase):
 		assert "Draft -> Submitted for Check -> PM Approved -> Approved by Purchase -> Released" in content
 
 
+class TestReleaseFlow(ReleaseServiceIsolatedTestCase):
+	def test_release_reaches_released(self) -> None:
+		from sheet_cutting_layout.services.release_service import release_layout
+
+		layout = Layout()
+		result = release_layout(
+			layout,
+			layouts=[],
+			boms=[],
+			bom_document_factory=_in_memory_bom_factory,
+		)
+
+		assert result.status == "Released"
+		assert layout.status == "Released"
+
+	def test_release_runs_default_layout_validation(self) -> None:
+		from sheet_cutting_layout.services.release_service import ReleaseContext, release_layout
+		from sheet_cutting_layout.services.validators import frappe
+
+		layout = Layout(finished_parts=[FinishedPart("PART-001SHR")])
+
+		try:
+			validation_error = frappe.ValidationError
+		except AttributeError:
+			validation_error = Exception
+
+		with self.assertRaisesRegex(validation_error, "alphanumeric"):
+			release_layout(layout, release_context=ReleaseContext(layouts=(), boms=[]))
+
+		assert layout.status == "Approved by Purchase"
+
+	def test_release_allows_injected_validators_for_testability(self) -> None:
+		from sheet_cutting_layout.services.release_service import release_layout
+
+		calls: list[str] = []
+		layout = Layout(finished_parts=[FinishedPart("PART-001SHR")])
+
+		release_layout(
+			layout,
+			validators=[lambda received: calls.append(received.status)],
+			layouts=[],
+			boms=[],
+			bom_document_factory=_in_memory_bom_factory,
+		)
+
+		assert calls == ["Approved by Purchase"]
+		assert layout.status == "Released"
+
+	def test_release_requires_process_scrap_item_when_process_scrap_is_positive(self) -> None:
+		from sheet_cutting_layout.services.release_service import ReleaseContext, release_layout
+		from sheet_cutting_layout.services.validators import frappe
+
+		layout = Layout(
+			process_scrap_item="",
+			finished_parts=[FinishedPart("PART001SHR", scrap_weight_per_part_kg=0.25)],
+		)
+
+		with self.assertRaisesRegex(frappe.ValidationError, "Process scrap item"):
+			release_layout(layout, release_context=ReleaseContext(layouts=(), boms=[]))
+
+	def test_release_stops_when_injected_validator_fails(self) -> None:
+		from sheet_cutting_layout.services.release_service import release_layout
+
+		def fail_validator(_layout: Layout) -> None:
+			raise ValueError("not ready")
+
+		layout = Layout()
+
+		with self.assertRaisesRegex(ValueError, "not ready"):
+			release_layout(layout, validators=[fail_validator], layouts=[], boms=[])
+
+		assert layout.status == "Approved by Purchase"
+		assert layout.finished_parts[0].generated_bom is None
+
+	def test_release_uses_injected_context_provider(self) -> None:
+		from sheet_cutting_layout.services.release_service import ReleaseContext, release_layout
+
+		layout = Layout()
+		context = ReleaseContext(layouts=[], boms=[])
+		calls: list[Layout] = []
+
+		result = release_layout(
+			layout,
+			release_context_provider=lambda received: calls.append(received) or context,
+			bom_document_factory=_in_memory_bom_factory,
+		)
+
+		assert calls == [layout]
+		assert result.status == "Released"
+
+	def test_release_uses_injected_bom_document_factory_for_persisted_boms(self) -> None:
+		from sheet_cutting_layout.services.bom_service import BomDocument
+		from sheet_cutting_layout.services.release_service import release_layout
+
+		layout = Layout(no_of_strips=11, parts_per_sheet=77, finished_parts=[])
+		created: list[tuple[Layout, object, int]] = []
+
+		def fake_factory(received_layout: Layout, row: object, index: int) -> BomDocument:
+			created.append((received_layout, row, index))
+			return BomDocument(item=row.finished_part_item, name=f"PERSISTED-BOM-{index}", quantity=11)
+
+		result = release_layout(
+			layout,
+			bom_document_factory=fake_factory,
+			layouts=[],
+			boms=[],
+		)
+
+		assert created[0][0] is layout
+		assert created[0][1].finished_part_item == "PART001SHR"
+		assert created[0][2] == 1
+		assert result.generated_boms[0].name == "PERSISTED-BOM-1"
+		assert layout.generated_bom == "PERSISTED-BOM-1"
+		assert [row.finished_part_item for row in layout.finished_parts] == ["PART001SHR"]
+		assert [row.bom_quantity for row in layout.finished_parts] == [77]
+
+	def test_release_uses_parent_finished_part_contract_without_child_inputs(self) -> None:
+		from sheet_cutting_layout.services.release_service import release_layout
+
+		layout = Layout(
+			weight_per_sheet_kg=100.0,
+			parts_per_sheet=80,
+			finished_part_code="PART001SHR",
+			net_weight_per_part_kg=0.75,
+			gross_weight_per_part_kg=1.0,
+			scrap_weight_per_part_kg=0.25,
+			finished_parts=[],
+		)
+
+		result = release_layout(
+			layout,
+			validators=[lambda _layout: None],
+			layouts=[],
+			boms=[],
+			bom_document_factory=_in_memory_bom_factory,
+		)
+
+		assert result.generated_boms[0].item == "PART001SHR"
+		assert result.generated_boms[0].quantity == 80
+		assert layout.generated_bom == result.generated_boms[0].name
+		assert [row.finished_part_item for row in layout.finished_parts] == ["PART001SHR"]
+		assert [row.bom_quantity for row in layout.finished_parts] == [80]
+		assert [row.scrap_weight_kg for row in layout.finished_parts] == [20.0]
+		assert [row.raw_material_weight_kg for row in layout.finished_parts] == [100.0]
+
+	def test_release_syncs_finished_part_reference_rows_from_saved_bom(self) -> None:
+		from sheet_cutting_layout.services.bom_service import BomDocument, BomItemRow
+		from sheet_cutting_layout.services.release_service import release_layout
+
+		layout = Layout(
+			weight_per_sheet_kg=39.3,
+			parts_per_sheet=77,
+			finished_part_code="FG01SHR",
+			net_weight_per_part_kg=0.289,
+			gross_weight_per_part_kg=0.473846,
+			scrap_weight_per_part_kg=0.184846,
+			finished_parts=[],
+		)
+
+		def persisted_bom_factory(_layout: Layout, _row: object, _index: int) -> BomDocument:
+			bom = BomDocument(item="FG01SHR", name="BOM-FG01SHR-SAVED", quantity=11)
+			bom.items.append(BomItemRow(item_code="RMSHEET001", qty=39.3, row_type="raw_material"))
+			bom.scrap_items.append(
+				BomItemRow(item_code="PROCESSSCRAP001", qty=14.233142, row_type="process_scrap")
+			)
+			return bom
+
+		release_layout(
+			layout,
+			validators=[lambda _layout: None],
+			layouts=[],
+			boms=[],
+			bom_document_factory=persisted_bom_factory,
+		)
+
+		self_reference = layout.finished_parts[0]
+		assert self_reference.finished_part_item == "FG01SHR"
+		assert self_reference.bom_quantity == 77
+		assert self_reference.raw_material_weight_kg == 39.3
+		assert self_reference.scrap_weight_kg == 14.233142
+
+	def test_release_generates_bom_for_one_sheet_in_kg_with_scrap_outputs(self) -> None:
+		from sheet_cutting_layout.services.release_service import release_layout
+
+		layout = Layout(
+			weight_per_sheet_kg=100.0,
+			finished_parts=[
+				FinishedPart(
+					"PART001SHR",
+					parts_per_sheet=80,
+					gross_weight_per_part_kg=1.0,
+					scrap_weight_per_part_kg=0.25,
+				)
+			],
+			end_pieces=[
+				EndPiece(
+					weight_kg=10.0,
+					qty_per_sheet=2,
+					disposition="Scrap",
+					scrap_item="ENDSCRAP001",
+				)
+			],
+		)
+
+		result = release_layout(
+			layout,
+			validators=[lambda _layout: None],
+			layouts=[],
+			boms=[],
+			bom_document_factory=_in_memory_bom_factory,
+		)
+
+		bom = result.generated_boms[0]
+		assert bom.item == "PART001SHR"
+		assert bom.quantity == 80
+		assert [(row.item_code, row.qty, row.row_type) for row in bom.items] == [
+			("RMSHEET001", 100.0, "raw_material")
+		]
+		assert [(row.item_code, row.qty, row.row_type) for row in bom.scrap_items] == [
+			("PROCESSSCRAP001", 20.0, "process_scrap"),
+			("ENDSCRAP001", 10.0, "end_piece_scrap"),
+		]
+
+	def test_generated_boms_are_activated_on_release(self) -> None:
+		from sheet_cutting_layout.services.release_service import release_layout
+
+		old_layout = RevisionLayout(
+			name="SCL-001",
+			project="FAM-001",
+			revision_no=1,
+			status="Released",
+			is_active=True,
+			finished_parts=[FinishedPart("PART001LHSHR", generated_bom="BOM-PART001LHSHR-OLD")],
+		)
+		new_layout = RevisionLayout(
+			name="SCL-002",
+			project="FAM-001",
+			revision_no=2,
+			status="Approved by Purchase",
+			is_active=False,
+			finished_parts=[FinishedPart("PART001LHSHR", gross_weight_per_part_kg=2.5)],
+		)
+		old_bom = Bom("BOM-PART001LHSHR-OLD", item="PART001LHSHR")
+		boms = [old_bom]
+
+		result = release_layout(
+			new_layout,
+			layouts=[old_layout, new_layout],
+			boms=boms,
+			bom_document_factory=_in_memory_bom_factory,
+		)
+		new_bom = result.generated_boms[0]
+
+		assert result.status == "Released"
+		assert new_bom.is_active is True
+		assert new_bom.disabled is False
+		assert new_bom.status == "Active"
+
+	def test_release_persists_only_new_revision_layout_when_frappe_is_available(self) -> None:
+		from sheet_cutting_layout.services import release_service
+		from sheet_cutting_layout.services.bom_service import BomDocument
+		from sheet_cutting_layout.services.release_service import release_layout
+
+		old_layout = SavableRevisionLayout(
+			name="SCL-001",
+			project="FAM-001",
+			revision_no=1,
+			status="Released",
+			is_active=True,
+			finished_parts=[FinishedPart("PART001LHSHR", generated_bom="BOM-PART001LHSHR-OLD")],
+		)
+		new_layout = SavableRevisionLayout(
+			name="SCL-002",
+			project="FAM-001",
+			revision_no=2,
+			status="Approved by Purchase",
+			is_active=False,
+			finished_parts=[FinishedPart("PART001LHSHR", gross_weight_per_part_kg=2.5)],
+		)
+
+		class FrappeStub:
+			@staticmethod
+			def get_doc(_doctype: str, name: str) -> object:
+				return type("SavableBom", (), {"name": name, "save": lambda self, **kwargs: None})()
+
+		frappe_stub_patcher = patch.object(release_service, "frappe", FrappeStub)
+		frappe_stub_patcher.start()
+		self.addCleanup(frappe_stub_patcher.stop)
+
+		release_layout(
+			new_layout,
+			layouts=[old_layout, new_layout],
+			boms=[],
+			bom_document_factory=lambda _layout, row, _index: BomDocument(
+				item=row.finished_part_item,
+				name="BOM-PART001LHSHR-NEW",
+			),
+		)
+
+		assert old_layout.status == "Released"
+		assert old_layout.save_calls == 0
+		assert new_layout.status == "Released"
+		assert new_layout.save_calls == 1
+
+	def test_release_does_not_db_set_unchanged_submitted_layouts(self) -> None:
+		from sheet_cutting_layout.services import release_service
+		from sheet_cutting_layout.services.bom_service import BomDocument
+		from sheet_cutting_layout.services.release_service import release_layout
+
+		old_layout = SubmittedRevisionLayout(
+			name="SCL-001",
+			project="FAM-001",
+			revision_no=1,
+			status="Released",
+			is_active=True,
+			finished_parts=[FinishedPart("PART001LHSHR", generated_bom="BOM-PART001LHSHR-OLD")],
+		)
+		new_layout = SavableRevisionLayout(
+			name="SCL-002",
+			project="FAM-001",
+			revision_no=2,
+			status="Approved by Purchase",
+			is_active=False,
+			finished_parts=[FinishedPart("PART001LHSHR", gross_weight_per_part_kg=2.5)],
+		)
+
+		class FrappeStub:
+			@staticmethod
+			def get_doc(_doctype: str, name: str) -> object:
+				return type("SavableBom", (), {"name": name, "save": lambda self, **kwargs: None})()
+
+		frappe_stub_patcher = patch.object(release_service, "frappe", FrappeStub)
+		frappe_stub_patcher.start()
+		self.addCleanup(frappe_stub_patcher.stop)
+
+		release_layout(
+			new_layout,
+			layouts=[old_layout, new_layout],
+			boms=[],
+			bom_document_factory=lambda _layout, row, _index: BomDocument(
+				item=row.finished_part_item,
+				name="BOM-PART001LHSHR-NEW",
+			),
+		)
+
+		assert old_layout.status == "Released"
+		assert old_layout.is_active is True
+		assert old_layout.save_calls == 0
+		assert old_layout.db_set_calls == []
+
+	def test_mr_release_records_mr_approval_snapshot(self) -> None:
+		from sheet_cutting_layout.services.workflow import record_approval_snapshot
+
+		doc = type("Doc", (), {"approval_snapshot": []})()
+		decision_time = datetime(2026, 5, 18, 12, 30, 0)
+
+		recorded = record_approval_snapshot(
+			doc,
+			action="MR Release",
+			approver="mr@example.com",
+			decision_time=decision_time,
+		)
+
+		assert recorded is True
+		assert doc.approval_snapshot == [
+			{
+				"step_name": "MR Approval",
+				"approver": "mr@example.com",
+				"decision": "Approved",
+				"decision_time": decision_time,
+			}
+		]
+
+
+class TestSaveTimeAudit(ReleaseServiceIsolatedTestCase):
+	def test_save_time_audit_rejects_generated_bom_quantity_drift(self) -> None:
+		from sheet_cutting_layout.services import validators
+
+		layout = _audit_layout()
+
+		with (
+			patch.object(validators, "frappe", _audit_frappe_stub(bom_quantity=99)),
+			patch.object(validators, "_", lambda message: message),
+			self.assertRaisesRegex(ValueError, "BOM quantity mismatch"),
+		):
+			validators.validate_sheet_cutting_layout(layout)
+
+	def test_save_time_audit_rejects_missing_reuse_end_piece_byproduct_row(self) -> None:
+		from sheet_cutting_layout.services import validators
+
+		layout = _audit_layout(end_piece_fields=_AUDIT_REUSE_END_PIECE, sheet_thickness_mm=1.6)
+
+		with (
+			patch.object(validators, "frappe", _audit_frappe_stub(bom_quantity=77, include_end_piece_scrap_row=False)),
+			patch.object(validators, "_", lambda message: message),
+			self.assertRaisesRegex(ValueError, "BOM scrap item mismatch"),
+		):
+			validators.validate_sheet_cutting_layout(layout)
+
+	def test_save_time_audit_rejects_fractional_generated_bom_quantity(self) -> None:
+		from sheet_cutting_layout.services import validators
+
+		layout = _audit_layout()
+
+		with (
+			patch.object(validators, "frappe", _audit_frappe_stub(bom_quantity=11.5)),
+			patch.object(validators, "_", lambda message: message),
+			self.assertRaisesRegex(ValueError, "BOM quantity mismatch"),
+		):
+			validators.validate_sheet_cutting_layout(layout)
+
+
 def _new_sheet_cutting_layout_doc(sheet_cutting_layout_module: object):
 	doc = object.__new__(sheet_cutting_layout_module.SheetCuttingLayout)
 	doc.doctype = "Sheet Cutting Layout"
@@ -388,194 +800,6 @@ def test_controller_before_insert_clears_copied_release_artifacts() -> None:
 	assert doc.end_piece_bom_status == "Pending"
 	assert doc.end_pieces[0].end_piece_item_code is None
 
-
-def test_release_reaches_released() -> None:
-	from sheet_cutting_layout.services.release_service import release_layout
-
-	layout = Layout()
-	result = release_layout(
-		layout,
-		layouts=[],
-		boms=[],
-		bom_document_factory=_in_memory_bom_factory,
-	)
-
-	assert result.status == "Released"
-	assert layout.status == "Released"
-
-
-def test_release_runs_default_layout_validation() -> None:
-	from sheet_cutting_layout.services.release_service import ReleaseContext, release_layout
-	from sheet_cutting_layout.services.validators import frappe
-
-	layout = Layout(finished_parts=[FinishedPart("PART-001SHR")])
-
-	try:
-		validation_error = frappe.ValidationError
-	except AttributeError:
-		validation_error = Exception
-
-	with raises(validation_error, match="alphanumeric"):
-		release_layout(layout, release_context=ReleaseContext(layouts=(), boms=[]))
-
-	assert layout.status == "Approved by Purchase"
-
-
-def test_release_allows_injected_validators_for_testability() -> None:
-	from sheet_cutting_layout.services.release_service import release_layout
-
-	calls: list[str] = []
-	layout = Layout(finished_parts=[FinishedPart("PART-001SHR")])
-
-	release_layout(
-		layout,
-		validators=[lambda received: calls.append(received.status)],
-		layouts=[],
-		boms=[],
-		bom_document_factory=_in_memory_bom_factory,
-	)
-
-	assert calls == ["Approved by Purchase"]
-	assert layout.status == "Released"
-
-
-def test_release_requires_process_scrap_item_when_process_scrap_is_positive() -> None:
-	from sheet_cutting_layout.services.release_service import ReleaseContext, release_layout
-	from sheet_cutting_layout.services.validators import frappe
-
-	layout = Layout(
-		process_scrap_item="",
-		finished_parts=[FinishedPart("PART001SHR", scrap_weight_per_part_kg=0.25)],
-	)
-
-	with raises(frappe.ValidationError, match="Process scrap item"):
-		release_layout(layout, release_context=ReleaseContext(layouts=(), boms=[]))
-
-
-def test_release_stops_when_injected_validator_fails() -> None:
-	from sheet_cutting_layout.services.release_service import release_layout
-
-	def fail_validator(_layout: Layout) -> None:
-		raise ValueError("not ready")
-
-	layout = Layout()
-
-	with raises(ValueError, match="not ready"):
-		release_layout(layout, validators=[fail_validator], layouts=[], boms=[])
-
-	assert layout.status == "Approved by Purchase"
-	assert layout.finished_parts[0].generated_bom is None
-
-
-def test_release_uses_injected_context_provider() -> None:
-	from sheet_cutting_layout.services.release_service import ReleaseContext, release_layout
-
-	layout = Layout()
-	context = ReleaseContext(layouts=[], boms=[])
-	calls: list[Layout] = []
-
-	result = release_layout(
-		layout,
-		release_context_provider=lambda received: calls.append(received) or context,
-		bom_document_factory=_in_memory_bom_factory,
-	)
-
-	assert calls == [layout]
-	assert result.status == "Released"
-
-
-def test_release_uses_injected_bom_document_factory_for_persisted_boms() -> None:
-	from sheet_cutting_layout.services.bom_service import BomDocument
-	from sheet_cutting_layout.services.release_service import release_layout
-
-	layout = Layout(no_of_strips=11, parts_per_sheet=77, finished_parts=[])
-	created: list[tuple[Layout, object, int]] = []
-
-	def fake_factory(received_layout: Layout, row: object, index: int) -> BomDocument:
-		created.append((received_layout, row, index))
-		return BomDocument(item=row.finished_part_item, name=f"PERSISTED-BOM-{index}", quantity=11)
-
-	result = release_layout(
-		layout,
-		bom_document_factory=fake_factory,
-		layouts=[],
-		boms=[],
-	)
-
-	assert created[0][0] is layout
-	assert created[0][1].finished_part_item == "PART001SHR"
-	assert created[0][2] == 1
-	assert result.generated_boms[0].name == "PERSISTED-BOM-1"
-	assert layout.generated_bom == "PERSISTED-BOM-1"
-	assert [row.finished_part_item for row in layout.finished_parts] == ["PART001SHR"]
-	assert [row.bom_quantity for row in layout.finished_parts] == [77]
-
-
-def test_release_uses_parent_finished_part_contract_without_child_inputs() -> None:
-	from sheet_cutting_layout.services.release_service import release_layout
-
-	layout = Layout(
-		weight_per_sheet_kg=100.0,
-		parts_per_sheet=80,
-		finished_part_code="PART001SHR",
-		net_weight_per_part_kg=0.75,
-		gross_weight_per_part_kg=1.0,
-		scrap_weight_per_part_kg=0.25,
-		finished_parts=[],
-	)
-
-	result = release_layout(
-		layout,
-		validators=[lambda _layout: None],
-		layouts=[],
-		boms=[],
-		bom_document_factory=_in_memory_bom_factory,
-	)
-
-	assert result.generated_boms[0].item == "PART001SHR"
-	assert result.generated_boms[0].quantity == 80
-	assert layout.generated_bom == result.generated_boms[0].name
-	assert [row.finished_part_item for row in layout.finished_parts] == ["PART001SHR"]
-	assert [row.bom_quantity for row in layout.finished_parts] == [80]
-	assert [row.scrap_weight_kg for row in layout.finished_parts] == [20.0]
-	assert [row.raw_material_weight_kg for row in layout.finished_parts] == [100.0]
-
-
-def test_release_syncs_finished_part_reference_rows_from_saved_bom() -> None:
-	from sheet_cutting_layout.services.bom_service import BomDocument, BomItemRow
-	from sheet_cutting_layout.services.release_service import release_layout
-
-	layout = Layout(
-		weight_per_sheet_kg=39.3,
-		parts_per_sheet=77,
-		finished_part_code="FG01SHR",
-		net_weight_per_part_kg=0.289,
-		gross_weight_per_part_kg=0.473846,
-		scrap_weight_per_part_kg=0.184846,
-		finished_parts=[],
-	)
-
-	def persisted_bom_factory(_layout: Layout, _row: object, _index: int) -> BomDocument:
-		bom = BomDocument(item="FG01SHR", name="BOM-FG01SHR-SAVED", quantity=11)
-		bom.items.append(BomItemRow(item_code="RMSHEET001", qty=39.3, row_type="raw_material"))
-		bom.scrap_items.append(
-			BomItemRow(item_code="PROCESSSCRAP001", qty=14.233142, row_type="process_scrap")
-		)
-		return bom
-
-	release_layout(
-		layout,
-		validators=[lambda _layout: None],
-		layouts=[],
-		boms=[],
-		bom_document_factory=persisted_bom_factory,
-	)
-
-	self_reference = layout.finished_parts[0]
-	assert self_reference.finished_part_item == "FG01SHR"
-	assert self_reference.bom_quantity == 77
-	assert self_reference.raw_material_weight_kg == 39.3
-	assert self_reference.scrap_weight_kg == 14.233142
 
 
 def _audit_frappe_stub(*, bom_quantity: float, include_end_piece_scrap_row: bool = True) -> type:
@@ -686,220 +910,6 @@ def _audit_layout(
 	)()
 
 
-def test_save_time_audit_rejects_generated_bom_quantity_drift(
-	monkeypatch: MonkeyPatch,
-) -> None:
-	from sheet_cutting_layout.services import validators
-
-	monkeypatch.setattr(validators, "frappe", _audit_frappe_stub(bom_quantity=99))
-	monkeypatch.setattr(validators, "_", lambda message: message)
-
-	with raises(ValueError, match="BOM quantity mismatch"):
-		validators.validate_sheet_cutting_layout(_audit_layout())
-
-
-def test_save_time_audit_rejects_missing_reuse_end_piece_byproduct_row(
-	monkeypatch: MonkeyPatch,
-) -> None:
-	from sheet_cutting_layout.services import validators
-
-	monkeypatch.setattr(
-		validators,
-		"frappe",
-		_audit_frappe_stub(bom_quantity=77, include_end_piece_scrap_row=False),
-	)
-	monkeypatch.setattr(validators, "_", lambda message: message)
-	layout = _audit_layout(end_piece_fields=_AUDIT_REUSE_END_PIECE, sheet_thickness_mm=1.6)
-
-	with raises(ValueError, match="BOM scrap item mismatch"):
-		validators.validate_sheet_cutting_layout(layout)
-
-
-def test_save_time_audit_rejects_fractional_generated_bom_quantity(
-	monkeypatch: MonkeyPatch,
-) -> None:
-	from sheet_cutting_layout.services import validators
-
-	monkeypatch.setattr(validators, "frappe", _audit_frappe_stub(bom_quantity=11.5))
-	monkeypatch.setattr(validators, "_", lambda message: message)
-
-	with raises(ValueError, match="BOM quantity mismatch"):
-		validators.validate_sheet_cutting_layout(_audit_layout())
-
-
-def test_release_generates_bom_for_one_sheet_in_kg_with_scrap_outputs() -> None:
-	from sheet_cutting_layout.services.release_service import release_layout
-
-	layout = Layout(
-		weight_per_sheet_kg=100.0,
-		finished_parts=[
-			FinishedPart(
-				"PART001SHR",
-				parts_per_sheet=80,
-				gross_weight_per_part_kg=1.0,
-				scrap_weight_per_part_kg=0.25,
-			)
-		],
-		end_pieces=[
-			EndPiece(
-				weight_kg=10.0,
-				qty_per_sheet=2,
-				disposition="Scrap",
-				scrap_item="ENDSCRAP001",
-			)
-		],
-	)
-
-	result = release_layout(
-		layout,
-		validators=[lambda _layout: None],
-		layouts=[],
-		boms=[],
-		bom_document_factory=_in_memory_bom_factory,
-	)
-
-	bom = result.generated_boms[0]
-	assert bom.item == "PART001SHR"
-	assert bom.quantity == 80
-	assert [(row.item_code, row.qty, row.row_type) for row in bom.items] == [
-		("RMSHEET001", 100.0, "raw_material")
-	]
-	assert [(row.item_code, row.qty, row.row_type) for row in bom.scrap_items] == [
-		("PROCESSSCRAP001", 20.0, "process_scrap"),
-		("ENDSCRAP001", 10.0, "end_piece_scrap"),
-	]
-
-
-def test_generated_boms_are_activated_on_release() -> None:
-	from sheet_cutting_layout.services.release_service import release_layout
-
-	old_layout = RevisionLayout(
-		name="SCL-001",
-		project="FAM-001",
-		revision_no=1,
-		status="Released",
-		is_active=True,
-		finished_parts=[FinishedPart("PART001LHSHR", generated_bom="BOM-PART001LHSHR-OLD")],
-	)
-	new_layout = RevisionLayout(
-		name="SCL-002",
-		project="FAM-001",
-		revision_no=2,
-		status="Approved by Purchase",
-		is_active=False,
-		finished_parts=[FinishedPart("PART001LHSHR", gross_weight_per_part_kg=2.5)],
-	)
-	old_bom = Bom("BOM-PART001LHSHR-OLD", item="PART001LHSHR")
-	boms = [old_bom]
-
-	result = release_layout(
-		new_layout,
-		layouts=[old_layout, new_layout],
-		boms=boms,
-		bom_document_factory=_in_memory_bom_factory,
-	)
-	new_bom = result.generated_boms[0]
-
-	assert result.status == "Released"
-	assert new_bom.is_active is True
-	assert new_bom.disabled is False
-	assert new_bom.status == "Active"
-
-
-def test_release_persists_only_new_revision_layout_when_frappe_is_available(
-	monkeypatch: MonkeyPatch,
-) -> None:
-	from sheet_cutting_layout.services import release_service
-	from sheet_cutting_layout.services.bom_service import BomDocument
-	from sheet_cutting_layout.services.release_service import release_layout
-
-	old_layout = SavableRevisionLayout(
-		name="SCL-001",
-		project="FAM-001",
-		revision_no=1,
-		status="Released",
-		is_active=True,
-		finished_parts=[FinishedPart("PART001LHSHR", generated_bom="BOM-PART001LHSHR-OLD")],
-	)
-	new_layout = SavableRevisionLayout(
-		name="SCL-002",
-		project="FAM-001",
-		revision_no=2,
-		status="Approved by Purchase",
-		is_active=False,
-		finished_parts=[FinishedPart("PART001LHSHR", gross_weight_per_part_kg=2.5)],
-	)
-
-	class FrappeStub:
-		@staticmethod
-		def get_doc(_doctype: str, name: str) -> object:
-			return type("SavableBom", (), {"name": name, "save": lambda self, **kwargs: None})()
-
-	monkeypatch.setattr(release_service, "frappe", FrappeStub)
-
-	release_layout(
-		new_layout,
-		layouts=[old_layout, new_layout],
-		boms=[],
-		bom_document_factory=lambda _layout, row, _index: BomDocument(
-			item=row.finished_part_item,
-			name="BOM-PART001LHSHR-NEW",
-		),
-	)
-
-	assert old_layout.status == "Released"
-	assert old_layout.save_calls == 0
-	assert new_layout.status == "Released"
-	assert new_layout.save_calls == 1
-
-
-def test_release_does_not_db_set_unchanged_submitted_layouts(
-	monkeypatch: MonkeyPatch,
-) -> None:
-	from sheet_cutting_layout.services import release_service
-	from sheet_cutting_layout.services.bom_service import BomDocument
-	from sheet_cutting_layout.services.release_service import release_layout
-
-	old_layout = SubmittedRevisionLayout(
-		name="SCL-001",
-		project="FAM-001",
-		revision_no=1,
-		status="Released",
-		is_active=True,
-		finished_parts=[FinishedPart("PART001LHSHR", generated_bom="BOM-PART001LHSHR-OLD")],
-	)
-	new_layout = SavableRevisionLayout(
-		name="SCL-002",
-		project="FAM-001",
-		revision_no=2,
-		status="Approved by Purchase",
-		is_active=False,
-		finished_parts=[FinishedPart("PART001LHSHR", gross_weight_per_part_kg=2.5)],
-	)
-
-	class FrappeStub:
-		@staticmethod
-		def get_doc(_doctype: str, name: str) -> object:
-			return type("SavableBom", (), {"name": name, "save": lambda self, **kwargs: None})()
-
-	monkeypatch.setattr(release_service, "frappe", FrappeStub)
-
-	release_layout(
-		new_layout,
-		layouts=[old_layout, new_layout],
-		boms=[],
-		bom_document_factory=lambda _layout, row, _index: BomDocument(
-			item=row.finished_part_item,
-			name="BOM-PART001LHSHR-NEW",
-		),
-	)
-
-	assert old_layout.status == "Released"
-	assert old_layout.is_active is True
-	assert old_layout.save_calls == 0
-	assert old_layout.db_set_calls == []
-
-
 def test_controller_mr_release_action_calls_release_service(
 	monkeypatch: MonkeyPatch,
 ) -> None:
@@ -918,30 +928,6 @@ def test_controller_mr_release_action_calls_release_service(
 	doc.before_workflow_action()
 
 	assert calls == [(doc, {})]
-
-
-def test_mr_release_records_mr_approval_snapshot() -> None:
-	from sheet_cutting_layout.services.workflow import record_approval_snapshot
-
-	doc = type("Doc", (), {"approval_snapshot": []})()
-	decision_time = datetime(2026, 5, 18, 12, 30, 0)
-
-	recorded = record_approval_snapshot(
-		doc,
-		action="MR Release",
-		approver="mr@example.com",
-		decision_time=decision_time,
-	)
-
-	assert recorded is True
-	assert doc.approval_snapshot == [
-		{
-			"step_name": "MR Approval",
-			"approver": "mr@example.com",
-			"decision": "Approved",
-			"decision_time": decision_time,
-		}
-	]
 
 
 def test_controller_mr_release_suppresses_side_effects_during_internal_layout_saves(
