@@ -773,9 +773,9 @@ class TestControllerWorkflow(ReleaseServiceIsolatedTestCase):
 			calls.append((layout, kwargs))
 			return type("ReleaseResult", (), {"status": "Released"})()
 
-		self.start_patcher(patch.object(
-			sheet_cutting_layout, "_get_selected_workflow_action", lambda: "MR Release"
-		))
+		self.start_patcher(
+			patch.object(sheet_cutting_layout, "_get_selected_workflow_action", lambda: "MR Release")
+		)
 		self.start_patcher(patch.object(sheet_cutting_layout, "release_layout", fake_release_layout))
 
 		doc = _new_sheet_cutting_layout_doc(sheet_cutting_layout)
@@ -815,9 +815,9 @@ class TestControllerWorkflow(ReleaseServiceIsolatedTestCase):
 
 		self.start_patcher(patch.object(sheet_cutting_layout, "frappe", FrappeStub))
 		self.start_patcher(patch.object(sheet_cutting_layout, "release_layout", fake_release_layout))
-		self.start_patcher(patch.object(
-			sheet_cutting_layout, "validate_sheet_cutting_layout", lambda _doc: None
-		))
+		self.start_patcher(
+			patch.object(sheet_cutting_layout, "validate_sheet_cutting_layout", lambda _doc: None)
+		)
 
 		doc = _new_sheet_cutting_layout_doc(sheet_cutting_layout)
 		doc.approval_snapshot = []
@@ -841,15 +841,17 @@ class TestControllerWorkflow(ReleaseServiceIsolatedTestCase):
 			def now_datetime() -> datetime:
 				return datetime(2026, 5, 15, 9, 30, 0)
 
-		self.start_patcher(patch.object(
-			sheet_cutting_layout,
-			"_get_selected_workflow_action",
-			lambda: "Project Manager Approves",
-		))
+		self.start_patcher(
+			patch.object(
+				sheet_cutting_layout,
+				"_get_selected_workflow_action",
+				lambda: "Project Manager Approves",
+			)
+		)
 		self.start_patcher(patch.object(sheet_cutting_layout, "frappe", FrappeStub))
-		self.start_patcher(patch.object(
-			sheet_cutting_layout, "validate_sheet_cutting_layout", lambda _doc: None
-		))
+		self.start_patcher(
+			patch.object(sheet_cutting_layout, "validate_sheet_cutting_layout", lambda _doc: None)
+		)
 
 		doc = _new_sheet_cutting_layout_doc(sheet_cutting_layout)
 		doc.approval_snapshot = []
@@ -877,15 +879,17 @@ class TestControllerWorkflow(ReleaseServiceIsolatedTestCase):
 			def now_datetime() -> datetime:
 				return datetime(2026, 5, 15, 10, 0, 0)
 
-		self.start_patcher(patch.object(
-			sheet_cutting_layout,
-			"_get_selected_workflow_action",
-			lambda: "Submit for Check",
-		))
+		self.start_patcher(
+			patch.object(
+				sheet_cutting_layout,
+				"_get_selected_workflow_action",
+				lambda: "Submit for Check",
+			)
+		)
 		self.start_patcher(patch.object(sheet_cutting_layout, "frappe", FrappeStub))
-		self.start_patcher(patch.object(
-			sheet_cutting_layout, "validate_sheet_cutting_layout", lambda _doc: None
-		))
+		self.start_patcher(
+			patch.object(sheet_cutting_layout, "validate_sheet_cutting_layout", lambda _doc: None)
+		)
 
 		doc = _new_sheet_cutting_layout_doc(sheet_cutting_layout)
 		doc.approval_snapshot = []
@@ -1015,14 +1019,16 @@ class TestControllerWorkflow(ReleaseServiceIsolatedTestCase):
 
 		calls: list[object] = []
 
-		self.start_patcher(patch.object(
-			sheet_cutting_layout, "_get_selected_workflow_action", lambda: "Supersede"
-		))
-		self.start_patcher(patch.object(
-			sheet_cutting_layout,
-			"deactivate_generated_bom",
-			lambda layout: calls.append(layout),
-		))
+		self.start_patcher(
+			patch.object(sheet_cutting_layout, "_get_selected_workflow_action", lambda: "Supersede")
+		)
+		self.start_patcher(
+			patch.object(
+				sheet_cutting_layout,
+				"deactivate_generated_bom",
+				lambda layout: calls.append(layout),
+			)
+		)
 
 		doc = _new_sheet_cutting_layout_doc(sheet_cutting_layout)
 		doc.generated_bom = "BOM-PART001SHR-001"
@@ -1036,11 +1042,13 @@ class TestControllerWorkflow(ReleaseServiceIsolatedTestCase):
 		)
 
 		calls: list[object] = []
-		self.start_patcher(patch.object(
-			sheet_cutting_layout,
-			"cancel_generated_bom",
-			lambda layout: calls.append(layout),
-		))
+		self.start_patcher(
+			patch.object(
+				sheet_cutting_layout,
+				"cancel_generated_bom",
+				lambda layout: calls.append(layout),
+			)
+		)
 
 		doc = _new_sheet_cutting_layout_doc(sheet_cutting_layout)
 		doc.status = "Superseded"
@@ -1221,11 +1229,13 @@ class TestPatches(ReleaseServiceIsolatedTestCase):
 		class FrappeStub:
 			db = DbStub
 
-		self.start_patcher(patch.object(
-			v1_0_migrate_checked_workflow_state_to_pm_approved,
-			"frappe",
-			FrappeStub,
-		))
+		self.start_patcher(
+			patch.object(
+				v1_0_migrate_checked_workflow_state_to_pm_approved,
+				"frappe",
+				FrappeStub,
+			)
+		)
 
 		v1_0_migrate_checked_workflow_state_to_pm_approved.execute()
 
@@ -1278,11 +1288,13 @@ class TestPatches(ReleaseServiceIsolatedTestCase):
 		class FrappeStub:
 			db = DbStub
 
-		self.start_patcher(patch.object(
-			v1_0_migrate_checked_workflow_state_to_pm_approved,
-			"frappe",
-			FrappeStub,
-		))
+		self.start_patcher(
+			patch.object(
+				v1_0_migrate_checked_workflow_state_to_pm_approved,
+				"frappe",
+				FrappeStub,
+			)
+		)
 
 		v1_0_migrate_checked_workflow_state_to_pm_approved.execute()
 
