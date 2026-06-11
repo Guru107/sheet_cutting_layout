@@ -1,10 +1,118 @@
 from __future__ import annotations
 
 import inspect
+import re
+from contextlib import AbstractContextManager
 from itertools import product
 from typing import Any
 
-import pytest
+
+class Approx:
+	def __init__(self, expected: float, *, abs: float = 1e-12) -> None:
+		self.expected = expected
+		self.abs = abs
+
+	def __eq__(self, actual: object) -> bool:
+		try:
+			return abs(float(actual) - float(self.expected)) <= self.abs
+		except (TypeError, ValueError):
+			return False
+
+
+class Raises(AbstractContextManager["Raises"]):
+	def __init__(self, expected_exception: type[BaseException], *, match: str | None = None) -> None:
+		self.expected_exception = expected_exception
+		self.match = match
+		self.value: BaseException | None = None
+
+	def __exit__(
+		self,
+		exc_type: type[BaseException] | None,
+		exc_value: BaseException | None,
+		traceback: object,
+	) -> bool:
+		if exc_type is None or exc_value is None:
+			raise AssertionError(f"Expected {self.expected_exception.__name__} to be raised")
+		if not issubclass(exc_type, self.expected_exception):
+			return False
+		if self.match is not None and re.search(self.match, str(exc_value)) is None:
+			raise AssertionError(f"Exception message {exc_value!r} does not match {self.match!r}")
+		self.value = exc_value
+		return True
+
+
+class MonkeyPatch:
+	_MISSING = object()
+
+	def __init__(self) -> None:
+		self._undo: list[tuple[str, object, object, object]] = []
+
+	def setattr(self, target: object, name: str, value: object, *, raising: bool = True) -> None:
+		previous = getattr(target, name, self._MISSING)
+		if previous is self._MISSING and raising:
+			raise AttributeError(f"{target!r} has no attribute {name!r}")
+		self._undo.append(("attr", target, name, previous))
+		setattr(target, name, value)
+
+	def setitem(self, mapping: dict[object, object], name: object, value: object) -> None:
+		previous = mapping.get(name, self._MISSING)
+		self._undo.append(("item", mapping, name, previous))
+		mapping[name] = value
+
+	def undo(self) -> None:
+		while self._undo:
+			kind, target, name, previous = self._undo.pop()
+			if kind == "attr":
+				if previous is self._MISSING:
+					delattr(target, name)
+				else:
+					setattr(target, name, previous)
+				continue
+			if previous is self._MISSING:
+				del target[name]  # type: ignore[index]
+			else:
+				target[name] = previous  # type: ignore[index]
+
+
+class FixtureMarker:
+	def __init__(self, *, autouse: bool = False) -> None:
+		self.autouse = autouse
+
+
+class Mark:
+	def parametrize(self, argnames: str, argvalues: list[object] | tuple[object, ...]) -> object:
+		def _decorate(fn: Any) -> Any:
+			marks = list(getattr(fn, "pytestmark", []))
+			marks.append(
+				type("ParametrizeMark", (), {"name": "parametrize", "args": (argnames, argvalues)})()
+			)
+			fn.pytestmark = marks
+			return fn
+
+		return _decorate
+
+
+mark = Mark()
+
+
+def approx(expected: float, *, abs: float = 1e-12) -> Approx:
+	return Approx(expected, abs=abs)
+
+
+def fail(message: str) -> None:
+	raise AssertionError(message)
+
+
+def fixture(*, autouse: bool = False) -> object:
+	def _decorate(fn: Any) -> Any:
+		fn._bench_fixture_marker = FixtureMarker(autouse=autouse)
+		return fn
+
+	return _decorate
+
+
+def raises(expected_exception: type[BaseException], *, match: str | None = None) -> Raises:
+	return Raises(expected_exception, match=match)
 
 
 def add_pytest_style_tests(
@@ -26,7 +134,7 @@ def _build_test_method(module_globals: dict[str, Any], fn: Any):
 	parametrize_marks = _parametrize_marks(fn)
 
 	def _run_case(param_values: dict[str, Any]) -> None:
-		monkeypatch = pytest.MonkeyPatch()
+		monkeypatch = MonkeyPatch()
 		fixture_cache: dict[str, Any] = {}
 		try:
 			_run_autouse_fixtures(module_globals, monkeypatch, fixture_cache)
@@ -53,15 +161,17 @@ def _build_test_method(module_globals: dict[str, Any], fn: Any):
 
 def _run_autouse_fixtures(
 	module_globals: dict[str, Any],
-	monkeypatch: pytest.MonkeyPatch,
+	monkeypatch: MonkeyPatch,
 	fixture_cache: dict[str, Any],
 ) -> None:
 	for name, fixture in module_globals.items():
 		fixture_def = getattr(fixture, "_pytestfixturefunction", None)
 		fixture_marker = getattr(fixture, "_fixture_function_marker", None)
+		bench_fixture_marker = getattr(fixture, "_bench_fixture_marker", None)
 		is_autouse = bool(
 			(fixture_def is not None and getattr(fixture_def, "autouse", False))
 			or (fixture_marker is not None and getattr(fixture_marker, "autouse", False))
+			or (bench_fixture_marker is not None and getattr(bench_fixture_marker, "autouse", False))
 		)
 		if is_autouse:
 			_resolve_fixture(module_globals, name, monkeypatch, fixture_cache)
@@ -70,7 +180,7 @@ def _run_autouse_fixtures(
 def _build_kwargs(
 	module_globals: dict[str, Any],
 	param_names: list[str],
-	monkeypatch: pytest.MonkeyPatch,
+	monkeypatch: MonkeyPatch,
 	fixture_cache: dict[str, Any],
 	param_values: dict[str, Any],
 ) -> dict[str, Any]:
@@ -89,7 +199,7 @@ def _build_kwargs(
 def _resolve_fixture(
 	module_globals: dict[str, Any],
 	name: str,
-	monkeypatch: pytest.MonkeyPatch,
+	monkeypatch: MonkeyPatch,
 	fixture_cache: dict[str, Any],
 ) -> Any:
 	if name in fixture_cache:

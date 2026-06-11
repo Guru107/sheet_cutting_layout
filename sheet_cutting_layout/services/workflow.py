@@ -2,12 +2,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Literal, Protocol
+from typing import Literal
 
 LayoutWorkflowState = Literal[
 	"Draft",
 	"Submitted for Check",
-	"Checked",
+	"PM Approved",
 	"Approved by Purchase",
 	"Released",
 	"Rejected",
@@ -15,13 +15,7 @@ LayoutWorkflowState = Literal[
 ]
 
 
-class CheckerApprovalDocument(Protocol):
-	project_manager_ok: bool
-	manufacturing_manager_ok: bool
-
-
-PROJECT_MANAGER_APPROVAL_ACTION = "Projects Manager Approves"
-MANUFACTURING_MANAGER_APPROVAL_ACTION = "Manufacturing Manager Approves"
+PROJECT_MANAGER_APPROVAL_ACTION = "Project Manager Approves"
 PURCHASE_APPROVAL_ACTION = "Purchase Approves"
 MR_RELEASE_ACTION = "MR Release"
 SUBMIT_FOR_CHECK_ACTION = "Submit for Check"
@@ -29,19 +23,11 @@ REJECT_ACTION = "Reject"
 
 APPROVAL_SNAPSHOT_ACTIONS: dict[str, str] = {
 	SUBMIT_FOR_CHECK_ACTION: "Submit for Check",
-	PROJECT_MANAGER_APPROVAL_ACTION: "Projects Manager Approval",
-	MANUFACTURING_MANAGER_APPROVAL_ACTION: "Manufacturing Manager Approval",
+	PROJECT_MANAGER_APPROVAL_ACTION: "Project Manager Approval",
 	PURCHASE_APPROVAL_ACTION: "Purchase Approval",
 	MR_RELEASE_ACTION: "MR Approval",
 	REJECT_ACTION: "Rejection",
 }
-
-
-def apply_checker_action(doc: CheckerApprovalDocument, action: str) -> None:
-	if action == PROJECT_MANAGER_APPROVAL_ACTION:
-		doc.project_manager_ok = True
-	elif action == MANUFACTURING_MANAGER_APPROVAL_ACTION:
-		doc.manufacturing_manager_ok = True
 
 
 def record_approval_snapshot(
@@ -81,8 +67,6 @@ def record_approval_snapshot(
 @dataclass
 class LayoutWorkflowModel:
 	state: LayoutWorkflowState = "Draft"
-	project_manager_ok: bool = False
-	manufacturing_manager_ok: bool = False
 
 	def submit(self) -> None:
 		self._require_state("Draft")
@@ -90,22 +74,13 @@ class LayoutWorkflowModel:
 
 	def project_manager_approves(self) -> None:
 		self._require_state("Submitted for Check")
-		self.project_manager_ok = True
-		self.mark_checked_if_ready()
-
-	def manufacturing_manager_approves(self) -> None:
-		self._require_state("Submitted for Check")
-		if not self.project_manager_ok:
-			raise AssertionError("Manufacturing Manager approval requires Projects Manager approval")
-		self.manufacturing_manager_ok = True
-		self.mark_checked_if_ready()
+		self.state = "PM Approved"
 
 	def purchase_approves(self) -> None:
-		self._require_state("Checked")
+		self._require_state("PM Approved")
 		self.state = "Approved by Purchase"
 
 	def release(self) -> None:
-		self._require_checker_approvals()
 		if self.state != "Approved by Purchase":
 			raise AssertionError("Release requires purchase approval")
 		self.state = "Released"
@@ -113,7 +88,7 @@ class LayoutWorkflowModel:
 	def reject(self) -> None:
 		if self.state not in {
 			"Submitted for Check",
-			"Checked",
+			"PM Approved",
 			"Approved by Purchase",
 		}:
 			raise AssertionError("Only in-review or pre-release layouts can be rejected")
@@ -122,15 +97,6 @@ class LayoutWorkflowModel:
 	def supersede(self) -> None:
 		self._require_state("Released")
 		self.state = "Superseded"
-
-	def mark_checked_if_ready(self) -> None:
-		self._require_state("Submitted for Check")
-		if self.project_manager_ok and self.manufacturing_manager_ok:
-			self.state = "Checked"
-
-	def _require_checker_approvals(self) -> None:
-		if not (self.project_manager_ok and self.manufacturing_manager_ok):
-			raise AssertionError("Release requires both checker approvals")
 
 	def _require_state(self, expected: LayoutWorkflowState) -> None:
 		if self.state != expected:

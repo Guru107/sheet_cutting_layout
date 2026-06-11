@@ -15,11 +15,12 @@ fixtures = [
 				[
 					"Draft",
 					"Submitted for Check",
-					"Checked",
+					"PM Approved",
 					"Approved by Purchase",
 					"Released",
 					"Rejected",
 					"Superseded",
+					"Cancel",
 				],
 			]
 		],
@@ -27,7 +28,7 @@ fixtures = [
 	{"dt": "Workflow", "filters": [["name", "=", "Sheet Cutting Layout Approval Workflow"]]},
 	{
 		"dt": "Role",
-		"filters": [["name", "in", ["Projects Manager", "Manufacturing Manager", "MR Coordinator"]]],
+		"filters": [["name", "in", ["Project Manager", "MR Coordinator"]]],
 	},
 	{"dt": "Custom Field", "filters": [["dt", "in", ["BOM", "Work Order", "Production Plan"]]]},
 ]
@@ -41,7 +42,8 @@ override_whitelisted_methods = {
 
 doc_events = {
 	"BOM": {
-		"validate": "sheet_cutting_layout.overrides.bom.validate_shearing_bom_source",
+		"before_insert": "sheet_cutting_layout.overrides.bom.validate_shearing_bom_source",
+		"before_cancel": "sheet_cutting_layout.overrides.bom.validate_shearing_bom_source",
 	}
 }
 
@@ -209,7 +211,7 @@ doc_events = {
 # Testing
 # -------
 
-# before_tests = "sheet_cutting_layout.install.before_tests"
+before_tests = "sheet_cutting_layout.tests.test_setup.before_tests"
 
 # Overriding Methods
 # ------------------------------

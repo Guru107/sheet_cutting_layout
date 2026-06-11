@@ -7,7 +7,6 @@
  "engine": "InnoDB",
  "field_order": [
   "end_piece_item_code",
-  "generated_end_piece_item",
   "width_mm",
   "length_mm",
   "weight_kg",
@@ -16,20 +15,20 @@
   "scrap_item",
   "used_for_finished_part",
   "bom_quantity",
+  "net_weight_per_part_kg",
+  "gross_weight_per_part_kg",
+  "scrap_weight_per_part_kg",
   "bom_scrap_quantity_kg",
   "generated_end_piece_bom"
  ],
  "fields": [
   {
+   "depends_on": "eval:doc.end_piece_item_code",
    "fieldname": "end_piece_item_code",
-   "fieldtype": "Data",
-   "in_list_view": 1,
-   "label": "End Piece Item Code"
-  },
-  {
-   "fieldname": "generated_end_piece_item",
    "fieldtype": "Link",
-   "label": "Generated End Piece Item",
+   "in_list_view": 1,
+   "label": "End Piece Item Code",
+   "no_copy": 1,
    "options": "Item",
    "read_only": 1
   },
@@ -56,12 +55,10 @@
    "reqd": 1
   },
   {
-   "default": "1",
    "fieldname": "qty_per_sheet",
    "fieldtype": "Float",
-   "in_list_view": 1,
-   "label": "Qty Per Sheet",
-   "reqd": 1
+   "hidden": 1,
+   "label": "Qty Per Sheet"
   },
   {
    "fieldname": "disposition",
@@ -71,7 +68,7 @@
    "options": "\nReuse\nScrap"
   },
   {
-   "depends_on": "eval:doc.disposition==\"Scrap\"",
+   "depends_on": "eval:[\"Reuse\",\"Scrap\"].includes(doc.disposition)",
    "fieldname": "scrap_item",
    "fieldtype": "Link",
    "label": "Scrap Item",
@@ -92,14 +89,37 @@
   },
   {
    "depends_on": "eval:doc.disposition==\"Reuse\"",
+   "fieldname": "net_weight_per_part_kg",
+   "fieldtype": "Float",
+   "label": "Net Weight Per Part Kg"
+  },
+  {
+   "depends_on": "eval:doc.disposition==\"Reuse\"",
+   "fieldname": "gross_weight_per_part_kg",
+   "fieldtype": "Float",
+   "label": "Gross Weight Per Part Kg",
+   "read_only": 1
+  },
+  {
+   "depends_on": "eval:doc.disposition==\"Reuse\"",
+   "fieldname": "scrap_weight_per_part_kg",
+   "fieldtype": "Float",
+   "label": "Scrap Weight Per Part Kg",
+   "read_only": 1
+  },
+  {
+   "depends_on": "eval:doc.disposition==\"Reuse\"",
    "fieldname": "bom_scrap_quantity_kg",
    "fieldtype": "Float",
-   "label": "BOM Scrap Quantity Kg"
+   "label": "BOM Scrap Quantity Kg",
+   "read_only": 1
   },
   {
    "fieldname": "generated_end_piece_bom",
    "fieldtype": "Link",
+   "hidden": 1,
    "label": "Generated End Piece BOM",
+   "no_copy": 1,
    "options": "BOM",
    "read_only": 1
   }

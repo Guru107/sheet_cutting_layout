@@ -2,7 +2,13 @@ from __future__ import annotations
 
 from importlib import import_module
 
-import frappe
+try:
+	import frappe
+except ImportError:
+	# Bench-only test bootstrap: this module is executed via
+	# `bench execute sheet_cutting_layout.tests.test_setup.before_tests`,
+	# but pytest also collects it by name in frappe-less runs.
+	frappe = None
 
 
 def _call_erpnext_before_tests() -> None:
@@ -41,4 +47,7 @@ def before_tests() -> None:
 	_call_erpnext_before_tests()
 	_ensure_gender_records()
 	_ensure_transit_warehouse_type()
+	# This app's tests create their live records explicitly. Frappe's automatic
+	# dependency records can conflict with installed regional compliance apps.
+	frappe.flags.skip_test_records = True
 	frappe.db.commit()  # nosemgrep: frappe-manual-commit - test bootstrap seed must persist

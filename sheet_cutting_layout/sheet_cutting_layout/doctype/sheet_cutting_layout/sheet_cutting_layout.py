@@ -27,15 +27,21 @@ _ = getattr(frappe, "_", lambda message: message)
 
 from sheet_cutting_layout.services.end_piece_bom_service import (
 	generate_end_piece_boms,
-	preview_end_piece_boms,
 )
-from sheet_cutting_layout.services.release_service import get_release_context, release_layout
-from sheet_cutting_layout.services.validators import validate_sheet_cutting_layout
+from sheet_cutting_layout.services.release_service import (
+	cancel_generated_bom,
+	deactivate_generated_bom,
+	release_layout,
+)
+from sheet_cutting_layout.services.validators import apply_end_piece_bom_status, validate_sheet_cutting_layout
 from sheet_cutting_layout.services.versioning import create_revision
-from sheet_cutting_layout.services.workflow import apply_checker_action, record_approval_snapshot
+from sheet_cutting_layout.services.workflow import record_approval_snapshot
 
 
 class SheetCuttingLayout(Document):
+	def before_insert(self) -> None:
+		_clear_copied_release_artifacts(self)
+
 	def before_workflow_action(self) -> None:
 		action = _get_selected_workflow_action()
 		self._apply_workflow_action_effects(action)
@@ -44,6 +50,10 @@ class SheetCuttingLayout(Document):
 		action = _get_selected_workflow_action()
 		self._apply_workflow_action_effects(action)
 		validate_sheet_cutting_layout(self)
+
+	def before_cancel(self) -> None:
+		cancel_generated_bom(self)
+		self.status = "Cancel"
 
 	def on_trash(self) -> None:
 		if getattr(self, "status", None) != "Rejected" or not frappe:
@@ -76,17 +86,39 @@ class SheetCuttingLayout(Document):
 			return
 
 		self._sheet_cutting_layout_applied_workflow_action = action
-		apply_checker_action(self, action)
 		record_approval_snapshot(
 			self,
 			action=action,
 			approver=_get_session_user(),
 			decision_time=_get_now_datetime(),
 		)
-		context = get_release_context(self) if action == "MR Release" else None
 		if action == "MR Release":
 			with _suppress_workflow_side_effects():
-				release_layout(self, release_context=context)
+				release_layout(self)
+		if action == "Supersede":
+			deactivate_generated_bom(self)
+
+
+def _clear_copied_release_artifacts(doc: object) -> None:
+	if hasattr(doc, "generated_bom"):
+		doc.generated_bom = None
+	if hasattr(doc, "finished_parts"):
+		doc.finished_parts = []
+	if hasattr(doc, "approval_snapshot"):
+		doc.approval_snapshot = []
+	if hasattr(doc, "status"):
+		doc.status = "Draft"
+	if hasattr(doc, "is_active"):
+		doc.is_active = False
+
+	end_pieces = list(getattr(doc, "end_pieces", []) or [])
+	for end_piece in end_pieces:
+		if hasattr(end_piece, "end_piece_item_code"):
+			end_piece.end_piece_item_code = None
+		if hasattr(end_piece, "generated_end_piece_bom"):
+			end_piece.generated_end_piece_bom = None
+	if hasattr(doc, "end_piece_bom_status"):
+		apply_end_piece_bom_status(doc, end_pieces)
 
 
 def _get_selected_workflow_action() -> str | None:
@@ -198,18 +230,6 @@ def create_sheet_cutting_layout_revision(name: str) -> str:
 	new_doc = create_revision(old_doc)
 	new_doc.insert()
 	return new_doc.name
-
-
-@whitelist()
-def preview_sheet_cutting_layout_end_piece_boms(name: str) -> list[dict[str, object]]:
-	if not frappe:
-		raise RuntimeError("Frappe is required to preview End Piece BOMs")
-
-	doc = frappe.get_doc("Sheet Cutting Layout", name)
-	check_permission = getattr(doc, "check_permission", None)
-	if callable(check_permission):
-		check_permission("read")
-	return preview_end_piece_boms(doc)
 
 
 @whitelist()

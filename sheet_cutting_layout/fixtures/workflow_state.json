@@ -16,9 +16,9 @@
  {
   "doctype": "Workflow State",
   "icon": "right",
-  "name": "Checked",
+  "name": "PM Approved",
   "style": "Info",
-  "workflow_state_name": "Checked"
+  "workflow_state_name": "PM Approved"
  },
  {
   "doctype": "Workflow State",
@@ -47,5 +47,12 @@
   "name": "Superseded",
   "style": "Warning",
   "workflow_state_name": "Superseded"
+ },
+ {
+  "doctype": "Workflow State",
+  "icon": "remove",
+  "name": "Cancel",
+  "style": "Danger",
+  "workflow_state_name": "Cancel"
  }
 ]

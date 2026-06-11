@@ -51,7 +51,7 @@ describe("Sheet Cutting Layout release workflow", () => {
 			)
 			.then(({ body }) => {
 				const layout = body.message;
-				const bomName = layout.finished_parts?.[0]?.generated_bom;
+				const bomName = layout.generated_bom;
 				if (!bomName && attempt < 10) {
 					cy.wait(500);
 					return fetchReleasedLayoutWithBom(attempt + 1);
@@ -134,8 +134,7 @@ describe("Sheet Cutting Layout release workflow", () => {
 			cy.contains('[data-fieldname="status"]', "Draft");
 
 			runWorkflowAction("Submit for Check", "Submitted for Check");
-			runWorkflowAction("Projects Manager Approves", "Submitted for Check");
-			runWorkflowAction("Manufacturing Manager Approves", "Checked");
+			runWorkflowAction("Project Manager Approves", "PM Approved");
 			runWorkflowAction("Purchase Approves", "Approved by Purchase");
 			runWorkflowAction("MR Release", "Released");
 

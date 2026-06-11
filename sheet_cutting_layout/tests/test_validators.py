@@ -1,16 +1,10 @@
 from __future__ import annotations
 
 import importlib
-import re
-import sys
-import types
 from dataclasses import dataclass, field
-from pathlib import Path
-
-import pytest
+from unittest.mock import patch
 
 from sheet_cutting_layout.tests.base import SheetCuttingLayoutTestCase
-from sheet_cutting_layout.tests.unittest_adapter import add_pytest_style_tests
 
 
 class ValidationError(Exception):
@@ -22,10 +16,17 @@ class FakeFrappe:
 
 	def __init__(self) -> None:
 		self.float_precision: str | None = None
+		self.generated_bom_doc: object | None = None
 
 	def get_system_settings(self, fieldname: str) -> str | None:
-		assert fieldname == "float_precision"
-		return self.float_precision
+		if fieldname == "float_precision":
+			return self.float_precision
+		return None
+
+	def get_doc(self, doctype: str, name: str) -> object:
+		if (doctype, name) == ("BOM", "BOM-FG01SHR"):
+			return self.generated_bom_doc
+		raise AssertionError(f"unexpected get_doc({doctype!r}, {name!r})")
 
 	def throw(self, message: str) -> None:
 		raise ValidationError(message)
@@ -42,32 +43,50 @@ class FinishedPart:
 
 @dataclass
 class EndPiece:
-	end_piece_item_code: str | None = "RM001-EP-1x1000x100"
-	weight_kg: float | None = None
+	end_piece_item_code: str | None = None
+	generated_end_piece_item: str | None = None
+	generated_end_piece_bom: str | None = None
+	weight_kg: float | None = 2.5545
 	qty_per_sheet: float | None = 1
-	width_mm: float | None = 1000
-	length_mm: float | None = 100
+	width_mm: float | None = 1250
+	length_mm: float | None = 260
 	disposition: str | None = "Reuse"
 	used_for_finished_part: str | None = "FG01SHR"
 	bom_quantity: float | None = 1
+	net_weight_per_part_kg: float | None = 2.0
+	gross_weight_per_part_kg: float | None = None
+	scrap_weight_per_part_kg: float | None = None
 	bom_scrap_quantity_kg: float | None = 0
-	generated_end_piece_item: str | None = None
-	generated_end_piece_bom: str | None = None
 	scrap_item: str | None = ""
-
-	def __post_init__(self) -> None:
-		if self.weight_kg is not None and self.width_mm is None and self.length_mm is None:
-			self.width_mm = 1000
-			self.length_mm = self.weight_kg * 1_000_000 / (7.86 * self.width_mm)
 
 
 class ExistingEndPiece(EndPiece):
+	def __init__(
+		self,
+		*,
+		previous_code: str | None,
+		current_code: str | None,
+		changed: bool = True,
+		**kwargs: object,
+	) -> None:
+		super().__init__(end_piece_item_code=current_code, **kwargs)
+		self._previous_code = previous_code
+		self._changed = changed
+
 	def has_value_changed(self, fieldname: str) -> bool:
-		return fieldname == "end_piece_item_code"
+		return fieldname == "end_piece_item_code" and self._changed
+
+	def get_db_value(self, fieldname: str) -> str | None:
+		if fieldname == "end_piece_item_code":
+			return self._previous_code
+		return None
 
 
 @dataclass
 class Layout:
+	finished_part_code: str | None = "AB12SHR"
+	net_weight_per_part_kg: float | None = 11.004
+	generated_bom: str | None = None
 	finished_parts: list[FinishedPart] = field(default_factory=list)
 	end_pieces: list[EndPiece] = field(default_factory=list)
 	raw_material_item: str = "RM001"
@@ -79,792 +98,798 @@ class Layout:
 	weight_per_sheet_kg: float = 0
 	strip_thickness_mm: float = 1
 	strip_width_mm: float = 1250
-	strip_length_mm: float = 242
+	strip_length_mm: float = 260
 	weight_of_strip_kg: float = 0
 	gross_weight_per_part_kg: float = 0
-	parts_per_strip: int = 5
-	no_of_strips: int | None = None
+	scrap_weight_per_part_kg: float = 0
+	parts_per_strip: int = 2
+	no_of_strips: int | None = 1
 	parts_per_sheet: int = 0
 	consumed_weight_kg: float = 0
 	leftover_weight_kg: float = 0
 	consumption_status: str = ""
 
 
-@pytest.fixture
-def validators(monkeypatch: pytest.MonkeyPatch) -> types.ModuleType:
-	fake_frappe = FakeFrappe()
-	monkeypatch.setitem(sys.modules, "frappe", fake_frappe)
+class TestValidators(SheetCuttingLayoutTestCase):
+	def setUp(self) -> None:
+		super().setUp()
+		self.fake_frappe = FakeFrappe()
+		self.validators = importlib.import_module("sheet_cutting_layout.services.validators")
+		self._frappe_patch = patch.object(self.validators, "frappe", self.fake_frappe)
+		self._translation_patch = patch.object(self.validators, "_", lambda message: message)
+		self._frappe_patch.start()
+		self._translation_patch.start()
+		self.addCleanup(self._frappe_patch.stop)
+		self.addCleanup(self._translation_patch.stop)
 
-	module = importlib.import_module("sheet_cutting_layout.services.validators")
-	monkeypatch.setattr(module, "frappe", fake_frappe)
-	monkeypatch.setattr(module, "_", lambda message: message)
-	return module
-
-
-def test_finished_part_item_must_end_with_shr_and_be_alnum(validators: types.ModuleType) -> None:
-	with pytest.raises(ValidationError, match="alphanumeric"):
-		validators.validate_finished_part_code("AB-12SHR")
-
-	with pytest.raises(ValidationError, match="end with SHR"):
-		validators.validate_finished_part_code("AB12")
-
-	validators.validate_finished_part_code("AB12SHR")
-
-
-def test_controller_preview_end_piece_boms_delegates(monkeypatch: pytest.MonkeyPatch) -> None:
-	from sheet_cutting_layout.sheet_cutting_layout.doctype.sheet_cutting_layout import (
-		sheet_cutting_layout,
-	)
-
-	calls: list[str] = []
-
-	class FakeDoc:
-		def check_permission(self, permission_type: str) -> None:
-			calls.append(f"check_permission:{permission_type}")
-
-	class FakeFrappe:
-		@staticmethod
-		def get_doc(doctype: str, name: str) -> FakeDoc:
-			calls.append(f"{doctype}:{name}")
-			return FakeDoc()
-
-	monkeypatch.setattr(sheet_cutting_layout, "frappe", FakeFrappe)
-
-	def fake_preview(doc: object) -> list[dict[str, int]]:
-		calls.append("preview")
-		return [{"idx": 1}]
-
-	monkeypatch.setattr(sheet_cutting_layout, "preview_end_piece_boms", fake_preview)
-
-	assert sheet_cutting_layout.preview_sheet_cutting_layout_end_piece_boms("SCL-001") == [{"idx": 1}]
-	assert calls == ["Sheet Cutting Layout:SCL-001", "check_permission:read", "preview"]
-
-
-def test_controller_preview_end_piece_boms_stops_when_read_permission_fails(
-	monkeypatch: pytest.MonkeyPatch,
-) -> None:
-	from sheet_cutting_layout.sheet_cutting_layout.doctype.sheet_cutting_layout import (
-		sheet_cutting_layout,
-	)
-
-	calls: list[str] = []
-
-	class PermissionError(Exception):
-		pass
-
-	class FakeDoc:
-		def check_permission(self, permission_type: str) -> None:
-			calls.append(f"check_permission:{permission_type}")
-			raise PermissionError("no read")
-
-	class FakeFrappe:
-		@staticmethod
-		def get_doc(doctype: str, name: str) -> FakeDoc:
-			calls.append(f"{doctype}:{name}")
-			return FakeDoc()
-
-	def fake_preview(doc: object) -> list[dict[str, int]]:
-		calls.append("preview")
-		return [{"idx": 1}]
-
-	monkeypatch.setattr(sheet_cutting_layout, "frappe", FakeFrappe)
-	monkeypatch.setattr(sheet_cutting_layout, "preview_end_piece_boms", fake_preview)
-
-	with pytest.raises(PermissionError, match="no read"):
-		sheet_cutting_layout.preview_sheet_cutting_layout_end_piece_boms("SCL-001")
-
-	assert calls == ["Sheet Cutting Layout:SCL-001", "check_permission:read"]
-
-
-def test_controller_generate_end_piece_boms_delegates(monkeypatch: pytest.MonkeyPatch) -> None:
-	from sheet_cutting_layout.sheet_cutting_layout.doctype.sheet_cutting_layout import (
-		sheet_cutting_layout,
-	)
-
-	calls: list[str] = []
-
-	class FakeDoc:
-		def check_permission(self, permission_type: str) -> None:
-			calls.append(f"check_permission:{permission_type}")
-
-	class FakeFrappe:
-		@staticmethod
-		def get_doc(doctype: str, name: str) -> FakeDoc:
-			calls.append(f"{doctype}:{name}")
-			return FakeDoc()
-
-	def fake_generate(doc: object) -> dict[str, list[str]]:
-		calls.append("generate")
-		return {"generated": ["BOM-1"]}
-
-	monkeypatch.setattr(sheet_cutting_layout, "frappe", FakeFrappe)
-	monkeypatch.setattr(
-		sheet_cutting_layout,
-		"generate_end_piece_boms",
-		fake_generate,
-	)
-
-	assert sheet_cutting_layout.generate_sheet_cutting_layout_end_piece_boms("SCL-001") == {
-		"generated": ["BOM-1"]
-	}
-	assert calls == ["Sheet Cutting Layout:SCL-001", "check_permission:write", "generate"]
-
-
-def test_controller_generate_end_piece_boms_stops_when_write_permission_fails(
-	monkeypatch: pytest.MonkeyPatch,
-) -> None:
-	from sheet_cutting_layout.sheet_cutting_layout.doctype.sheet_cutting_layout import (
-		sheet_cutting_layout,
-	)
-
-	calls: list[str] = []
-
-	class PermissionError(Exception):
-		pass
-
-	class FakeDoc:
-		def check_permission(self, permission_type: str) -> None:
-			calls.append(f"check_permission:{permission_type}")
-			raise PermissionError("no write")
-
-	class FakeFrappe:
-		@staticmethod
-		def get_doc(doctype: str, name: str) -> FakeDoc:
-			calls.append(f"{doctype}:{name}")
-			return FakeDoc()
-
-	def fake_generate(doc: object) -> dict[str, list[str]]:
-		calls.append("generate")
-		return {"generated": ["BOM-1"]}
-
-	monkeypatch.setattr(sheet_cutting_layout, "frappe", FakeFrappe)
-	monkeypatch.setattr(sheet_cutting_layout, "generate_end_piece_boms", fake_generate)
-
-	with pytest.raises(PermissionError, match="no write"):
-		sheet_cutting_layout.generate_sheet_cutting_layout_end_piece_boms("SCL-001")
-
-	assert calls == ["Sheet Cutting Layout:SCL-001", "check_permission:write"]
-
-
-def test_layout_requires_exactly_one_finished_part(validators: types.ModuleType) -> None:
-	with pytest.raises(ValidationError, match="exactly one finished part"):
-		validators.validate_sheet_cutting_layout(Layout())
-
-	with pytest.raises(ValidationError, match="exactly one finished part"):
-		validators.validate_sheet_cutting_layout(
-			Layout(
-				finished_parts=[
-					FinishedPart("AB12SHR", 1, 12.28125, 0),
-					FinishedPart("CD34SHR", 1, 12.28125, 0),
-				]
-			)
+	def _balanced_layout(
+		self,
+		*,
+		finished_part: FinishedPart | None = None,
+		end_piece: EndPiece | None = None,
+	) -> Layout:
+		accounted_finished_part = finished_part or FinishedPart("AB12SHR", 2, 11.004, 0)
+		strip_weight = (
+			accounted_finished_part.gross_weight_per_part_kg * accounted_finished_part.parts_per_sheet
+		)
+		net_weight = (
+			accounted_finished_part.net_weight_per_part_kg
+			if accounted_finished_part.net_weight_per_part_kg is not None
+			else accounted_finished_part.gross_weight_per_part_kg
+			- accounted_finished_part.scrap_weight_per_part_kg
+		)
+		return Layout(
+			finished_part_code=accounted_finished_part.finished_part_item,
+			net_weight_per_part_kg=net_weight,
+			strip_length_mm=strip_weight * 1_000_000 / (1 * 1250 * 7.86),
+			weight_of_strip_kg=strip_weight,
+			gross_weight_per_part_kg=accounted_finished_part.gross_weight_per_part_kg,
+			scrap_weight_per_part_kg=accounted_finished_part.scrap_weight_per_part_kg,
+			parts_per_sheet=accounted_finished_part.parts_per_sheet,
+			finished_parts=[],
+			end_pieces=[end_piece or EndPiece()],
 		)
 
-
-def test_finished_part_weights_must_be_non_negative(validators: types.ModuleType) -> None:
-	with pytest.raises(ValidationError, match="Gross weight"):
-		validators.validate_sheet_cutting_layout(Layout(finished_parts=[FinishedPart("AB12SHR", 1, -0.1, 0)]))
-
-	with pytest.raises(ValidationError, match="Scrap weight"):
-		validators.validate_sheet_cutting_layout(Layout(finished_parts=[FinishedPart("AB12SHR", 1, 1, -0.1)]))
-
-
-def test_process_scrap_item_required_when_process_scrap_weight_is_positive(
-	validators: types.ModuleType,
-) -> None:
-	with pytest.raises(ValidationError, match="Process scrap item"):
-		validators.validate_sheet_cutting_layout(
-			Layout(
-				finished_parts=[FinishedPart("AB12SHR", 2, 5, 1)],
-				process_scrap_item="",
-			)
+	def _layout_with_generated_bom(self, *, bom_quantity: int) -> Layout:
+		self.fake_frappe.generated_bom_doc = type(
+			"Bom",
+			(),
+			{
+				"item": "FG01SHR",
+				"quantity": bom_quantity,
+				"items": [type("BomItem", (), {"item_code": "RM001", "qty": 77.0})()],
+				"scrap_items": [],
+			},
+		)()
+		return Layout(
+			finished_part_code="FG01SHR",
+			net_weight_per_part_kg=1.0,
+			generated_bom="BOM-FG01SHR",
+			finished_parts=[],
+			end_pieces=[],
+			sheet_thickness_mm=None,
+			sheet_width_mm=None,
+			sheet_length_mm=None,
+			weight_per_sheet_kg=77.0,
+			strip_thickness_mm=None,
+			strip_width_mm=None,
+			strip_length_mm=None,
+			weight_of_strip_kg=7.0,
+			gross_weight_per_part_kg=1.0,
+			scrap_weight_per_part_kg=0.0,
+			parts_per_strip=7,
+			no_of_strips=11,
+			parts_per_sheet=77,
+			consumed_weight_kg=0,
+			leftover_weight_kg=0,
+			consumption_status="",
 		)
 
-
-def test_sheet_weight_is_calculated_from_dimensions_to_six_decimals(
-	validators: types.ModuleType,
-) -> None:
-	assert (
-		validators.calculate_sheet_weight_kg(
-			thickness_mm=1,
-			width_mm=1250,
-			length_mm=2500,
-		)
-		== 24.5625
-	)
-
-
-def test_validation_overwrites_manual_sheet_weight_with_formula(
-	validators: types.ModuleType,
-) -> None:
-	layout = Layout(
-		finished_parts=[FinishedPart("AB12SHR", 2, 12.28125, 0)],
-		weight_per_sheet_kg=999,
-	)
-
-	validators.apply_sheet_weight_formula(layout)
-
-	assert layout.weight_per_sheet_kg == 24.5625
-
-
-def test_sheet_weight_keeps_minimum_calculation_precision(
-	validators: types.ModuleType,
-) -> None:
-	validators.frappe.float_precision = "3"
-
-	assert (
-		validators.calculate_sheet_weight_kg(
-			thickness_mm=1,
-			width_mm=1250,
-			length_mm=2500,
-		)
-		== 24.5625
-	)
-
-
-def test_density_constant_is_7_86_only() -> None:
-	validator_source = (Path(__file__).parents[1] / "services" / "validators.py").read_text(encoding="utf-8")
-
-	assert "STEEL_DENSITY_G_PER_CM3 = 7.86" in validator_source
-	assert "STEEL_DENSITY_G_PER_CM3 = 7.850000" not in validator_source
-
-
-def test_sheet_weight_rounds_density_to_system_float_precision_before_calculation(
-	validators: types.ModuleType,
-) -> None:
-	validators.frappe.float_precision = "1"
-
-	assert (
-		validators.calculate_sheet_weight_kg(
-			thickness_mm=10,
-			width_mm=1000,
-			length_mm=1000,
-		)
-		== 79.0
-	)
-
-
-def test_strip_weight_is_calculated_from_dimensions_to_six_decimals(
-	validators: types.ModuleType,
-) -> None:
-	assert (
-		validators.calculate_sheet_weight_kg(
-			thickness_mm=1,
-			width_mm=1250,
-			length_mm=242,
-		)
-		== 2.37765
-	)
-
-
-def test_validation_overwrites_manual_strip_weight_with_formula(
-	validators: types.ModuleType,
-) -> None:
-	layout = Layout(
-		finished_parts=[FinishedPart("AB12SHR", 2, 12.28125, 0)],
-		weight_of_strip_kg=999,
-	)
-
-	validators.apply_strip_weight_formula(layout)
-	validators.apply_finished_part_weight_formulas(layout, layout.finished_parts)
-
-	assert layout.weight_of_strip_kg == 2.37765
-
-
-def test_validation_calculates_parent_gross_weight_per_part_from_strip_weight_and_parts_per_strip(
-	validators: types.ModuleType,
-) -> None:
-	layout = Layout(weight_of_strip_kg=14, gross_weight_per_part_kg=999, parts_per_strip=7)
-
-	validators.apply_parent_gross_weight_per_part_formula(layout)
-
-	assert layout.gross_weight_per_part_kg == 2
-
-
-def test_validation_calculates_part_gross_and_scrap_from_strip_weight_and_net_weight(
-	validators: types.ModuleType,
-) -> None:
-	layout = Layout(
-		finished_parts=[
-			FinishedPart("AB12SHR", 10, gross_weight_per_part_kg=99, net_weight_per_part_kg=0.185)
-		],
-		parts_per_strip=5,
-		strip_length_mm=242,
-	)
-
-	validators.apply_strip_weight_formula(layout)
-	validators.apply_finished_part_weight_formulas(layout, layout.finished_parts)
-
-	assert layout.finished_parts[0].gross_weight_per_part_kg == 0.47553
-	assert layout.finished_parts[0].scrap_weight_per_part_kg == 0.29053
-
-
-def test_validation_calculates_parent_and_child_parts_per_sheet_from_strip_counts(
-	validators: types.ModuleType,
-) -> None:
-	layout = Layout(
-		finished_parts=[FinishedPart("AB12SHR", parts_per_sheet=999, gross_weight_per_part_kg=1)],
-		parts_per_strip=7,
-		no_of_strips=11,
-		parts_per_sheet=999,
-	)
-
-	validators.apply_parts_per_sheet_formula(layout, layout.finished_parts)
-
-	assert layout.parts_per_sheet == 77
-	assert layout.finished_parts[0].parts_per_sheet == 77
-
-
-def test_part_scrap_must_not_be_negative_after_net_weight_calculation(
-	validators: types.ModuleType,
-) -> None:
-	with pytest.raises(ValidationError, match="Net weight per part cannot exceed gross weight"):
-		validators.validate_sheet_cutting_layout(
-			Layout(
-				finished_parts=[
-					FinishedPart("AB12SHR", 10, gross_weight_per_part_kg=0, net_weight_per_part_kg=9)
-				],
-				parts_per_strip=5,
-			)
-		)
-
-
-def test_suggest_end_piece_item_code_uses_raw_material_and_trimmed_dimensions(
-	validators: types.ModuleType,
-) -> None:
-	assert (
-		validators.suggest_end_piece_item_code(
-			raw_material_item="RM001",
-			thickness_mm=1.6,
-			width_mm=1250,
-			length_mm=179,
-		)
-		== "RM001-EP-1.6x1250x179"
-	)
-
-
-def test_validation_calculates_end_piece_weight_from_dimensions_and_sheet_thickness(
-	validators: types.ModuleType,
-) -> None:
-	layout = Layout(
-		finished_parts=[FinishedPart("AB12SHR", 10, gross_weight_per_part_kg=0, net_weight_per_part_kg=2)],
-		end_pieces=[EndPiece("EP1", weight_kg=999, qty_per_sheet=1, width_mm=1250, length_mm=211)],
-		sheet_thickness_mm=1.6,
-		parts_per_strip=5,
-	)
-
-	with pytest.raises(ValidationError):
-		validators.validate_sheet_cutting_layout(layout)
-
-	assert layout.end_pieces[0].weight_kg == 3.31692
-
-
-def test_end_piece_weight_formula_multiplies_single_piece_weight_by_qty_per_sheet(
-	validators: types.ModuleType,
-) -> None:
-	layout = Layout(sheet_thickness_mm=1.6)
-	end_piece = EndPiece(weight_kg=999, qty_per_sheet=2, width_mm=1250, length_mm=179)
-
-	validators.apply_end_piece_weight_formulas(layout, [end_piece])
-
-	assert end_piece.weight_kg == 5.62776
-
-
-def test_consumed_weight_adds_total_end_piece_weight_without_multiplying_qty_again(
-	validators: types.ModuleType,
-) -> None:
-	assert (
-		validators.calculate_consumed_weight_kg(
-			[FinishedPart("AB12SHR", 2, 10, 0)],
-			[EndPiece(weight_kg=4, qty_per_sheet=3)],
-		)
-		== 24
-	)
-
-
-def test_sheet_consumption_must_account_for_full_sheet_weight(validators: types.ModuleType) -> None:
-	with pytest.raises(
-		ValidationError,
-		match=re.escape("no accounting for 12.562 kg of sheet consumption"),
-	):
-		validators.validate_sheet_cutting_layout(
-			Layout(
-				finished_parts=[FinishedPart("AB12SHR", 2, 5, 1)],
-				end_pieces=[EndPiece("EP1", 2, 1, width_mm=None, length_mm=None)],
-			)
-		)
-
-
-def test_sheet_consumption_must_not_exceed_sheet_weight(validators: types.ModuleType) -> None:
-	with pytest.raises(ValidationError, match=re.escape("exceeds sheet weight by 2.000 kg")):
-		validators.validate_sheet_cutting_layout(
-			Layout(
-				finished_parts=[FinishedPart("AB12SHR", 2, 10, 1)],
-				end_pieces=[EndPiece("EP1", 6.5625, 1, width_mm=None, length_mm=None)],
-			)
-		)
-
-
-def test_sheet_consumption_accepts_balance_difference_below_two_decimal_precision(
-	validators: types.ModuleType,
-) -> None:
-	validators.validate_sheet_cutting_layout(
-		Layout(
-			finished_parts=[FinishedPart("AB12SHR", 2, 11, 1)],
-			end_pieces=[EndPiece("EP1", 2.558, 1, width_mm=None, length_mm=None)],
-		)
-	)
-
-
-def test_validation_updates_consumption_tracking_fields(validators: types.ModuleType) -> None:
-	layout = Layout(
-		finished_parts=[FinishedPart("AB12SHR", 2, 11, 1)],
-		end_pieces=[EndPiece("EP1", 2.5625, 1, width_mm=None, length_mm=None)],
-	)
-
-	validators.validate_sheet_cutting_layout(layout)
-
-	assert layout.consumed_weight_kg == 24.562
-	assert layout.leftover_weight_kg == 0.0
-	assert layout.consumption_status == "Balanced"
-
-
-def test_consumption_tracking_ignores_blank_finished_part_rows(validators: types.ModuleType) -> None:
-	layout = Layout(
-		finished_parts=[
-			FinishedPart("", 2, 99, 0),
-			FinishedPart("AB12SHR", 2, 11, 1),
-		],
-		end_pieces=[EndPiece("EP1", 2.5625, 1, width_mm=None, length_mm=None)],
-	)
-
-	validators.validate_sheet_cutting_layout(layout)
-
-	assert layout.consumed_weight_kg == 24.562
-	assert layout.leftover_weight_kg == 0
-	assert layout.consumption_status == "Balanced"
-
-
-def test_consumption_tracking_marks_short_and_excess_with_tolerance(validators: types.ModuleType) -> None:
-	short_layout = Layout(
-		finished_parts=[FinishedPart("AB12SHR", 2, 11, 1)],
-		end_pieces=[EndPiece("EP1", 2.556, 1, width_mm=None, length_mm=None)],
-	)
-
-	with pytest.raises(ValidationError):
-		validators.validate_sheet_cutting_layout(short_layout)
-
-	assert short_layout.consumed_weight_kg == 24.556
-	assert short_layout.leftover_weight_kg == 0.006
-	assert short_layout.consumption_status == "Short"
-
-	excess_layout = Layout(
-		finished_parts=[FinishedPart("AB12SHR", 2, 11, 1)],
-		end_pieces=[EndPiece("EP1", 2.568, 1, width_mm=None, length_mm=None)],
-	)
-
-	with pytest.raises(ValidationError):
-		validators.validate_sheet_cutting_layout(excess_layout)
-
-	assert excess_layout.consumed_weight_kg == 24.568
-	assert excess_layout.leftover_weight_kg == -0.006
-	assert excess_layout.consumption_status == "Excess"
-
-
-def test_sheet_consumption_accepts_gross_weight_and_end_pieces_without_adding_process_scrap(
-	validators: types.ModuleType,
-) -> None:
-	validators.validate_sheet_cutting_layout(
-		Layout(
-			finished_parts=[FinishedPart("AB12SHR", 2, 11, 1)],
-			end_pieces=[EndPiece("EP1", 2.5625, 1, width_mm=None, length_mm=None)],
-		)
-	)
-
-
-def test_valid_end_piece_row_requires_new_item_code_not_old_end_piece_item(
-	validators: types.ModuleType,
-) -> None:
-	validators.validate_sheet_cutting_layout(
-		Layout(
-			finished_parts=[FinishedPart("AB12SHR", 2, 11, 1)],
-			end_pieces=[EndPiece(end_piece_item_code="EP1", weight_kg=2.5625, width_mm=None, length_mm=None)],
-		)
-	)
-
-
-def test_end_piece_rows_require_item_dimensions_and_qty(validators: types.ModuleType) -> None:
-	with pytest.raises(ValidationError, match="End piece item code"):
-		validators.validate_sheet_cutting_layout(
-			Layout(
-				finished_parts=[FinishedPart("AB12SHR", 2, 5, 1)],
-				end_pieces=[EndPiece(None, 1, 1)],
-				raw_material_item="",
-			)
-		)
-
-	with pytest.raises(ValidationError, match="End piece width"):
-		validators.validate_sheet_cutting_layout(
-			Layout(
-				finished_parts=[FinishedPart("AB12SHR", 2, 5, 1)],
-				end_pieces=[EndPiece("EP1", None, 1, width_mm=None, length_mm=100)],
-			)
-		)
-
-	with pytest.raises(ValidationError, match="End piece length"):
-		validators.validate_sheet_cutting_layout(
-			Layout(
-				finished_parts=[FinishedPart("AB12SHR", 2, 5, 1)],
-				end_pieces=[EndPiece("EP1", None, 1, width_mm=1000, length_mm=None)],
-			)
-		)
-
-	with pytest.raises(ValidationError, match="End piece quantity"):
-		validators.validate_sheet_cutting_layout(
-			Layout(
-				finished_parts=[FinishedPart("AB12SHR", 2, 5, 1)],
-				end_pieces=[EndPiece("EP1", 1, None, width_mm=None, length_mm=None)],
-			)
-		)
-
-
-@pytest.mark.parametrize("qty_per_sheet", [0, -1])
-def test_end_piece_quantity_must_be_greater_than_zero(
-	validators: types.ModuleType,
-	qty_per_sheet: float,
-) -> None:
-	with pytest.raises(ValidationError, match="End piece quantity must be greater than zero"):
-		validators.validate_sheet_cutting_layout(
-			Layout(
-				finished_parts=[FinishedPart("AB12SHR", 2, 11, 1)],
-				end_pieces=[
-					EndPiece(
-						end_piece_item_code="EP1",
-						weight_kg=2.5625,
-						qty_per_sheet=qty_per_sheet,
-						width_mm=None,
-						length_mm=None,
-					)
-				],
-			)
-		)
-
-
-@pytest.mark.parametrize(
-	"end_piece, message",
-	[
-		(EndPiece(used_for_finished_part=""), "Used for finished part"),
-		(EndPiece(end_piece_item_code=""), "End piece item code"),
-		(EndPiece(bom_quantity=0), "BOM quantity"),
-		(EndPiece(bom_scrap_quantity_kg=-0.1), "BOM scrap quantity"),
-	],
-)
-def test_reuse_end_piece_rows_require_reuse_bom_fields(
-	validators: types.ModuleType,
-	end_piece: EndPiece,
-	message: str,
-) -> None:
-	with pytest.raises(ValidationError, match=message):
-		validators.validate_sheet_cutting_layout(
-			Layout(
-				finished_parts=[FinishedPart("AB12SHR", 2, 11, 1)],
-				end_pieces=[end_piece],
-			)
-		)
-
-
-def test_reuse_bom_scrap_requires_parent_process_scrap_item(validators: types.ModuleType) -> None:
-	with pytest.raises(ValidationError, match="Process scrap item"):
-		validators.validate_sheet_cutting_layout(
-			Layout(
-				finished_parts=[FinishedPart("AB12SHR", 2, 11, 1)],
-				end_pieces=[EndPiece(bom_scrap_quantity_kg=0.1)],
-				process_scrap_item="",
-			)
-		)
-
-
-def test_scrap_end_piece_rows_require_scrap_item(validators: types.ModuleType) -> None:
-	with pytest.raises(ValidationError, match="Scrap item"):
-		validators.validate_sheet_cutting_layout(
-			Layout(
-				finished_parts=[FinishedPart("AB12SHR", 2, 11, 1)],
-				end_pieces=[
-					EndPiece(
-						disposition="Scrap",
-						scrap_item="",
-						used_for_finished_part="",
-						bom_quantity=0,
-						bom_scrap_quantity_kg=0,
-					)
-				],
-			)
-		)
-
-
-def test_non_reuse_end_piece_rows_reject_reuse_only_fields(validators: types.ModuleType) -> None:
-	cases = [
-		(
-			EndPiece(
-				disposition="Scrap",
-				used_for_finished_part="FG01SHR",
-				bom_quantity=0,
-				bom_scrap_quantity_kg=0,
-			),
-			"Used for finished part",
-		),
-		(
-			EndPiece(
-				disposition="Scrap",
-				used_for_finished_part="",
-				bom_quantity=1,
-				bom_scrap_quantity_kg=0,
-			),
-			"BOM quantity",
-		),
-		(
-			EndPiece(
-				disposition="Scrap",
-				used_for_finished_part="",
-				bom_quantity=0,
-				bom_scrap_quantity_kg=0.1,
-			),
-			"BOM scrap quantity",
-		),
-	]
-	for end_piece, message in cases:
-		with pytest.raises(ValidationError, match=message):
-			validators.validate_sheet_cutting_layout(
+	def test_finished_part_item_code_validation_rules(self) -> None:
+		with self.assertRaisesRegex(ValidationError, "alphanumeric"):
+			self.validators.validate_finished_part_code("AB-12SHR")
+		with self.assertRaisesRegex(ValidationError, "end with SHR"):
+			self.validators.validate_finished_part_code("AB12")
+
+		self.validators.validate_finished_part_code("AB12SHR")
+
+	def test_layout_requires_parent_finished_part_code_even_when_child_rows_exist(self) -> None:
+		with self.assertRaisesRegex(ValidationError, "Finished part code is required"):
+			self.validators.validate_sheet_cutting_layout(Layout(finished_part_code="", finished_parts=[]))
+
+		with self.assertRaisesRegex(ValidationError, "Finished part code is required"):
+			self.validators.validate_sheet_cutting_layout(
 				Layout(
-					finished_parts=[FinishedPart("AB12SHR", 2, 11, 1)],
-					end_pieces=[end_piece],
+					finished_part_code="",
+					finished_parts=[
+						FinishedPart("AB12SHR", 2, 11.004, 0),
+					],
 				)
 			)
 
+	def test_sheet_weight_uses_density_with_system_precision(self) -> None:
+		self.assertEqual(
+			self.validators.calculate_sheet_weight_kg(
+				thickness_mm=1,
+				width_mm=1250,
+				length_mm=2500,
+			),
+			24.5625,
+		)
 
-@pytest.mark.parametrize("disposition", ["", "Hold", None])
-def test_end_piece_disposition_must_be_reuse_or_scrap(
-	validators: types.ModuleType,
-	disposition: str | None,
-) -> None:
-	with pytest.raises(ValidationError, match="Disposition must be either Reuse or Scrap"):
-		validators.validate_sheet_cutting_layout(
-			Layout(
-				finished_parts=[FinishedPart("AB12SHR", 2, 11, 1)],
-				end_pieces=[
-					EndPiece(
-						disposition=disposition,
-						used_for_finished_part="",
-						bom_quantity=0,
-						bom_scrap_quantity_kg=0,
-						scrap_item="",
+		self.fake_frappe.float_precision = "1"
+		self.assertEqual(
+			self.validators.calculate_sheet_weight_kg(
+				thickness_mm=10,
+				width_mm=1000,
+				length_mm=1000,
+			),
+			79.0,
+		)
+
+	def test_strip_and_parts_formulas_derive_parent_fields_from_parent_inputs(self) -> None:
+		layout = Layout(
+			finished_part_code="AB12SHR",
+			net_weight_per_part_kg=0.289,
+			finished_parts=[FinishedPart("CHILDSHR", parts_per_sheet=999, gross_weight_per_part_kg=9.9)],
+			end_pieces=[],
+			parts_per_strip=7,
+			no_of_strips=11,
+			weight_of_strip_kg=3.31692,
+		)
+
+		self.validators.apply_parent_gross_weight_per_part_formula(layout)
+		self.validators.apply_parent_scrap_weight_per_part_formula(layout)
+		self.validators.apply_parts_per_sheet_formula(layout)
+
+		self.assertEqual(layout.parts_per_sheet, 77)
+		self.assertAlmostEqual(layout.gross_weight_per_part_kg, 3.31692 / 7, places=6)
+		self.assertAlmostEqual(
+			layout.scrap_weight_per_part_kg,
+			layout.gross_weight_per_part_kg - 0.289,
+			places=6,
+		)
+
+	def test_validation_derives_parent_part_quantities_and_weights_from_parent_inputs(self) -> None:
+		layout = Layout(
+			finished_part_code="FG01SHR",
+			net_weight_per_part_kg=0.289,
+			sheet_thickness_mm=None,
+			sheet_width_mm=None,
+			sheet_length_mm=None,
+			weight_per_sheet_kg=36.48612,
+			parts_per_strip=7,
+			no_of_strips=11,
+			weight_of_strip_kg=3.31692,
+			strip_thickness_mm=None,
+			strip_width_mm=None,
+			strip_length_mm=None,
+			end_pieces=[],
+		)
+
+		self.validators.validate_sheet_cutting_layout(layout)
+
+		self.assertEqual(layout.parts_per_sheet, 77)
+		self.assertAlmostEqual(layout.gross_weight_per_part_kg, 3.31692 / 7, places=6)
+		self.assertAlmostEqual(
+			layout.scrap_weight_per_part_kg,
+			layout.gross_weight_per_part_kg - 0.289,
+			places=6,
+		)
+
+		layout.net_weight_per_part_kg = layout.gross_weight_per_part_kg + 0.001
+		with self.assertRaisesRegex(ValidationError, "Scrap weight per part cannot be negative"):
+			self.validators.validate_sheet_cutting_layout(layout)
+
+	def test_strip_weight_recomputes_from_dimensions_even_when_prefilled(self) -> None:
+		layout = Layout(
+			strip_thickness_mm=1,
+			strip_width_mm=1250,
+			strip_length_mm=260,
+			weight_of_strip_kg=999,
+		)
+
+		self.validators.apply_strip_weight_formula(layout)
+
+		self.assertEqual(layout.weight_of_strip_kg, 2.5545)
+
+	def test_parent_only_consumption_tracking_counts_finished_part_without_end_pieces(self) -> None:
+		layout = Layout(
+			finished_part_code="AB12SHR",
+			net_weight_per_part_kg=1.27725,
+			gross_weight_per_part_kg=1.277,
+			finished_parts=[],
+			end_pieces=[],
+			parts_per_strip=2,
+			no_of_strips=1,
+		)
+
+		self.validators.apply_parts_per_sheet_formula(layout)
+		self.validators.apply_sheet_weight_formula(layout)
+		self.validators.apply_consumption_tracking(layout, layout.end_pieces)
+
+		self.assertEqual(layout.parts_per_sheet, 2)
+		self.assertEqual(layout.consumed_weight_kg, 2.554)
+		self.assertEqual(layout.consumption_status, "Short")
+
+	def test_layout_without_end_pieces_still_requires_complete_sheet_consumption(self) -> None:
+		layout = Layout(
+			finished_part_code="AB12SHR",
+			net_weight_per_part_kg=1.27725,
+			finished_parts=[],
+			end_pieces=[],
+			parts_per_strip=2,
+			no_of_strips=1,
+		)
+
+		with self.assertRaisesRegex(ValidationError, "There is no accounting for"):
+			self.validators.validate_sheet_cutting_layout(layout)
+
+	def test_validation_uses_parent_finished_part_contract_even_when_child_rows_exist(self) -> None:
+		layout = Layout(
+			finished_part_code="AB12SHR",
+			net_weight_per_part_kg=0.289,
+			sheet_thickness_mm=None,
+			sheet_width_mm=None,
+			sheet_length_mm=None,
+			weight_per_sheet_kg=36.48612,
+			parts_per_strip=7,
+			no_of_strips=11,
+			weight_of_strip_kg=3.31692,
+			strip_thickness_mm=None,
+			strip_width_mm=None,
+			strip_length_mm=None,
+			gross_weight_per_part_kg=0.473846,
+			scrap_weight_per_part_kg=0.184846,
+			finished_parts=[
+				FinishedPart(
+					finished_part_item="BAD-CHILD",
+					parts_per_sheet=999,
+					gross_weight_per_part_kg=9.9,
+					scrap_weight_per_part_kg=9.8,
+				)
+			],
+			end_pieces=[],
+		)
+
+		self.validators.validate_sheet_cutting_layout(layout)
+
+	def test_save_time_audit_rejects_legacy_strip_count_bom_quantity(self) -> None:
+		layout = self._layout_with_generated_bom(bom_quantity=11)
+
+		with self.assertRaisesRegex(ValidationError, "BOM quantity mismatch"):
+			self.validators.validate_sheet_cutting_layout(layout)
+
+	def test_save_time_audit_accepts_corrected_parts_per_sheet_bom_quantity(self) -> None:
+		layout = self._layout_with_generated_bom(bom_quantity=77)
+
+		self.validators.validate_sheet_cutting_layout(layout)
+
+	def test_derive_end_piece_item_code_uses_used_for_finished_part_and_trimmed_numbers(self) -> None:
+		derived = self.validators.derive_end_piece_item_code(
+			used_for_finished_part=" fg01shr ",
+			thickness_mm="1.600000",
+			width_mm="1250.0",
+			length_mm="179.000000",
+		)
+		self.assertEqual(derived, "FG01SHR-EP-1.6x1250x179")
+
+	def test_derive_end_piece_item_code_rejects_missing_or_non_positive_components(self) -> None:
+		cases = [
+			(
+				dict(used_for_finished_part="", thickness_mm=1.6, width_mm=1250, length_mm=179),
+				"Used for finished part",
+			),
+			(
+				dict(used_for_finished_part="FG01SHR", thickness_mm=0, width_mm=1250, length_mm=179),
+				"thickness",
+			),
+			(dict(used_for_finished_part="FG01SHR", thickness_mm=1.6, width_mm=0, length_mm=179), "width"),
+			(dict(used_for_finished_part="FG01SHR", thickness_mm=1.6, width_mm=1250, length_mm=0), "length"),
+			(
+				dict(used_for_finished_part="FG01SHR", thickness_mm="abc", width_mm=1250, length_mm=179),
+				"thickness",
+			),
+			(
+				dict(used_for_finished_part="FG01SHR", thickness_mm=1.6, width_mm="abc", length_mm=179),
+				"width",
+			),
+			(
+				dict(used_for_finished_part="FG01SHR", thickness_mm=1.6, width_mm=1250, length_mm="abc"),
+				"length",
+			),
+		]
+		for kwargs, message in cases:
+			with self.subTest(kwargs=kwargs):
+				with self.assertRaisesRegex(ValueError, message):
+					self.validators.derive_end_piece_item_code(**kwargs)
+
+	def test_calculate_sheet_weight_returns_none_for_non_numeric_dimensions(self) -> None:
+		cases = [
+			{"thickness_mm": "abc", "width_mm": 1250, "length_mm": 179},
+			{"thickness_mm": 1.6, "width_mm": "abc", "length_mm": 179},
+			{"thickness_mm": 1.6, "width_mm": 1250, "length_mm": "abc"},
+		]
+		for kwargs in cases:
+			with self.subTest(kwargs=kwargs):
+				self.assertIsNone(self.validators.calculate_sheet_weight_kg(**kwargs))
+
+	def test_end_piece_disposition_accepts_only_reuse_or_scrap(self) -> None:
+		layout = self._balanced_layout(end_piece=EndPiece(disposition="Invalid", used_for_finished_part=None))
+		with self.assertRaisesRegex(ValidationError, "Disposition must be either Reuse or Scrap"):
+			self.validators.validate_sheet_cutting_layout(layout)
+
+	def test_reuse_requires_used_for_finished_part_suffix(self) -> None:
+		for suffix in ("SHR", "BLK", "DR"):
+			with self.subTest(suffix=suffix):
+				layout = self._balanced_layout(
+					end_piece=EndPiece(used_for_finished_part=f"FG01{suffix}", scrap_item="EP-SCRAP")
+				)
+				self.validators.validate_sheet_cutting_layout(layout)
+
+		layout = self._balanced_layout(end_piece=EndPiece(used_for_finished_part="FG01XX"))
+		with self.assertRaisesRegex(ValidationError, "must end with SHR, BLK, or DR"):
+			self.validators.validate_sheet_cutting_layout(layout)
+
+	def test_validation_derives_reuse_end_piece_weight_split_and_bom_scrap(self) -> None:
+		end_piece = EndPiece(
+			weight_kg=2.5545,
+			bom_quantity=3,
+			net_weight_per_part_kg=0.75,
+			scrap_item="EP-SCRAP",
+		)
+		layout = self._balanced_layout(end_piece=end_piece)
+
+		self.validators.validate_sheet_cutting_layout(layout)
+
+		self.assertEqual(end_piece.gross_weight_per_part_kg, 0.8515)
+		self.assertEqual(end_piece.scrap_weight_per_part_kg, 0.1015)
+		self.assertEqual(end_piece.bom_scrap_quantity_kg, 0.3045)
+
+	def test_validation_allows_positive_reuse_bom_scrap_without_process_scrap_item(self) -> None:
+		end_piece = EndPiece(
+			weight_kg=2.5545,
+			bom_quantity=3,
+			net_weight_per_part_kg=0.75,
+			scrap_item="EP-SCRAP",
+		)
+		layout = self._balanced_layout(end_piece=end_piece)
+		layout.process_scrap_item = ""
+
+		self.validators.validate_sheet_cutting_layout(layout)
+
+		self.assertEqual(end_piece.gross_weight_per_part_kg, 0.8515)
+		self.assertEqual(end_piece.scrap_weight_per_part_kg, 0.1015)
+		self.assertEqual(end_piece.bom_scrap_quantity_kg, 0.3045)
+
+	def test_validation_overrides_stale_manual_reuse_end_piece_scrap_values(self) -> None:
+		end_piece = EndPiece(
+			weight_kg=2.5545,
+			bom_quantity=3,
+			net_weight_per_part_kg=0.75,
+			gross_weight_per_part_kg=99,
+			scrap_weight_per_part_kg=99,
+			bom_scrap_quantity_kg=99,
+			scrap_item="EP-SCRAP",
+		)
+		layout = self._balanced_layout(end_piece=end_piece)
+
+		self.validators.validate_sheet_cutting_layout(layout)
+
+		self.assertEqual(end_piece.gross_weight_per_part_kg, 0.8515)
+		self.assertEqual(end_piece.scrap_weight_per_part_kg, 0.1015)
+		self.assertEqual(end_piece.bom_scrap_quantity_kg, 0.3045)
+
+	def test_reuse_end_piece_requires_net_weight(self) -> None:
+		layout = self._balanced_layout(end_piece=EndPiece(net_weight_per_part_kg=None))
+
+		with self.assertRaisesRegex(ValidationError, "Net weight per part is required"):
+			self.validators.validate_sheet_cutting_layout(layout)
+
+	def test_reuse_end_piece_rejects_net_weight_above_gross_weight(self) -> None:
+		layout = self._balanced_layout(
+			end_piece=EndPiece(
+				weight_kg=2.5545,
+				bom_quantity=3,
+				net_weight_per_part_kg=0.86,
+			)
+		)
+
+		with self.assertRaisesRegex(ValidationError, "Scrap weight per part cannot be negative"):
+			self.validators.validate_sheet_cutting_layout(layout)
+
+	def test_reuse_end_piece_replaces_stale_bom_scrap_when_net_weight_exceeds_gross_weight(
+		self,
+	) -> None:
+		end_piece = EndPiece(
+			weight_kg=2.5545,
+			bom_quantity=3,
+			net_weight_per_part_kg=0.86,
+			bom_scrap_quantity_kg=99,
+		)
+		layout = self._balanced_layout(end_piece=end_piece)
+
+		with self.assertRaisesRegex(ValidationError, "Scrap weight per part cannot be negative"):
+			self.validators.validate_sheet_cutting_layout(layout)
+
+		self.assertEqual(end_piece.scrap_weight_per_part_kg, -0.0085)
+		self.assertEqual(end_piece.bom_scrap_quantity_kg, -0.0255)
+
+	def test_reuse_end_piece_requires_row_scrap_item_for_positive_derived_scrap(self) -> None:
+		layout = self._balanced_layout(
+			end_piece=EndPiece(
+				weight_kg=2.5545,
+				bom_quantity=3,
+				net_weight_per_part_kg=0.75,
+				scrap_item="",
+			)
+		)
+
+		with self.assertRaisesRegex(ValidationError, "Scrap item is required for reuse end pieces"):
+			self.validators.validate_sheet_cutting_layout(layout)
+
+	def test_reuse_end_piece_rejects_scrap_item_matching_used_for_finished_part(self) -> None:
+		layout = self._balanced_layout(
+			end_piece=EndPiece(
+				weight_kg=2.5545,
+				bom_quantity=3,
+				net_weight_per_part_kg=0.75,
+				scrap_item="FG01SHR",
+			)
+		)
+
+		with self.assertRaisesRegex(ValidationError, "Scrap item cannot be the used-for finished part"):
+			self.validators.validate_sheet_cutting_layout(layout)
+
+	def test_reuse_end_piece_rejects_used_for_finished_part_scrap_item_when_derived_scrap_is_zero(
+		self,
+	) -> None:
+		layout = self._balanced_layout(
+			end_piece=EndPiece(
+				weight_kg=2.5545,
+				bom_quantity=3,
+				net_weight_per_part_kg=0.8515,
+				scrap_item="FG01SHR",
+			)
+		)
+
+		with self.assertRaisesRegex(ValidationError, "Scrap item cannot be the used-for finished part"):
+			self.validators.validate_sheet_cutting_layout(layout)
+
+	def test_reuse_end_piece_rejects_generated_end_piece_scrap_item_when_derived_scrap_is_zero(
+		self,
+	) -> None:
+		layout = self._balanced_layout(
+			end_piece=EndPiece(
+				weight_kg=2.5545,
+				bom_quantity=3,
+				net_weight_per_part_kg=0.8515,
+				scrap_item="FG01SHR-EP-1x1250x260",
+			)
+		)
+
+		with self.assertRaisesRegex(ValidationError, "Scrap item cannot be the generated end-piece item"):
+			self.validators.validate_sheet_cutting_layout(layout)
+
+	def test_reuse_end_piece_ignores_generated_scrap_check_when_dimensions_are_invalid(
+		self,
+	) -> None:
+		layout = self._balanced_layout(
+			end_piece=EndPiece(
+				width_mm="abc",
+				weight_kg=2.5545,
+				bom_quantity=3,
+				net_weight_per_part_kg=0.8515,
+				scrap_item="EP-SCRAP",
+			)
+		)
+
+		self.validators.validate_sheet_cutting_layout(layout)
+
+	def test_scrap_requires_scrap_item_and_rejects_reuse_only_fields(self) -> None:
+		layout = self._balanced_layout(
+			end_piece=EndPiece(
+				disposition="Scrap",
+				scrap_item="",
+				used_for_finished_part=None,
+				bom_quantity=0,
+				net_weight_per_part_kg=None,
+				bom_scrap_quantity_kg=0,
+			)
+		)
+		with self.assertRaisesRegex(ValidationError, "Scrap item is required"):
+			self.validators.validate_sheet_cutting_layout(layout)
+
+		reuse_only_cases = [
+			(
+				EndPiece(
+					disposition="Scrap",
+					scrap_item="MS",
+					used_for_finished_part="FG01SHR",
+					bom_quantity=0,
+					net_weight_per_part_kg=None,
+					bom_scrap_quantity_kg=0,
+				),
+				"Used for finished part",
+			),
+			(
+				EndPiece(
+					disposition="Scrap",
+					scrap_item="MS",
+					used_for_finished_part=None,
+					bom_quantity=1,
+					net_weight_per_part_kg=None,
+					bom_scrap_quantity_kg=0,
+				),
+				"BOM quantity",
+			),
+			(
+				EndPiece(
+					disposition="Scrap",
+					scrap_item="MS",
+					used_for_finished_part=None,
+					bom_quantity=0,
+					net_weight_per_part_kg=1,
+					bom_scrap_quantity_kg=0,
+				),
+				"Net weight per part",
+			),
+			(
+				EndPiece(
+					disposition="Scrap",
+					scrap_item="MS",
+					used_for_finished_part=None,
+					bom_quantity=0,
+					net_weight_per_part_kg=None,
+					gross_weight_per_part_kg=1,
+					bom_scrap_quantity_kg=0,
+				),
+				"Gross weight per part",
+			),
+			(
+				EndPiece(
+					disposition="Scrap",
+					scrap_item="MS",
+					used_for_finished_part=None,
+					bom_quantity=0,
+					net_weight_per_part_kg=None,
+					scrap_weight_per_part_kg=0.1,
+					bom_scrap_quantity_kg=0,
+				),
+				"Scrap weight per part",
+			),
+			(
+				EndPiece(
+					disposition="Scrap",
+					scrap_item="MS",
+					used_for_finished_part=None,
+					bom_quantity=0,
+					net_weight_per_part_kg=None,
+					bom_scrap_quantity_kg=0.1,
+				),
+				"BOM scrap quantity",
+			),
+		]
+		for end_piece, message in reuse_only_cases:
+			with self.subTest(message=message):
+				with self.assertRaisesRegex(ValidationError, message):
+					self.validators.validate_sheet_cutting_layout(self._balanced_layout(end_piece=end_piece))
+
+	def test_process_scrap_item_cannot_be_finished_part_item(self) -> None:
+		layout = Layout(
+			finished_part_code="FG01SHR",
+			net_weight_per_part_kg=0.289,
+			sheet_thickness_mm=None,
+			sheet_width_mm=None,
+			sheet_length_mm=None,
+			weight_per_sheet_kg=39.3,
+			parts_per_strip=7,
+			no_of_strips=11,
+			weight_of_strip_kg=3.316922,
+			strip_thickness_mm=None,
+			strip_width_mm=None,
+			strip_length_mm=None,
+			process_scrap_item="FG01SHR",
+			end_pieces=[
+				EndPiece(
+					weight_kg=2.813858,
+					disposition="Scrap",
+					used_for_finished_part=None,
+					bom_quantity=0,
+					net_weight_per_part_kg=None,
+					bom_scrap_quantity_kg=0,
+					scrap_item="MSScrap",
+				)
+			],
+		)
+
+		with self.assertRaisesRegex(ValidationError, "Process scrap item cannot be the finished part item"):
+			self.validators.validate_sheet_cutting_layout(layout)
+
+	def test_qty_per_sheet_is_not_required_for_end_piece_validation(self) -> None:
+		layout = self._balanced_layout(end_piece=EndPiece(qty_per_sheet=None, scrap_item="EP-SCRAP"))
+
+		self.validators.validate_sheet_cutting_layout(layout)
+
+		self.assertEqual(layout.consumption_status, "Balanced")
+
+	def test_stale_qty_per_sheet_payload_is_ignored_for_weight_and_consumption(self) -> None:
+		layout = self._balanced_layout(end_piece=EndPiece(qty_per_sheet=3, scrap_item="EP-SCRAP"))
+		layout.status = "Released"
+
+		self.validators.validate_sheet_cutting_layout(layout)
+
+		self.assertEqual(layout.end_pieces[0].weight_kg, 2.5545)
+		self.assertEqual(layout.consumed_weight_kg, 24.562)
+		self.assertEqual(layout.leftover_weight_kg, 0.0)
+		self.assertEqual(layout.consumption_status, "Balanced")
+
+	def test_apply_end_piece_bom_status_uses_generated_bom_presence(self) -> None:
+		no_reuse = self._balanced_layout(
+			end_piece=EndPiece(
+				disposition="Scrap",
+				scrap_item="MS-SCRAP",
+				used_for_finished_part=None,
+				bom_quantity=0,
+				bom_scrap_quantity_kg=0,
+			)
+		)
+		pending = self._balanced_layout(end_piece=EndPiece(end_piece_item_code="FG01SHR-EP-1x1250x260"))
+		generated = self._balanced_layout(
+			end_piece=EndPiece(
+				end_piece_item_code="FG01SHR-EP-1x1250x260",
+				generated_end_piece_bom="BOM-EP-001",
+			)
+		)
+
+		self.validators.apply_end_piece_bom_status(no_reuse, no_reuse.end_pieces)
+		self.validators.apply_end_piece_bom_status(pending, pending.end_pieces)
+		self.validators.apply_end_piece_bom_status(generated, generated.end_pieces)
+
+		self.assertEqual(no_reuse.end_piece_bom_status, "Not Required")
+		self.assertEqual(pending.end_piece_bom_status, "Pending")
+		self.assertEqual(generated.end_piece_bom_status, "Generated")
+
+	def test_end_piece_item_code_cannot_change_after_generation(self) -> None:
+		end_piece = ExistingEndPiece(
+			previous_code="FG01SHR-EP-1x1250x260",
+			current_code="FG01SHR-EP-1x1250x261",
+			generated_end_piece_item="FG01SHR-EP-1x1250x260",
+			weight_kg=2.5545,
+			qty_per_sheet=1,
+			width_mm=1250,
+			length_mm=260,
+			disposition="Reuse",
+			used_for_finished_part="FG01SHR",
+			bom_quantity=1,
+			net_weight_per_part_kg=2.5545,
+			bom_scrap_quantity_kg=0,
+			scrap_item="",
+		)
+		layout = self._balanced_layout(end_piece=end_piece)
+
+		with self.assertRaisesRegex(ValidationError, "End piece item code cannot be changed"):
+			self.validators.validate_sheet_cutting_layout(layout)
+
+	def test_end_piece_item_code_can_change_before_generation(self) -> None:
+		end_piece = ExistingEndPiece(
+			previous_code="FG01SHR-EP-1x1250x260",
+			current_code="FG01SHR-EP-1x1250x261",
+			weight_kg=2.5545,
+			qty_per_sheet=1,
+			width_mm=1250,
+			length_mm=260,
+			disposition="Reuse",
+			used_for_finished_part="FG01SHR",
+			bom_quantity=1,
+			net_weight_per_part_kg=2.5545,
+			bom_scrap_quantity_kg=0,
+			scrap_item="",
+		)
+		layout = self._balanced_layout(end_piece=end_piece)
+
+		self.validators.validate_sheet_cutting_layout(layout)
+		self.assertEqual(layout.end_piece_bom_status, "Pending")
+
+	def test_end_piece_item_code_can_be_set_when_previous_value_is_empty(self) -> None:
+		end_piece = ExistingEndPiece(
+			previous_code=None,
+			current_code="FG01SHR-EP-1x1250x260",
+			weight_kg=2.5545,
+			qty_per_sheet=1,
+			width_mm=1250,
+			length_mm=260,
+			disposition="Reuse",
+			used_for_finished_part="FG01SHR",
+			bom_quantity=1,
+			net_weight_per_part_kg=2.5545,
+			bom_scrap_quantity_kg=0,
+			scrap_item="",
+		)
+		layout = self._balanced_layout(end_piece=end_piece)
+
+		self.validators.validate_sheet_cutting_layout(layout)
+		self.assertEqual(layout.end_piece_bom_status, "Pending")
+
+	def test_consumption_tracking_uses_gross_plus_end_piece_weight_and_sets_balanced(self) -> None:
+		layout = self._balanced_layout(end_piece=EndPiece(scrap_item="EP-SCRAP"))
+		self.validators.validate_sheet_cutting_layout(layout)
+
+		self.assertEqual(layout.consumed_weight_kg, 24.562)
+		self.assertEqual(layout.leftover_weight_kg, 0.0)
+		self.assertEqual(layout.consumption_status, "Balanced")
+
+	def test_consumption_tracking_accepts_balanced_layout_with_scrap_end_piece(self) -> None:
+		layout = self._balanced_layout(
+			end_piece=EndPiece(
+				disposition="Scrap",
+				scrap_item="MS-SCRAP",
+				used_for_finished_part=None,
+				bom_quantity=0,
+				net_weight_per_part_kg=None,
+				bom_scrap_quantity_kg=0,
+			)
+		)
+
+		self.validators.validate_sheet_cutting_layout(layout)
+
+		self.assertEqual(layout.consumed_weight_kg, 24.562)
+		self.assertEqual(layout.leftover_weight_kg, 0.0)
+		self.assertEqual(layout.consumption_status, "Balanced")
+
+	def test_consumption_tracking_accepts_balanced_layout_with_reuse_end_piece(self) -> None:
+		layout = self._balanced_layout(end_piece=EndPiece(disposition="Reuse", scrap_item="EP-SCRAP"))
+
+		self.validators.validate_sheet_cutting_layout(layout)
+
+		self.assertEqual(layout.consumed_weight_kg, 24.562)
+		self.assertEqual(layout.leftover_weight_kg, 0.0)
+		self.assertEqual(layout.consumption_status, "Balanced")
+
+	def test_consumption_tracking_raises_for_short_and_excess_outside_tolerance(self) -> None:
+		short_layout = self._balanced_layout(
+			end_piece=EndPiece(length_mm=259.338, used_for_finished_part="FG01SHR", scrap_item="EP-SCRAP")
+		)
+		with self.assertRaisesRegex(ValidationError, "no accounting for 0.006 kg"):
+			self.validators.validate_sheet_cutting_layout(short_layout)
+		self.assertEqual(short_layout.consumption_status, "Short")
+
+		excess_layout = self._balanced_layout(
+			end_piece=EndPiece(length_mm=260.560, used_for_finished_part="FG01SHR", scrap_item="EP-SCRAP")
+		)
+		with self.assertRaisesRegex(ValidationError, "exceeds sheet weight by 0.006 kg"):
+			self.validators.validate_sheet_cutting_layout(excess_layout)
+		self.assertEqual(excess_layout.consumption_status, "Excess")
+
+	def test_consumption_tracking_accepts_sheet_consumption_at_tolerance_edge(self) -> None:
+		cases = [
+			("short_edge", 259.44, 0.005),
+			("excess_edge", 260.458, -0.005),
+		]
+		for name, end_piece_length_mm, expected_leftover_weight in cases:
+			with self.subTest(name=name):
+				layout = self._balanced_layout(
+					end_piece=EndPiece(
+						length_mm=end_piece_length_mm,
+						used_for_finished_part="FG01SHR",
+						scrap_item="EP-SCRAP",
 					)
-				],
-			)
+				)
+
+				self.validators.validate_sheet_cutting_layout(layout)
+
+				self.assertEqual(layout.leftover_weight_kg, expected_leftover_weight)
+				self.assertEqual(layout.consumption_status, "Balanced")
+
+	def test_consumed_weight_calculation_does_not_add_process_scrap(self) -> None:
+		layout = Layout(
+			finished_part_code="AB12SHR",
+			parts_per_sheet=2,
+			gross_weight_per_part_kg=11.004,
+			scrap_weight_per_part_kg=0.5,
 		)
-
-
-def test_reuse_end_piece_rows_reject_scrap_item(validators: types.ModuleType) -> None:
-	with pytest.raises(ValidationError, match="Scrap item is allowed only for scrap end pieces"):
-		validators.validate_sheet_cutting_layout(
-			Layout(
-				finished_parts=[FinishedPart("AB12SHR", 2, 11, 1)],
-				end_pieces=[EndPiece(disposition="Reuse", scrap_item="SCRAP-ITEM-001")],
-			)
+		consumed = self.validators.calculate_consumed_weight_kg(
+			layout,
+			[EndPiece(weight_kg=2.5545)],
 		)
-
-
-def test_apply_end_piece_bom_status_tracks_reuse_generation_state(validators: types.ModuleType) -> None:
-	no_reuse_layout = Layout(end_pieces=[EndPiece(disposition="Scrap")])
-	pending_layout = Layout(end_pieces=[EndPiece(disposition="Reuse", generated_end_piece_bom=None)])
-	generated_layout = Layout(end_pieces=[EndPiece(disposition="Reuse", generated_end_piece_bom="BOM-EP1")])
-
-	validators.apply_end_piece_bom_status(no_reuse_layout, no_reuse_layout.end_pieces)
-	validators.apply_end_piece_bom_status(pending_layout, pending_layout.end_pieces)
-	validators.apply_end_piece_bom_status(generated_layout, generated_layout.end_pieces)
-
-	assert no_reuse_layout.end_piece_bom_status == "Not Required"
-	assert pending_layout.end_piece_bom_status == "Pending"
-	assert generated_layout.end_piece_bom_status == "Generated"
-
-
-@pytest.mark.parametrize(
-	"generated_field",
-	["generated_end_piece_item", "generated_end_piece_bom"],
-)
-def test_end_piece_item_code_cannot_change_after_generated_records_exist(
-	validators: types.ModuleType,
-	generated_field: str,
-) -> None:
-	end_piece = ExistingEndPiece(weight_kg=2.5625, width_mm=None, length_mm=None)
-	setattr(end_piece, generated_field, "GENERATED")
-
-	with pytest.raises(ValidationError, match="End piece item code cannot be changed"):
-		validators.validate_sheet_cutting_layout(
-			Layout(
-				finished_parts=[FinishedPart("AB12SHR", 2, 11, 1)],
-				end_pieces=[end_piece],
-			)
-		)
-
-
-def test_parts_per_sheet_must_be_positive_for_end_piece_distribution(validators: types.ModuleType) -> None:
-	with pytest.raises(ValidationError, match="Parts per sheet"):
-		validators.validate_sheet_cutting_layout(
-			Layout(
-				finished_parts=[FinishedPart("AB12SHR", 0, 5, 1)],
-				end_pieces=[EndPiece("EP1", 1, 1, width_mm=None, length_mm=None)],
-			)
-		)
-
-
-def test_derived_finished_goods_weight_must_not_be_negative(validators: types.ModuleType) -> None:
-	with pytest.raises(ValidationError, match="Derived finished goods weight"):
-		validators.validate_sheet_cutting_layout(
-			Layout(
-				finished_parts=[FinishedPart("AB12SHR", 2, 2, 1)],
-				end_pieces=[EndPiece("EP1", 4, 1, width_mm=None, length_mm=None)],
-			)
-		)
-
-	validators.validate_sheet_cutting_layout(
-		Layout(
-			finished_parts=[FinishedPart("AB12SHR", 2, 11, 1)],
-			end_pieces=[EndPiece("EP1", 2.5625, 1, width_mm=None, length_mm=None)],
-		)
-	)
-
-
-def test_controller_validate_delegates_to_service(monkeypatch: pytest.MonkeyPatch) -> None:
-	from sheet_cutting_layout.sheet_cutting_layout.doctype.sheet_cutting_layout import sheet_cutting_layout
-
-	called_with: list[object] = []
-
-	def fake_validate(layout: object) -> None:
-		called_with.append(layout)
-
-	monkeypatch.setattr(sheet_cutting_layout, "validate_sheet_cutting_layout", fake_validate)
-
-	doc = object.__new__(sheet_cutting_layout.SheetCuttingLayout)
-	doc.doctype = "Sheet Cutting Layout"
-	doc.validate()
-
-	assert called_with == [doc]
-
-
-def test_revision_and_workflow_invalid_transitions_raise() -> None:
-	from sheet_cutting_layout.services.versioning import create_revision
-	from sheet_cutting_layout.services.workflow import LayoutWorkflowModel
-
-	with pytest.raises(ValueError, match="Only released"):
-		create_revision(type("Layout", (), {"status": "Draft"})())
-
-	with pytest.raises(AssertionError, match="Expected layout state"):
-		LayoutWorkflowModel().supersede()
-
-
-class TestValidators(SheetCuttingLayoutTestCase):
-	pass
-
-
-add_pytest_style_tests(globals(), TestValidators)
+		self.assertEqual(consumed, 24.562)

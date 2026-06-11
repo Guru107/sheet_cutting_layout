@@ -4,16 +4,8 @@
   "disabled": 0,
   "doctype": "Role",
   "is_custom": 1,
-  "name": "Projects Manager",
-  "role_name": "Projects Manager"
- },
- {
-  "desk_access": 1,
-  "disabled": 0,
-  "doctype": "Role",
-  "is_custom": 1,
-  "name": "Manufacturing Manager",
-  "role_name": "Manufacturing Manager"
+  "name": "Project Manager",
+  "role_name": "Project Manager"
  },
  {
   "desk_access": 1,
