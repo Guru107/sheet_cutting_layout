@@ -18,7 +18,8 @@
   "net_weight_per_part_kg",
   "gross_weight_per_part_kg",
   "scrap_weight_per_part_kg",
-  "bom_scrap_quantity_kg"
+  "bom_scrap_quantity_kg",
+  "generated_end_piece_bom"
  ],
  "fields": [
   {
@@ -111,6 +112,15 @@
    "fieldname": "bom_scrap_quantity_kg",
    "fieldtype": "Float",
    "label": "BOM Scrap Quantity Kg",
+   "read_only": 1
+  },
+  {
+   "fieldname": "generated_end_piece_bom",
+   "fieldtype": "Link",
+   "hidden": 1,
+   "label": "Generated End Piece BOM",
+   "no_copy": 1,
+   "options": "BOM",
    "read_only": 1
   }
  ],

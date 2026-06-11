@@ -190,25 +190,53 @@ def cancel_generated_bom(layout: object) -> object | None:
 			_unlink_layout_from_generated_bom(bom_doc)
 			continue
 
-		_set_frappe_field_if_supported(bom_doc, "is_active", 0)
-		_set_frappe_field_if_supported(bom_doc, "disabled", 1)
-		_mark_bom_app_controlled(bom_doc)
-		_unlink_layout_bom_reference_fields(layout, bom_name)
+		savepoint = f"scl_cancel_generated_bom_{len(cancelled_boms)}"
+		_db_savepoint(savepoint)
+		try:
+			_set_frappe_field_if_supported(bom_doc, "is_active", 0)
+			_set_frappe_field_if_supported(bom_doc, "disabled", 1)
+			_mark_bom_app_controlled(bom_doc)
+			# The submitted layout's own backlinks must be cleared before cancelling the
+			# BOM, or ERPNext link validation would always block the cancellation below.
+			_unlink_layout_bom_reference_fields(layout, bom_name)
 
-		if _is_submitted_document(bom_doc):
-			cancel = getattr(bom_doc, "cancel", None)
-			if callable(cancel):
+			if _is_submitted_document(bom_doc):
+				cancel = getattr(bom_doc, "cancel", None)
+				if not callable(cancel):
+					raise RuntimeError(f"Submitted generated BOM {bom_name} cannot be cancelled")
 				cancel()
 				_unlink_layout_from_generated_bom(bom_doc)
 				continue
-			raise RuntimeError(f"Submitted generated BOM {bom_name} cannot be cancelled")
 
-		save = getattr(bom_doc, "save", None)
-		_unlink_layout_from_generated_bom(bom_doc)
-		if callable(save):
-			save(ignore_permissions=True)
+			save = getattr(bom_doc, "save", None)
+			_unlink_layout_from_generated_bom(bom_doc)
+			if callable(save):
+				save(ignore_permissions=True)
+		except Exception:
+			_db_rollback_to_savepoint(savepoint)
+			raise
 
 	return cancelled_boms[0]
+
+
+def _db_savepoint(name: str) -> None:
+	db = getattr(frappe, "db", None) if frappe else None
+	savepoint = getattr(db, "savepoint", None)
+	if callable(savepoint):
+		savepoint(name)
+
+
+def _db_rollback_to_savepoint(name: str) -> None:
+	db = getattr(frappe, "db", None) if frappe else None
+	rollback = getattr(db, "rollback", None)
+	if not callable(rollback):
+		return
+	try:
+		rollback(save_point=name)
+	except Exception:
+		# An intermediate commit can release the savepoint; surface the original
+		# cancellation error instead of the rollback failure.
+		pass
 
 
 def _layout_bom_names(layout: object) -> list[str]:
