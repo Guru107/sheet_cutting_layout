@@ -8,6 +8,7 @@ from typing import ClassVar
 from unittest.mock import patch
 
 import frappe
+
 import sheet_cutting_layout.hooks as hooks
 from sheet_cutting_layout.services import release_service
 from sheet_cutting_layout.services.release_service import LayoutReleaseStatus
