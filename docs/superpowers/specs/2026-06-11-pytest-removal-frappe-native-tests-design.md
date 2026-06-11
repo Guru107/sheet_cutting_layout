@@ -111,6 +111,11 @@ artifacts remaining.
 
 ## 5. Phase 2 — Integration Migration
 
+Scope: Phase 2 covers only the three adapter-dependent files listed in section 2. The already
+native fake-based files (`test_validators.py`, `test_end_piece_bom_service.py`,
+`test_bom_overrides.py`, `test_sheet_cutting_layout.py`) are out of scope for this design except
+for the frappe-less guard removal in section 4.3.
+
 Decision rule: if the behavior under test crosses a frappe API boundary (`get_doc`, `db`,
 document lifecycle, workflow transitions, BOM submission), rewrite it against real records. If it
 is pure calculation or data shaping, keep the fakes in native idiom.
@@ -164,8 +169,10 @@ Each batch is verified with a module-scoped `bench run-tests --module` run befor
    `MonkeyPatch`, `approx`, `raises`, or `fixture` adapter imports remain.
 3. No `try: import frappe / except ImportError` guards remain in test code; the suite requires a
    bench site.
-4. All 84 converted tests pass via `bench --site <site> run-tests --app sheet_cutting_layout`,
-   full suite green on bench15 (`development.localhost`) and bench16 (`frappe16.localhost`).
+4. The behavior covered by all 84 original test functions is preserved (Phase 2 may consolidate
+   tests, never silently drop coverage), and the full suite passes via
+   `bench --site <site> run-tests --app sheet_cutting_layout` on bench15
+   (`development.localhost`) and bench16 (`frappe16.localhost`).
 5. Framework-boundary tests use real records; only pure-logic tests remain fake-based.
 6. Test-created records are cleaned up after runs via the existing registry and prefix sweep.
 7. `pre-commit run --all-files` passes.
