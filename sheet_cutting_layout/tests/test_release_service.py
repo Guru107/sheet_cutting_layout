@@ -2598,6 +2598,119 @@ def test_cancel_generated_bom_cancels_every_bom_linked_to_layout(
 	]
 
 
+class _SavepointFrappeStub:
+	"""Frappe stub whose db honours savepoint/rollback over recorded set_value calls."""
+
+	def __init__(self, bom_docs: dict[str, object]) -> None:
+		class db:
+			set_value_calls: ClassVar[list[tuple[str, str, object, object, bool]]] = []
+			savepoint_names: ClassVar[list[str]] = []
+			rollback_savepoints: ClassVar[list[str]] = []
+			_savepoint_marks: ClassVar[dict[str, int]] = {}
+
+			@classmethod
+			def savepoint(cls, name: str) -> None:
+				cls.savepoint_names.append(name)
+				cls._savepoint_marks[name] = len(cls.set_value_calls)
+
+			@classmethod
+			def rollback(cls, *, save_point: str) -> None:
+				cls.rollback_savepoints.append(save_point)
+				del cls.set_value_calls[cls._savepoint_marks[save_point] :]
+
+			@classmethod
+			def set_value(
+				cls,
+				doctype: str,
+				name: str,
+				fieldname: object,
+				value: object = None,
+				update_modified: bool = True,
+			) -> None:
+				cls.set_value_calls.append((doctype, name, fieldname, value, update_modified))
+
+		self.db = db
+		self._bom_docs = bom_docs
+
+	def get_doc(self, doctype: str, name: str) -> object:
+		assert doctype == "BOM"
+		return self._bom_docs[name]
+
+
+def test_cancel_generated_bom_rolls_back_savepoint_when_submitted_cancel_fails(
+	monkeypatch: MonkeyPatch,
+) -> None:
+	from sheet_cutting_layout.services import release_service
+	from sheet_cutting_layout.services.release_service import cancel_generated_bom
+
+	class BomDoc:
+		docstatus = 1
+		custom_operation = "Shearing"
+		sheet_cutting_layout = "SCL-001"
+
+		def __init__(self) -> None:
+			self.name = "BOM-PART001SHR-001"
+			self.flags = type("Flags", (), {})()
+			self.is_active = 1
+			self.disabled = 0
+
+		def cancel(self) -> None:
+			raise RuntimeError("BOM is linked with Work Order")
+
+	frappe_stub = _SavepointFrappeStub({"BOM-PART001SHR-001": BomDoc()})
+	monkeypatch.setattr(release_service, "frappe", frappe_stub)
+
+	layout = type(
+		"Layout",
+		(),
+		{"doctype": "Sheet Cutting Layout", "name": "SCL-001", "generated_bom": "BOM-PART001SHR-001"},
+	)()
+
+	with raises(RuntimeError, match="Work Order"):
+		cancel_generated_bom(layout)
+
+	assert len(frappe_stub.db.savepoint_names) == 1
+	assert frappe_stub.db.rollback_savepoints == frappe_stub.db.savepoint_names
+	assert frappe_stub.db.set_value_calls == []
+
+
+def test_cancel_generated_bom_rolls_back_savepoint_when_draft_save_fails(
+	monkeypatch: MonkeyPatch,
+) -> None:
+	from sheet_cutting_layout.services import release_service
+	from sheet_cutting_layout.services.release_service import cancel_generated_bom
+
+	class BomDoc:
+		docstatus = 0
+		custom_operation = "Shearing"
+		sheet_cutting_layout = "SCL-001"
+
+		def __init__(self) -> None:
+			self.name = "BOM-PART001SHR-001"
+			self.flags = type("Flags", (), {})()
+			self.is_active = 1
+			self.disabled = 0
+
+		def save(self, ignore_permissions: bool = False) -> None:
+			raise RuntimeError("draft BOM save failed")
+
+	frappe_stub = _SavepointFrappeStub({"BOM-PART001SHR-001": BomDoc()})
+	monkeypatch.setattr(release_service, "frappe", frappe_stub)
+
+	layout = type(
+		"Layout",
+		(),
+		{"doctype": "Sheet Cutting Layout", "name": "SCL-001", "generated_bom": "BOM-PART001SHR-001"},
+	)()
+
+	with raises(RuntimeError, match="draft BOM save failed"):
+		cancel_generated_bom(layout)
+
+	assert len(frappe_stub.db.savepoint_names) == 1
+	assert frappe_stub.db.rollback_savepoints == frappe_stub.db.savepoint_names
+	assert frappe_stub.db.set_value_calls == []
+
+
 def test_controller_supersede_action_deactivates_generated_bom(monkeypatch: MonkeyPatch) -> None:
 	from sheet_cutting_layout.sheet_cutting_layout.doctype.sheet_cutting_layout import sheet_cutting_layout
 
