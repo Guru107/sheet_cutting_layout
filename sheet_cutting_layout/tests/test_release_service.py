@@ -2666,3 +2666,52 @@ class TestReleaseServiceIntegration(SheetCuttingLayoutTestCase):
 			self.assertEqual(bom.docstatus, 2)
 		else:
 			self.assertEqual(bom.status, "Cancelled")
+
+	def test_controller_revision_clones_real_released_layout(self) -> None:
+		from sheet_cutting_layout.sheet_cutting_layout.doctype.sheet_cutting_layout.sheet_cutting_layout import (
+			create_sheet_cutting_layout_revision,
+		)
+		from sheet_cutting_layout.tests.factories import register_test_doc
+
+		layout = self._release_ready_layout()
+		# create_sheet_cutting_layout_revision re-fetches the layout from the DB, so the
+		# released status must actually be persisted. A direct release_layout() call saves
+		# a stale twin row (known quirk: DB status stays "Approved by Purchase"); drive the
+		# production "MR Release" save cycle instead, which persists the released state.
+		frappe.flags.selected_workflow_action = "MR Release"
+		self.addCleanup(lambda: setattr(frappe.flags, "selected_workflow_action", None))
+		layout.save(ignore_permissions=True)
+		# Clear the action flag before inserting the revision below, or its validate()
+		# would also try to run the MR Release flow on the not-yet-inserted clone.
+		frappe.flags.selected_workflow_action = None
+		if layout.generated_bom:
+			register_test_doc("BOM", layout.generated_bom)
+
+		revision_name = create_sheet_cutting_layout_revision(layout.name)
+		register_test_doc("Sheet Cutting Layout", revision_name)
+
+		revision = frappe.get_doc("Sheet Cutting Layout", revision_name)
+		self.assertEqual(revision.status, "Draft")
+		self.assertEqual(revision.based_on_layout, layout.name)
+		self.assertEqual(revision.revision_no, layout.revision_no + 1)
+		self.assertFalse(revision.generated_bom)
+		self.assertFalse(revision.is_active)
+
+	def test_get_release_context_discovers_real_family_layouts_and_boms(self) -> None:
+		from sheet_cutting_layout.services.release_service import get_release_context
+
+		layout = self._release_ready_layout()
+		self._release(layout)
+		# release_layout persists through a stale twin of the layout row (known quirk),
+		# so the DB row reloaded here has generated_bom unset; capture the BOM name from
+		# the in-memory layout before reload and assert against that.
+		generated_bom = layout.generated_bom
+		self.assertTrue(generated_bom)
+		layout.reload()
+
+		context = get_release_context(layout)
+
+		context_layout_names = [getattr(row, "name", None) for row in context.layouts]
+		self.assertIn(layout.name, context_layout_names)
+		context_bom_names = [getattr(row, "name", None) for row in context.boms]
+		self.assertIn(generated_bom, context_bom_names)
