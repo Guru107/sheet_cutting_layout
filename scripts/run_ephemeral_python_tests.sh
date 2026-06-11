@@ -29,7 +29,7 @@ cleanup() {
 trap cleanup EXIT
 
 cd "$BENCH_ROOT"
-bench pip install pytest hypothesis
+bench pip install hypothesis
 
 bench new-site "$SITE_NAME" --db-root-username "$DB_ROOT_USERNAME" --db-root-password "$DB_ROOT_PASSWORD" --admin-password "$EPHEMERAL_ADMIN_PASSWORD"
 bench --site "$SITE_NAME" install-app erpnext

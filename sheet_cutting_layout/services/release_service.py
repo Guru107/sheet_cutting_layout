@@ -25,6 +25,10 @@ _ = getattr(frappe, "_", lambda message: message)
 
 LayoutReleaseStatus = Literal["Approved by Purchase", "Released"]
 
+# Set on frappe.flags by the layout controller while its own save cycle runs
+# release_layout; _save_layout_records skips the nested save when it is active.
+SUPPRESS_WORKFLOW_SIDE_EFFECTS_FLAG = "sheet_cutting_layout_suppress_workflow_side_effects"
+
 
 class EndPieceRow(Protocol):
 	weight_kg: float
@@ -131,7 +135,10 @@ def release_layout(
 		finalize_new_revision_release(layout)  # type: ignore[arg-type]
 	_sync_finished_part_reference_rows(layout, generated_boms, _parent_finished_part_rows(layout))
 	if layouts:
-		_save_layout_records(_release_layout_records(layouts, layout))
+		# Always persist the in-memory layout being released. The release context
+		# contains a re-fetched copy of the same record; saving that copy instead
+		# would write the pre-release status back and lose generated_bom.
+		_save_layout_records((layout,))
 	_save_bom_records(generated_boms)
 
 	return ReleaseResult(status=layout.status, generated_boms=generated_boms)
@@ -152,13 +159,16 @@ def deactivate_generated_bom(layout: object) -> object | None:
 		_set_frappe_field_if_supported(bom_doc, "status", "Superseded")
 		if _is_submitted_document(bom_doc) and hasattr(bom_doc, "db_set"):
 			# Submitted BOMs cannot be safely re-saved through the layout flow here.
-			# Persist the retirement fields directly and leave broader ERPNext BOM-update
-			# orchestration to the explicit submitted-BOM lifecycle follow-up.
-			bom_doc.db_set(
+			# Persist the retirement fields directly — but only those the doctype
+			# actually has, or db_set fails with an unknown-column error — and leave
+			# broader ERPNext BOM-update orchestration to the explicit submitted-BOM
+			# lifecycle follow-up.
+			retirement_values = _supported_field_values(
+				bom_doc,
 				{"is_active": 0, "disabled": 1, "is_default": 0, "status": "Superseded"},
-				update_modified=True,
-				notify=False,
 			)
+			if retirement_values:
+				bom_doc.db_set(retirement_values, update_modified=True, notify=False)
 		else:
 			mark_bom_app_controlled(bom_doc)
 			bom_doc.save(ignore_permissions=True)
@@ -467,28 +477,6 @@ def _activate_boms(boms: Sequence[BomRecord]) -> None:
 		bom.status = "Active"
 
 
-def _release_layout_records(
-	layouts: Sequence[object],
-	layout: ReleaseLayoutDocument,
-) -> Sequence[object]:
-	layout_name = getattr(layout, "name", None)
-	for existing_layout in layouts:
-		if getattr(existing_layout, "name", None) == layout_name:
-			if existing_layout is not layout:
-				_copy_generated_end_piece_item_links(source=layout, target=existing_layout)
-			return (existing_layout,)
-	return (layout,)
-
-
-def _copy_generated_end_piece_item_links(*, source: object, target: object) -> None:
-	source_rows = list(getattr(source, "end_pieces", []) or [])
-	target_rows = list(getattr(target, "end_pieces", []) or [])
-	for source_row, target_row in zip(source_rows, target_rows, strict=False):
-		item_code = getattr(source_row, "end_piece_item_code", None)
-		if item_code and hasattr(target_row, "end_piece_item_code"):
-			target_row.end_piece_item_code = item_code
-
-
 def _get_same_project_layouts(layout: ReleaseLayoutDocument) -> list[object]:
 	if not frappe:
 		raise RuntimeError("Frappe is required to discover same-project layouts")
@@ -497,14 +485,18 @@ def _get_same_project_layouts(layout: ReleaseLayoutDocument) -> list[object]:
 	if not project:
 		return [layout]
 
-	layout_names = frappe.get_all(
+	# Lightweight rows are enough here: release_layout only uses this list to
+	# decide whether the revision path applies, and the released layout itself
+	# must be the in-memory document, never a re-fetched copy. Full get_doc
+	# fetches would be wasted reads on the release hot path.
+	layout_rows = frappe.get_all(
 		"Sheet Cutting Layout",
 		filters={"project": project},
-		pluck="name",
+		fields=["name"],
 	)
-	layouts = [frappe.get_doc("Sheet Cutting Layout", name) for name in layout_names]
-	if getattr(layout, "name", None) not in {getattr(existing, "name", None) for existing in layouts}:
-		layouts.append(layout)
+	layout_name = getattr(layout, "name", None)
+	layouts: list[object] = [row for row in layout_rows if row["name"] != layout_name]
+	layouts.append(layout)
 	return layouts
 
 
@@ -545,16 +537,23 @@ def _save_layout_records(layouts: Sequence[object]) -> None:
 	if not frappe:
 		return
 
+	if getattr(getattr(frappe, "flags", None), SUPPRESS_WORKFLOW_SIDE_EFFECTS_FLAG, False):
+		# The layout controller is mid-save (workflow action cycle): the outer save
+		# persists the released layout, and a nested save of the same document
+		# would trip Frappe's timestamp conflict check.
+		return
+
 	for layout in layouts:
 		if _is_submitted_document(layout) and hasattr(layout, "db_set"):
-			layout.db_set(
+			state_values = _supported_field_values(
+				layout,
 				{
 					"status": getattr(layout, "status", None),
 					"is_active": getattr(layout, "is_active", None),
 				},
-				update_modified=True,
-				notify=False,
 			)
+			if state_values:
+				layout.db_set(state_values, update_modified=True, notify=False)
 		elif hasattr(layout, "save"):
 			layout.save(ignore_permissions=True)
 
@@ -598,13 +597,20 @@ def _company_for_layout(layout: object | None) -> str:
 	raise RuntimeError("Company is required to create generated BOMs")
 
 
-def _set_frappe_field_if_supported(doc: object, fieldname: str, value: object) -> None:
+def _field_is_supported(doc: object, fieldname: str) -> bool:
 	meta = getattr(doc, "meta", None)
-	if meta is not None and hasattr(meta, "has_field") and not meta.has_field(fieldname):
-		return
-	if meta is None and not hasattr(doc, fieldname):
-		return
-	setattr(doc, fieldname, value)
+	if meta is not None and hasattr(meta, "has_field"):
+		return bool(meta.has_field(fieldname))
+	return hasattr(doc, fieldname)
+
+
+def _set_frappe_field_if_supported(doc: object, fieldname: str, value: object) -> None:
+	if _field_is_supported(doc, fieldname):
+		setattr(doc, fieldname, value)
+
+
+def _supported_field_values(doc: object, values: dict[str, object]) -> dict[str, object]:
+	return {field: value for field, value in values.items() if _field_is_supported(doc, field)}
 
 
 def _sum_bom_qty(rows: Sequence[object]) -> float:

@@ -2,9 +2,11 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from unittest.mock import patch
 
+import frappe
 from hypothesis import settings
-from hypothesis.stateful import RuleBasedStateMachine, invariant, rule
+from hypothesis.stateful import RuleBasedStateMachine, invariant, rule, run_state_machine_as_test
 
 from sheet_cutting_layout.services.versioning import (
 	LayoutVersionStatus,
@@ -13,16 +15,12 @@ from sheet_cutting_layout.services.versioning import (
 )
 from sheet_cutting_layout.services.workflow import LayoutWorkflowModel
 from sheet_cutting_layout.tests.base import SheetCuttingLayoutTestCase
-from sheet_cutting_layout.tests.unittest_adapter import MonkeyPatch, add_pytest_style_tests, fixture, raises
 
-
-@fixture(autouse=True)
-def isolate_state_tests_from_frappe_copy_doc(monkeypatch: MonkeyPatch) -> None:
-	try:
-		import frappe as frappe_module
-	except ImportError:
-		return
-	monkeypatch.setattr(frappe_module, "copy_doc", None, raising=False)
+STATE_MACHINE_SETTINGS = settings(
+	max_examples=40,
+	stateful_step_count=20,
+	deadline=None,
+)
 
 
 @dataclass
@@ -44,41 +42,6 @@ class RevisionLayout:
 	finished_part_code: str = ""
 	net_weight_per_part_kg: float = 0.0
 	generated_bom: str | None = None
-
-
-def test_project_manager_approval_moves_state_to_pm_approved() -> None:
-	machine = LayoutWorkflowModel()
-	machine.submit()
-	machine.project_manager_approves()
-
-	assert machine.state == "PM Approved"
-
-
-def test_purchase_approval_requires_pm_approved() -> None:
-	machine = LayoutWorkflowModel()
-	machine.submit()
-
-	with raises(AssertionError, match="Expected layout state PM Approved"):
-		machine.purchase_approves()
-
-
-def test_release_blocked_before_purchase_approval() -> None:
-	machine = LayoutWorkflowModel()
-	machine.submit()
-	machine.project_manager_approves()
-
-	with raises(AssertionError, match="purchase approval"):
-		machine.release()
-
-
-def test_purchase_and_mr_release_path_reaches_released() -> None:
-	machine = LayoutWorkflowModel()
-	machine.submit()
-	machine.project_manager_approves()
-	machine.purchase_approves()
-	machine.release()
-
-	assert machine.state == "Released"
 
 
 class WorkflowStateMachine(RuleBasedStateMachine):
@@ -180,20 +143,11 @@ class WorkflowStateMachine(RuleBasedStateMachine):
 			update_expected()
 			return
 
-		with raises(AssertionError):
+		try:
 			action()
-
-
-WorkflowStateMachine.TestCase.settings = settings(
-	max_examples=40,
-	stateful_step_count=20,
-	deadline=None,
-)
-
-
-def test_state_machine_never_reaches_released_without_purchase_and_mr() -> None:
-	machine = WorkflowStateMachine.TestCase()
-	machine.runTest()
+		except AssertionError:
+			return
+		raise AssertionError("Expected invalid transition to raise AssertionError")
 
 
 class RevisionVersioningStateMachine(RuleBasedStateMachine):
@@ -255,20 +209,45 @@ class RevisionVersioningStateMachine(RuleBasedStateMachine):
 		]
 
 
-RevisionVersioningStateMachine.TestCase.settings = settings(
-	max_examples=40,
-	stateful_step_count=20,
-	deadline=None,
-)
-
-
-def test_state_machine_keeps_all_active_layouts_released_after_new_versions() -> None:
-	machine = RevisionVersioningStateMachine.TestCase()
-	machine.runTest()
-
-
 class TestModelWorkflowStateMachine(SheetCuttingLayoutTestCase):
-	pass
+	def setUp(self) -> None:
+		super().setUp()
+		# frappe.copy_doc may not exist in this runtime; force the deepcopy fallback in _copy_layout.
+		self.start_patcher(patch.object(frappe, "copy_doc", new=None, create=True))
 
+	def test_project_manager_approval_moves_state_to_pm_approved(self) -> None:
+		machine = LayoutWorkflowModel()
+		machine.submit()
+		machine.project_manager_approves()
 
-add_pytest_style_tests(globals(), TestModelWorkflowStateMachine)
+		self.assertEqual(machine.state, "PM Approved")
+
+	def test_purchase_approval_requires_pm_approved(self) -> None:
+		machine = LayoutWorkflowModel()
+		machine.submit()
+
+		with self.assertRaisesRegex(AssertionError, "Expected layout state PM Approved"):
+			machine.purchase_approves()
+
+	def test_release_blocked_before_purchase_approval(self) -> None:
+		machine = LayoutWorkflowModel()
+		machine.submit()
+		machine.project_manager_approves()
+
+		with self.assertRaisesRegex(AssertionError, "purchase approval"):
+			machine.release()
+
+	def test_purchase_and_mr_release_path_reaches_released(self) -> None:
+		machine = LayoutWorkflowModel()
+		machine.submit()
+		machine.project_manager_approves()
+		machine.purchase_approves()
+		machine.release()
+
+		self.assertEqual(machine.state, "Released")
+
+	def test_state_machine_never_reaches_released_without_purchase_and_mr(self) -> None:
+		run_state_machine_as_test(WorkflowStateMachine, settings=STATE_MACHINE_SETTINGS)
+
+	def test_state_machine_keeps_all_active_layouts_released_after_new_versions(self) -> None:
+		run_state_machine_as_test(RevisionVersioningStateMachine, settings=STATE_MACHINE_SETTINGS)
