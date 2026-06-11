@@ -5,6 +5,8 @@ import types
 from dataclasses import dataclass, field
 from unittest.mock import patch
 
+import frappe
+
 from sheet_cutting_layout.tests.base import SheetCuttingLayoutTestCase
 
 
@@ -451,8 +453,6 @@ class TestBomService(SheetCuttingLayoutTestCase):
 
 class TestBomServiceIntegration(SheetCuttingLayoutTestCase):
 	def test_resolve_scrap_item_rate_reads_real_item_valuation(self) -> None:
-		import frappe
-
 		from sheet_cutting_layout.services.bom_service import resolve_scrap_item_rate
 		from sheet_cutting_layout.tests.factories import ensure_item
 
