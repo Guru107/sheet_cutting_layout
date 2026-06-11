@@ -2649,3 +2649,20 @@ class TestReleaseServiceIntegration(SheetCuttingLayoutTestCase):
 			"Released",
 		)
 		self.assertTrue(frappe.db.get_value("Sheet Cutting Layout", layout.name, "generated_bom"))
+
+	def test_cancel_generated_bom_cancels_real_bom(self) -> None:
+		from sheet_cutting_layout.services.release_service import cancel_generated_bom
+
+		layout = self._release_ready_layout()
+		self._release(layout)
+		bom_before = frappe.get_doc("BOM", layout.generated_bom)
+
+		cancel_generated_bom(layout)
+
+		# cancel_generated_bom intentionally unlinks layout.generated_bom (it becomes
+		# None), so the cancelled BOM must be re-read by the name captured beforehand.
+		bom = frappe.get_doc("BOM", bom_before.name)
+		if bom_before.docstatus == 1:
+			self.assertEqual(bom.docstatus, 2)
+		else:
+			self.assertEqual(bom.status, "Cancelled")
