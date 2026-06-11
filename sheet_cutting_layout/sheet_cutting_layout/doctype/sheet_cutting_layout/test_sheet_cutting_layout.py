@@ -7,7 +7,7 @@ from unittest.mock import patch
 import frappe
 
 from sheet_cutting_layout.tests.base import SheetCuttingLayoutTestCase
-from sheet_cutting_layout.tests.factories import register_test_doc
+from sheet_cutting_layout.tests.factories import make_layout, register_test_doc
 
 from . import sheet_cutting_layout as controller
 
@@ -26,107 +26,6 @@ class _FakeLayoutDoc:
 
 	def insert(self) -> None:
 		self.inserted = True
-
-
-def _insert_if_missing(
-	doc: dict[str, object],
-	name_field: str,
-	*,
-	exists_filters: dict[str, object] | None = None,
-) -> str:
-	name = str(doc[name_field])
-	existing_name = frappe.db.exists(str(doc["doctype"]), exists_filters or name)
-	if existing_name:
-		return str(existing_name)
-
-	inserted = frappe.get_doc(doc).insert(ignore_permissions=True)
-	register_test_doc(str(doc["doctype"]), inserted.name)
-	return inserted.name
-
-
-def _ensure_layout_dependencies() -> tuple[str, str]:
-	item_group = _insert_if_missing(
-		{
-			"doctype": "Item Group",
-			"item_group_name": "SCL-TEST-ITEM-GROUP",
-			"parent_item_group": "All Item Groups",
-			"is_group": 0,
-		},
-		"item_group_name",
-	)
-	project = _insert_if_missing(
-		{
-			"doctype": "Project",
-			"project_name": "SCL-TEST-PROJECT",
-		},
-		"project_name",
-		exists_filters={"project_name": "SCL-TEST-PROJECT"},
-	)
-	return item_group, project
-
-
-def _ensure_hsn_code(hsn_code: str) -> str:
-	if not frappe.db.exists("DocType", "GST HSN Code"):
-		raise RuntimeError("GST HSN Code DocType is not available on this site")
-	return _insert_if_missing(
-		{
-			"doctype": "GST HSN Code",
-			"hsn_code": hsn_code,
-		},
-		"hsn_code",
-	)
-
-
-def _ensure_item(item_code: str, *, item_group: str, stock_uom: str) -> str:
-	doc = {
-		"doctype": "Item",
-		"item_code": item_code,
-		"item_name": item_code,
-		"item_group": item_group,
-		"stock_uom": stock_uom,
-		"is_stock_item": 1,
-		"valuation_rate": 1,
-	}
-	if frappe.get_meta("Item", cached=True).has_field("gst_hsn_code") and frappe.db.exists(
-		"DocType", "GST HSN Code"
-	):
-		doc["gst_hsn_code"] = _ensure_hsn_code("720810")
-	return _insert_if_missing(doc, "item_code")
-
-
-def make_layout(
-	*,
-	finished_part_code: str,
-	net_weight_per_part_kg: float,
-	generated_bom: str | None,
-) -> object:
-	unique_suffix = frappe.generate_hash(length=8)
-	item_group, project = _ensure_layout_dependencies()
-	raw_material_item = _ensure_item("SCLTESTRM001", item_group=item_group, stock_uom="Kg")
-	_ensure_item(finished_part_code, item_group=item_group, stock_uom="Nos")
-	return frappe.get_doc(
-		{
-			"doctype": "Sheet Cutting Layout",
-			"layout_code": f"SCL-TEST-PARENT-CONTRACT-{unique_suffix}",
-			"project": project,
-			"raw_material_item": raw_material_item,
-			"process_scrap_item": raw_material_item,
-			"sheet_thickness_mm": 1,
-			"sheet_width_mm": 1250,
-			"sheet_length_mm": 2500,
-			"strip_thickness_mm": 1,
-			"strip_width_mm": 1250,
-			"strip_length_mm": 260,
-			"parts_per_strip": 2,
-			"no_of_strips": 1,
-			"status": "Draft",
-			"finished_part_code": finished_part_code,
-			"net_weight_per_part_kg": net_weight_per_part_kg,
-			"generated_bom": generated_bom,
-			"finished_parts": [],
-			"end_pieces": [],
-		}
-	)
 
 
 class TestSheetCuttingLayoutController(SheetCuttingLayoutTestCase):
