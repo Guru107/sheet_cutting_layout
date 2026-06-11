@@ -187,6 +187,9 @@ def make_layout(
 	generated_bom: str | None = None,
 	**overrides: object,
 ):
+	"""Build an UNINSERTED Sheet Cutting Layout doc; callers must insert() it and
+	register_test_doc("Sheet Cutting Layout", doc.name) themselves. Item/Project
+	prerequisites are inserted and registered here."""
 	unique_suffix = frappe.generate_hash(length=8)
 	project = ensure_project()
 	raw_material_item = ensure_item("SCLTESTRM001", stock_uom="Kg")

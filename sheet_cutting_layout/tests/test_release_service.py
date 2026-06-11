@@ -2656,16 +2656,16 @@ class TestReleaseServiceIntegration(SheetCuttingLayoutTestCase):
 		layout = self._release_ready_layout()
 		self._release(layout)
 		bom_before = frappe.get_doc("BOM", layout.generated_bom)
+		# release_layout always submits the generated BOM, so cancel must take the
+		# submitted branch (docstatus 1 -> 2).
+		self.assertEqual(bom_before.docstatus, 1)
 
 		cancel_generated_bom(layout)
 
 		# cancel_generated_bom intentionally unlinks layout.generated_bom (it becomes
 		# None), so the cancelled BOM must be re-read by the name captured beforehand.
 		bom = frappe.get_doc("BOM", bom_before.name)
-		if bom_before.docstatus == 1:
-			self.assertEqual(bom.docstatus, 2)
-		else:
-			self.assertEqual(bom.status, "Cancelled")
+		self.assertEqual(bom.docstatus, 2)
 
 	def test_controller_revision_clones_real_released_layout(self) -> None:
 		from sheet_cutting_layout.sheet_cutting_layout.doctype.sheet_cutting_layout.sheet_cutting_layout import (
