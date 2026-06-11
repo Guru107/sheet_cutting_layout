@@ -2275,8 +2275,10 @@ class TestBomLifecycle(ReleaseServiceIsolatedTestCase):
 		assert bom_doc.is_active == 0
 		assert bom_doc.disabled == 1
 		assert bom_doc.status == "Superseded"
+		# The stub has no is_default attribute (and no meta), so the guarded db_set
+		# must exclude it — unsupported columns would crash on a real database.
 		assert bom_doc.db_set_calls == [
-			({"is_active": 0, "disabled": 1, "is_default": 0, "status": "Superseded"}, True, False)
+			({"is_active": 0, "disabled": 1, "status": "Superseded"}, True, False)
 		]
 		assert bom_doc.save_calls == []
 
@@ -2649,6 +2651,18 @@ class TestReleaseServiceIntegration(SheetCuttingLayoutTestCase):
 			"Released",
 		)
 		self.assertTrue(frappe.db.get_value("Sheet Cutting Layout", layout.name, "generated_bom"))
+
+	def test_deactivate_generated_bom_supersedes_real_bom(self) -> None:
+		from sheet_cutting_layout.services.release_service import deactivate_generated_bom
+
+		layout = self._release_ready_layout()
+		self._release(layout)
+
+		deactivate_generated_bom(layout)
+
+		bom = frappe.get_doc("BOM", layout.generated_bom)
+		self.assertEqual(bom.is_active, 0)
+		self.assertEqual(bom.is_default, 0)
 
 	def test_cancel_generated_bom_cancels_real_bom(self) -> None:
 		from sheet_cutting_layout.services.release_service import cancel_generated_bom

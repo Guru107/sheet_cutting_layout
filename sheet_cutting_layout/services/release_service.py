@@ -152,13 +152,16 @@ def deactivate_generated_bom(layout: object) -> object | None:
 		_set_frappe_field_if_supported(bom_doc, "status", "Superseded")
 		if _is_submitted_document(bom_doc) and hasattr(bom_doc, "db_set"):
 			# Submitted BOMs cannot be safely re-saved through the layout flow here.
-			# Persist the retirement fields directly and leave broader ERPNext BOM-update
-			# orchestration to the explicit submitted-BOM lifecycle follow-up.
-			bom_doc.db_set(
+			# Persist the retirement fields directly — but only those the doctype
+			# actually has, or db_set fails with an unknown-column error — and leave
+			# broader ERPNext BOM-update orchestration to the explicit submitted-BOM
+			# lifecycle follow-up.
+			retirement_values = _supported_field_values(
+				bom_doc,
 				{"is_active": 0, "disabled": 1, "is_default": 0, "status": "Superseded"},
-				update_modified=True,
-				notify=False,
 			)
+			if retirement_values:
+				bom_doc.db_set(retirement_values, update_modified=True, notify=False)
 		else:
 			mark_bom_app_controlled(bom_doc)
 			bom_doc.save(ignore_permissions=True)
@@ -605,6 +608,13 @@ def _set_frappe_field_if_supported(doc: object, fieldname: str, value: object) -
 	if meta is None and not hasattr(doc, fieldname):
 		return
 	setattr(doc, fieldname, value)
+
+
+def _supported_field_values(doc: object, values: dict[str, object]) -> dict[str, object]:
+	meta = getattr(doc, "meta", None)
+	if meta is not None and hasattr(meta, "has_field"):
+		return {field: value for field, value in values.items() if meta.has_field(field)}
+	return {field: value for field, value in values.items() if hasattr(doc, field)}
 
 
 def _sum_bom_qty(rows: Sequence[object]) -> float:
