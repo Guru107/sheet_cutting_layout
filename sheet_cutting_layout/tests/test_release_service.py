@@ -5,8 +5,11 @@ from datetime import datetime
 from pathlib import Path
 from types import SimpleNamespace
 from typing import ClassVar
+from unittest.mock import patch
 
+import frappe
 import sheet_cutting_layout.hooks as hooks
+from sheet_cutting_layout.services import release_service
 from sheet_cutting_layout.services.release_service import LayoutReleaseStatus
 from sheet_cutting_layout.services.versioning import LayoutVersionStatus
 from sheet_cutting_layout.tests.base import SheetCuttingLayoutTestCase
@@ -162,6 +165,182 @@ def isolate_release_runtime_from_live_frappe(monkeypatch: MonkeyPatch) -> None:
 		monkeypatch.setattr(frappe_module, "copy_doc", None, raising=False)
 
 
+class ReleaseServiceIsolatedTestCase(SheetCuttingLayoutTestCase):
+	"""Keep unit-style tests deterministic under bench by disabling live persistence paths."""
+
+	def setUp(self) -> None:
+		super().setUp()
+		frappe_patcher = patch.object(release_service, "frappe", None)
+		frappe_patcher.start()
+		self.addCleanup(frappe_patcher.stop)
+		# frappe.copy_doc may not exist in this runtime; force the deepcopy fallback in _copy_layout.
+		copy_doc_patcher = patch.object(frappe, "copy_doc", new=None, create=True)
+		copy_doc_patcher.start()
+		self.addCleanup(copy_doc_patcher.stop)
+
+
+class TestReleaseContracts(SheetCuttingLayoutTestCase):
+	def test_hooks_exposes_required_fixtures(self) -> None:
+		expected_fixtures = [
+			{
+				"dt": "Workflow State",
+				"filters": [
+					[
+						"name",
+						"in",
+						[
+							"Draft",
+							"Submitted for Check",
+							"PM Approved",
+							"Approved by Purchase",
+							"Released",
+							"Rejected",
+							"Superseded",
+							"Cancel",
+						],
+					]
+				],
+			},
+			{
+				"dt": "Workflow",
+				"filters": [["name", "=", "Sheet Cutting Layout Approval Workflow"]],
+			},
+			{
+				"dt": "Role",
+				"filters": [["name", "in", ["Project Manager", "MR Coordinator"]]],
+			},
+			{
+				"dt": "Custom Field",
+				"filters": [["dt", "in", ["BOM", "Work Order", "Production Plan"]]],
+			},
+		]
+
+		assert hooks.fixtures == expected_fixtures
+		assert hooks.override_whitelisted_methods == {
+			"frappe.model.workflow.apply_workflow": (
+				"sheet_cutting_layout.sheet_cutting_layout.doctype.sheet_cutting_layout."
+				"sheet_cutting_layout.apply_sheet_cutting_layout_workflow"
+			)
+		}
+		assert hooks.doc_events == {
+			"BOM": {
+				"before_insert": "sheet_cutting_layout.overrides.bom.validate_shearing_bom_source",
+				"before_cancel": "sheet_cutting_layout.overrides.bom.validate_shearing_bom_source",
+			}
+		}
+		assert hooks.before_tests == "sheet_cutting_layout.tests.test_setup.before_tests"
+
+		fixtures_dir = Path(__file__).resolve().parents[1] / "fixtures"
+		for fixture_file_name in ("workflow_state.json", "workflow.json", "role.json", "custom_field.json"):
+			fixture_path = fixtures_dir / fixture_file_name
+
+			assert fixture_path.exists()
+			assert isinstance(json.loads(fixture_path.read_text()), list)
+
+	def test_bom_custom_fields_are_fixture_owned(self) -> None:
+		fixture_path = Path(__file__).resolve().parents[1] / "fixtures" / "custom_field.json"
+		fields = {
+			row["fieldname"]: row
+			for row in json.loads(fixture_path.read_text(encoding="utf-8"))
+			if row.get("dt") == "BOM"
+		}
+
+		assert fields["custom_operation"]["fieldtype"] in {"Data", "Select"}
+		assert fields["sheet_cutting_layout"]["fieldtype"] == "Link"
+		assert fields["sheet_cutting_layout"]["options"] == "Sheet Cutting Layout"
+		assert fields["sheet_cutting_layout"]["read_only"] == 1
+		assert fields["sheet_cutting_layout"]["hidden"] == 1
+		assert fields["sheet_cutting_layout"]["no_copy"] == 1
+
+	def test_parent_finished_part_code_is_item_link(self) -> None:
+		doctype_path = (
+			Path(__file__).resolve().parents[1]
+			/ "sheet_cutting_layout"
+			/ "doctype"
+			/ "sheet_cutting_layout"
+			/ "sheet_cutting_layout.json"
+		)
+		fields = {
+			row["fieldname"]: row
+			for row in json.loads(doctype_path.read_text(encoding="utf-8"))["fields"]
+			if "fieldname" in row
+		}
+
+		assert fields["finished_part_code"]["fieldtype"] == "Link"
+		assert fields["finished_part_code"]["options"] == "Item"
+
+	def test_status_options_include_cancel_state(self) -> None:
+		doctype_path = (
+			Path(__file__).resolve().parents[1]
+			/ "sheet_cutting_layout"
+			/ "doctype"
+			/ "sheet_cutting_layout"
+			/ "sheet_cutting_layout.json"
+		)
+		fields = {
+			row["fieldname"]: row
+			for row in json.loads(doctype_path.read_text(encoding="utf-8"))["fields"]
+			if "fieldname" in row
+		}
+		workflow_states = {
+			row["state"]: row
+			for row in json.loads(
+				(Path(__file__).resolve().parents[1] / "fixtures" / "workflow.json").read_text(encoding="utf-8")
+			)[0]["states"]
+		}
+
+		assert "Cancel" in fields["status"]["options"].splitlines()
+		assert workflow_states["Cancel"]["doc_status"] == "2"
+
+	def test_generated_release_artifact_fields_are_not_copied(self) -> None:
+		doctype_path = (
+			Path(__file__).resolve().parents[1]
+			/ "sheet_cutting_layout"
+			/ "doctype"
+			/ "sheet_cutting_layout"
+			/ "sheet_cutting_layout.json"
+		)
+		fields = {
+			row["fieldname"]: row
+			for row in json.loads(doctype_path.read_text(encoding="utf-8"))["fields"]
+			if "fieldname" in row
+		}
+		end_piece_path = (
+			Path(__file__).resolve().parents[1]
+			/ "sheet_cutting_layout"
+			/ "doctype"
+			/ "layout_end_piece"
+			/ "layout_end_piece.json"
+		)
+		end_piece_fields = {
+			row["fieldname"]: row
+			for row in json.loads(end_piece_path.read_text(encoding="utf-8"))["fields"]
+			if "fieldname" in row
+		}
+
+		for fieldname in (
+			"generated_bom",
+			"finished_parts",
+			"approval_snapshot",
+			"is_active",
+			"end_piece_bom_status",
+			"status",
+		):
+			assert fields[fieldname]["no_copy"] == 1
+		assert end_piece_fields["end_piece_item_code"]["no_copy"] == 1
+
+	def test_workflow_wrapper_is_whitelisted(self) -> None:
+		assert hooks.override_whitelisted_methods.get("frappe.model.workflow.apply_workflow", "").endswith(
+			"sheet_cutting_layout.apply_sheet_cutting_layout_workflow"
+		)
+
+	def test_readme_mentions_release_gate_and_bom_qty_parts_per_sheet(self) -> None:
+		content = Path(__file__).resolve().parents[2].joinpath("README.md").read_text(encoding="utf-8")
+
+		assert "BOM quantity equals `parts_per_sheet`" in content
+		assert "Draft -> Submitted for Check -> PM Approved -> Approved by Purchase -> Released" in content
+
+
 def _new_sheet_cutting_layout_doc(sheet_cutting_layout_module: object):
 	doc = object.__new__(sheet_cutting_layout_module.SheetCuttingLayout)
 	doc.doctype = "Sheet Cutting Layout"
@@ -185,160 +364,6 @@ def _in_memory_bom_factory(layout: Layout | RevisionLayout, row: FinishedPart, i
 	bom.name = f"BOM-{layout.name}-{index:03d}"
 	bom.sheet_cutting_layout = layout.name
 	return bom
-
-
-def test_hooks_exposes_required_fixtures() -> None:
-	expected_fixtures = [
-		{
-			"dt": "Workflow State",
-			"filters": [
-				[
-					"name",
-					"in",
-					[
-						"Draft",
-						"Submitted for Check",
-						"PM Approved",
-						"Approved by Purchase",
-						"Released",
-						"Rejected",
-						"Superseded",
-						"Cancel",
-					],
-				]
-			],
-		},
-		{
-			"dt": "Workflow",
-			"filters": [["name", "=", "Sheet Cutting Layout Approval Workflow"]],
-		},
-		{
-			"dt": "Role",
-			"filters": [["name", "in", ["Project Manager", "MR Coordinator"]]],
-		},
-		{
-			"dt": "Custom Field",
-			"filters": [["dt", "in", ["BOM", "Work Order", "Production Plan"]]],
-		},
-	]
-
-	assert hooks.fixtures == expected_fixtures
-	assert hooks.override_whitelisted_methods == {
-		"frappe.model.workflow.apply_workflow": (
-			"sheet_cutting_layout.sheet_cutting_layout.doctype.sheet_cutting_layout."
-			"sheet_cutting_layout.apply_sheet_cutting_layout_workflow"
-		)
-	}
-	assert hooks.doc_events == {
-		"BOM": {
-			"before_insert": "sheet_cutting_layout.overrides.bom.validate_shearing_bom_source",
-			"before_cancel": "sheet_cutting_layout.overrides.bom.validate_shearing_bom_source",
-		}
-	}
-	assert hooks.before_tests == "sheet_cutting_layout.tests.test_setup.before_tests"
-
-	fixtures_dir = Path(__file__).resolve().parents[1] / "fixtures"
-	for fixture_file_name in ("workflow_state.json", "workflow.json", "role.json", "custom_field.json"):
-		fixture_path = fixtures_dir / fixture_file_name
-
-		assert fixture_path.exists()
-		assert isinstance(json.loads(fixture_path.read_text()), list)
-
-
-def test_bom_custom_fields_are_fixture_owned() -> None:
-	fixture_path = Path(__file__).resolve().parents[1] / "fixtures" / "custom_field.json"
-	fields = {
-		row["fieldname"]: row
-		for row in json.loads(fixture_path.read_text(encoding="utf-8"))
-		if row.get("dt") == "BOM"
-	}
-
-	assert fields["custom_operation"]["fieldtype"] in {"Data", "Select"}
-	assert fields["sheet_cutting_layout"]["fieldtype"] == "Link"
-	assert fields["sheet_cutting_layout"]["options"] == "Sheet Cutting Layout"
-	assert fields["sheet_cutting_layout"]["read_only"] == 1
-	assert fields["sheet_cutting_layout"]["hidden"] == 1
-	assert fields["sheet_cutting_layout"]["no_copy"] == 1
-
-
-def test_parent_finished_part_code_is_item_link() -> None:
-	doctype_path = (
-		Path(__file__).resolve().parents[1]
-		/ "sheet_cutting_layout"
-		/ "doctype"
-		/ "sheet_cutting_layout"
-		/ "sheet_cutting_layout.json"
-	)
-	fields = {
-		row["fieldname"]: row
-		for row in json.loads(doctype_path.read_text(encoding="utf-8"))["fields"]
-		if "fieldname" in row
-	}
-
-	assert fields["finished_part_code"]["fieldtype"] == "Link"
-	assert fields["finished_part_code"]["options"] == "Item"
-
-
-def test_status_options_include_cancel_state() -> None:
-	doctype_path = (
-		Path(__file__).resolve().parents[1]
-		/ "sheet_cutting_layout"
-		/ "doctype"
-		/ "sheet_cutting_layout"
-		/ "sheet_cutting_layout.json"
-	)
-	fields = {
-		row["fieldname"]: row
-		for row in json.loads(doctype_path.read_text(encoding="utf-8"))["fields"]
-		if "fieldname" in row
-	}
-	workflow_states = {
-		row["state"]: row
-		for row in json.loads(
-			(Path(__file__).resolve().parents[1] / "fixtures" / "workflow.json").read_text(encoding="utf-8")
-		)[0]["states"]
-	}
-
-	assert "Cancel" in fields["status"]["options"].splitlines()
-	assert workflow_states["Cancel"]["doc_status"] == "2"
-
-
-def test_generated_release_artifact_fields_are_not_copied() -> None:
-	doctype_path = (
-		Path(__file__).resolve().parents[1]
-		/ "sheet_cutting_layout"
-		/ "doctype"
-		/ "sheet_cutting_layout"
-		/ "sheet_cutting_layout.json"
-	)
-	fields = {
-		row["fieldname"]: row
-		for row in json.loads(doctype_path.read_text(encoding="utf-8"))["fields"]
-		if "fieldname" in row
-	}
-	end_piece_path = (
-		Path(__file__).resolve().parents[1]
-		/ "sheet_cutting_layout"
-		/ "doctype"
-		/ "layout_end_piece"
-		/ "layout_end_piece.json"
-	)
-	end_piece_fields = {
-		row["fieldname"]: row
-		for row in json.loads(end_piece_path.read_text(encoding="utf-8"))["fields"]
-		if "fieldname" in row
-	}
-
-	for fieldname in (
-		"generated_bom",
-		"finished_parts",
-		"approval_snapshot",
-		"is_active",
-		"end_piece_bom_status",
-		"status",
-	):
-		assert fields[fieldname]["no_copy"] == 1
-	assert end_piece_fields["end_piece_item_code"]["no_copy"] == 1
 
 
 def test_controller_before_insert_clears_copied_release_artifacts() -> None:
@@ -1065,12 +1090,6 @@ def test_workflow_wrapper_sets_selected_action_for_sheet_cutting_layout(
 	assert result == "applied"
 	assert calls == [({"doctype": "Sheet Cutting Layout"}, "MR Release", "MR Release")]
 	assert FrappeStub.flags.selected_workflow_action == "old-action"
-
-
-def test_workflow_wrapper_is_whitelisted() -> None:
-	assert hooks.override_whitelisted_methods.get("frappe.model.workflow.apply_workflow", "").endswith(
-		"sheet_cutting_layout.apply_sheet_cutting_layout_workflow"
-	)
 
 
 def test_rejected_layout_on_trash_removes_workflow_action_links(
@@ -2557,13 +2576,6 @@ def test_form_cancel_lets_layout_controller_cancel_linked_bom() -> None:
 
 	assert "ignoreBomInGenericCancelAll(frm);" in content
 	assert 'frm.ignore_doctypes_on_cancel_all || []), "BOM"' in content
-
-
-def test_readme_mentions_release_gate_and_bom_qty_parts_per_sheet() -> None:
-	content = Path(__file__).resolve().parents[2].joinpath("README.md").read_text(encoding="utf-8")
-
-	assert "BOM quantity equals `parts_per_sheet`" in content
-	assert "Draft -> Submitted for Check -> PM Approved -> Approved by Purchase -> Released" in content
 
 
 class TestReleaseService(SheetCuttingLayoutTestCase):
