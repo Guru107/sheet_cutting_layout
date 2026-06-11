@@ -14,7 +14,11 @@ from sheet_cutting_layout.services import release_service
 from sheet_cutting_layout.services.release_service import LayoutReleaseStatus
 from sheet_cutting_layout.services.versioning import LayoutVersionStatus
 from sheet_cutting_layout.tests.base import SheetCuttingLayoutTestCase
-from sheet_cutting_layout.tests.factories import make_layout, register_test_doc
+from sheet_cutting_layout.tests.factories import (
+	make_layout,
+	make_release_ready_layout,
+	register_test_doc,
+)
 
 
 @dataclass
@@ -149,6 +153,14 @@ class SubmittedRevisionLayout(RevisionLayout):
 	def save(self, **kwargs: object) -> None:
 		self.save_calls += 1
 		raise AssertionError("submitted layout state changes must use db_set")
+
+
+class _SavableBomFrappeStub:
+	"""Minimal frappe stand-in whose get_doc returns a BOM with a no-op save."""
+
+	@staticmethod
+	def get_doc(_doctype: str, name: str) -> object:
+		return type("SavableBom", (), {"name": name, "save": lambda self, **kwargs: None})()
 
 
 class ReleaseServiceIsolatedTestCase(SheetCuttingLayoutTestCase):
@@ -605,12 +617,7 @@ class TestReleaseFlow(ReleaseServiceIsolatedTestCase):
 			finished_parts=[FinishedPart("PART001LHSHR", gross_weight_per_part_kg=2.5)],
 		)
 
-		class FrappeStub:
-			@staticmethod
-			def get_doc(_doctype: str, name: str) -> object:
-				return type("SavableBom", (), {"name": name, "save": lambda self, **kwargs: None})()
-
-		self.start_patcher(patch.object(release_service, "frappe", FrappeStub))
+		self.start_patcher(patch.object(release_service, "frappe", _SavableBomFrappeStub))
 
 		release_layout(
 			new_layout,
@@ -649,12 +656,7 @@ class TestReleaseFlow(ReleaseServiceIsolatedTestCase):
 			finished_parts=[FinishedPart("PART001LHSHR", gross_weight_per_part_kg=2.5)],
 		)
 
-		class FrappeStub:
-			@staticmethod
-			def get_doc(_doctype: str, name: str) -> object:
-				return type("SavableBom", (), {"name": name, "save": lambda self, **kwargs: None})()
-
-		self.start_patcher(patch.object(release_service, "frappe", FrappeStub))
+		self.start_patcher(patch.object(release_service, "frappe", _SavableBomFrappeStub))
 
 		release_layout(
 			new_layout,
@@ -2505,19 +2507,7 @@ class TestBomLifecycle(ReleaseServiceIsolatedTestCase):
 
 class TestReleaseServiceIntegration(SheetCuttingLayoutTestCase):
 	def _release_ready_layout(self):
-		suffix = frappe.generate_hash(length=5).upper()
-		layout = make_layout(
-			finished_part_code=f"SCLTESTFG{suffix}SHR",
-			parts_per_strip=1,
-			no_of_strips=1,
-			strip_length_mm=2500,
-		)
-		layout.insert()
-		register_test_doc("Sheet Cutting Layout", layout.name)
-		layout.db_set("status", "Approved by Purchase", update_modified=False)
-		layout.reload()
-		layout.net_weight_per_part_kg = layout.gross_weight_per_part_kg
-		return layout
+		return make_release_ready_layout()
 
 	def _release(self, layout):
 		from sheet_cutting_layout.services.release_service import release_layout

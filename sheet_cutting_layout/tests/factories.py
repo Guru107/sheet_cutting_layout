@@ -217,3 +217,24 @@ def make_layout(
 	}
 	values.update(overrides)
 	return frappe.get_doc(values)
+
+
+def make_release_ready_layout(*, finished_part_code: str | None = None, **overrides: object):
+	"""Insert a registered layout and put it in the release-gate state
+	(status Approved by Purchase, net weight equal to gross)."""
+	if finished_part_code is None:
+		suffix = frappe.generate_hash(length=5).upper()
+		finished_part_code = f"{ITEM_CODE_PREFIX}FG{suffix}SHR"
+	layout = make_layout(
+		finished_part_code=finished_part_code,
+		parts_per_strip=1,
+		no_of_strips=1,
+		strip_length_mm=2500,
+		**overrides,
+	)
+	layout.insert()
+	register_test_doc("Sheet Cutting Layout", layout.name)
+	layout.db_set("status", "Approved by Purchase", update_modified=False)
+	layout.reload()
+	layout.net_weight_per_part_kg = layout.gross_weight_per_part_kg
+	return layout

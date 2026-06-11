@@ -7,7 +7,11 @@ from unittest.mock import patch
 import frappe
 
 from sheet_cutting_layout.tests.base import SheetCuttingLayoutTestCase
-from sheet_cutting_layout.tests.factories import make_layout, register_test_doc
+from sheet_cutting_layout.tests.factories import (
+	make_layout,
+	make_release_ready_layout,
+	register_test_doc,
+)
 
 from . import sheet_cutting_layout as controller
 
@@ -184,19 +188,7 @@ class TestSheetCuttingLayoutController(SheetCuttingLayoutTestCase):
 		)
 
 	def test_mr_release_generates_native_bom_with_test_uom_items(self) -> None:
-		layout = make_layout(
-			finished_part_code=f"SCLTESTFG{frappe.generate_hash(length=5).upper()}SHR",
-			net_weight_per_part_kg=0.289,
-			generated_bom=None,
-		)
-		layout.parts_per_strip = 1
-		layout.no_of_strips = 1
-		layout.strip_length_mm = 2500
-		layout.insert()
-		register_test_doc("Sheet Cutting Layout", layout.name)
-		layout.db_set("status", "Approved by Purchase", update_modified=False)
-		layout.reload()
-		layout.net_weight_per_part_kg = layout.gross_weight_per_part_kg
+		layout = make_release_ready_layout()
 
 		with patch.object(controller, "_get_selected_workflow_action", return_value="MR Release"):
 			layout.validate()
