@@ -212,7 +212,8 @@ class RevisionVersioningStateMachine(RuleBasedStateMachine):
 class TestModelWorkflowStateMachine(SheetCuttingLayoutTestCase):
 	def setUp(self) -> None:
 		super().setUp()
-		copy_doc_patcher = patch.object(frappe, "copy_doc", None, create=True)
+		# frappe.copy_doc may not exist in this runtime; force the deepcopy fallback in _copy_layout.
+		copy_doc_patcher = patch.object(frappe, "copy_doc", new=None, create=True)
 		copy_doc_patcher.start()
 		self.addCleanup(copy_doc_patcher.stop)
 
