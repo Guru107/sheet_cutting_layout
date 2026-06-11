@@ -1,13 +1,13 @@
 from __future__ import annotations
 
-import importlib
-import types
 from dataclasses import dataclass, field
 from unittest.mock import patch
 
 import frappe
 
+from sheet_cutting_layout.services import bom_service
 from sheet_cutting_layout.tests.base import SheetCuttingLayoutTestCase
+from sheet_cutting_layout.tests.factories import ensure_item
 
 
 @dataclass
@@ -45,19 +45,8 @@ class Layout:
 	end_pieces: list[EndPiece] = field(default_factory=list)
 
 
-def import_bom_service() -> types.ModuleType:
-	try:
-		return importlib.import_module("sheet_cutting_layout.services.bom_service")
-	except ModuleNotFoundError as error:
-		if error.name != "sheet_cutting_layout.services.bom_service":
-			raise
-		raise AssertionError("BOM service module is not implemented") from error
-
-
 class TestBomService(SheetCuttingLayoutTestCase):
 	def test_generated_bom_uses_parts_per_sheet_quantity_and_sheet_weight_raw_qty(self) -> None:
-		bom_service = import_bom_service()
-
 		bom = bom_service.build_bom_from_layout_row(
 			Layout(no_of_strips=11, parts_per_sheet=77),
 			FinishedPart(parts_per_sheet=77),
@@ -71,8 +60,6 @@ class TestBomService(SheetCuttingLayoutTestCase):
 		assert bom.items[0].row_type == "raw_material"
 
 	def test_process_scrap_row_is_included_when_scrap_weight_is_positive(self) -> None:
-		bom_service = import_bom_service()
-
 		bom = bom_service.build_bom_from_layout_row(
 			Layout(),
 			FinishedPart(scrap_weight_per_part_kg=1.25),
@@ -84,8 +71,6 @@ class TestBomService(SheetCuttingLayoutTestCase):
 		assert bom.scrap_items[0].row_type == "process_scrap"
 
 	def test_process_scrap_and_reuse_end_piece_byproduct_rows_are_both_included(self) -> None:
-		bom_service = import_bom_service()
-
 		bom = bom_service.build_bom_from_layout_row(
 			Layout(
 				process_scrap_item="MSScrap",
@@ -101,8 +86,6 @@ class TestBomService(SheetCuttingLayoutTestCase):
 		]
 
 	def test_reuse_end_pieces_create_main_bom_byproduct_rows(self) -> None:
-		bom_service = import_bom_service()
-
 		bom = bom_service.build_bom_from_layout_row(
 			Layout(
 				sheet_thickness_mm=1.6,
@@ -118,8 +101,6 @@ class TestBomService(SheetCuttingLayoutTestCase):
 		]
 
 	def test_existing_reuse_end_piece_item_code_wins_over_resolver(self) -> None:
-		bom_service = import_bom_service()
-
 		def fail_resolver(_layout: object, _row: object) -> str:
 			raise AssertionError("resolver should not run when row is already linked")
 
@@ -134,8 +115,6 @@ class TestBomService(SheetCuttingLayoutTestCase):
 		]
 
 	def test_reuse_end_piece_resolver_runs_before_pure_derivation(self) -> None:
-		bom_service = import_bom_service()
-
 		def resolver(_layout: object, _row: object) -> str:
 			return "RESOLVED-EP"
 
@@ -150,8 +129,6 @@ class TestBomService(SheetCuttingLayoutTestCase):
 		]
 
 	def test_reuse_end_piece_resolver_must_return_item_code(self) -> None:
-		bom_service = import_bom_service()
-
 		for resolver_result in ("   ", None):
 			created_boms = []
 
@@ -171,8 +148,6 @@ class TestBomService(SheetCuttingLayoutTestCase):
 			assert created_boms[0].scrap_items == []
 
 	def test_scrap_endpiece_creates_row_level_scrap_item_separate_from_process_scrap(self) -> None:
-		bom_service = import_bom_service()
-
 		bom = bom_service.build_bom_from_layout_row(
 			Layout(
 				no_of_strips=11,
@@ -190,8 +165,6 @@ class TestBomService(SheetCuttingLayoutTestCase):
 		]
 
 	def test_scrap_endpiece_requires_scrap_item_before_creating_bom_row(self) -> None:
-		bom_service = import_bom_service()
-
 		with self.assertRaisesRegex(ValueError, "Scrap end piece requires scrap_item"):
 			bom_service.build_bom_from_layout_row(
 				Layout(end_pieces=[EndPiece(weight_kg=8, disposition="Scrap", scrap_item=None)]),
@@ -199,8 +172,6 @@ class TestBomService(SheetCuttingLayoutTestCase):
 			)
 
 	def test_bom_quantity_ignores_no_of_strips_when_parts_per_sheet_is_available(self) -> None:
-		bom_service = import_bom_service()
-
 		bom = bom_service.build_bom_from_layout_row(
 			Layout(no_of_strips="11", parts_per_sheet=77),
 			FinishedPart(parts_per_sheet=77),
@@ -209,8 +180,6 @@ class TestBomService(SheetCuttingLayoutTestCase):
 		assert bom.quantity == 77
 
 	def test_custom_bom_document_factory_is_used(self) -> None:
-		bom_service = import_bom_service()
-
 		bom = bom_service.build_bom_from_layout_row(
 			Layout(),
 			FinishedPart(),
@@ -220,7 +189,6 @@ class TestBomService(SheetCuttingLayoutTestCase):
 		assert bom.name == "CUSTOM-BOM"
 
 	def test_resolve_scrap_item_rate_reuses_positive_existing_rate_without_lookup(self) -> None:
-		bom_service = import_bom_service()
 		with patch.object(bom_service, "_fetch_valuation_rate", return_value=99.0) as fetch_rate:
 			rate = bom_service.resolve_scrap_item_rate(
 				item_code="SCRAP-001",
@@ -232,7 +200,6 @@ class TestBomService(SheetCuttingLayoutTestCase):
 		fetch_rate.assert_not_called()
 
 	def test_resolve_scrap_item_rate_looks_up_when_existing_rate_is_zero_or_invalid(self) -> None:
-		bom_service = import_bom_service()
 		with patch.object(bom_service, "_fetch_valuation_rate", return_value=88.25) as fetch_rate:
 			rate_zero = bom_service.resolve_scrap_item_rate(
 				item_code="SCRAP-001",
@@ -286,7 +253,6 @@ class TestBomService(SheetCuttingLayoutTestCase):
 		assert rows.scrap_items == []
 
 	def test_main_bom_is_derived_from_parent_finished_part_fields(self) -> None:
-		bom_service = import_bom_service()
 		layout = Layout(
 			raw_material_item="RM001",
 			process_scrap_item="PROCESS-SCRAP",
@@ -307,7 +273,6 @@ class TestBomService(SheetCuttingLayoutTestCase):
 		self.assertAlmostEqual(self._sum_bom_qty(bom.scrap_items, "process_scrap"), 14.233142, places=6)
 
 	def test_main_bom_uses_exact_sheet_weight_raw_quantity(self) -> None:
-		bom_service = import_bom_service()
 		layout = Layout(
 			weight_per_sheet_kg=123.456789,
 			parts_per_sheet=3,
@@ -322,7 +287,6 @@ class TestBomService(SheetCuttingLayoutTestCase):
 		self.assertEqual(bom.items[0].qty, layout.weight_per_sheet_kg)
 
 	def test_main_bom_includes_reuse_end_piece_byproduct_rows(self) -> None:
-		bom_service = import_bom_service()
 		layout = Layout(
 			raw_material_item="RM001",
 			process_scrap_item="PROCESS-SCRAP",
@@ -359,7 +323,6 @@ class TestBomService(SheetCuttingLayoutTestCase):
 		)
 
 	def test_expected_main_bom_weight_balance_includes_reuse_end_piece_byproducts(self) -> None:
-		bom_service = import_bom_service()
 		layout = Layout(
 			raw_material_item="RM001",
 			process_scrap_item="MSScrap",
@@ -389,7 +352,6 @@ class TestBomService(SheetCuttingLayoutTestCase):
 		self.assertAlmostEqual(balance.difference_kg, -0.000022, places=6)
 
 	def test_bom_invariants_hold_for_representative_layouts(self) -> None:
-		bom_service = import_bom_service()
 		cases = [
 			(
 				"scrap_end_piece",
@@ -456,7 +418,6 @@ class TestBomService(SheetCuttingLayoutTestCase):
 class TestBomServiceIntegration(SheetCuttingLayoutTestCase):
 	def test_resolve_scrap_item_rate_reads_real_item_valuation(self) -> None:
 		from sheet_cutting_layout.services.bom_service import resolve_scrap_item_rate
-		from sheet_cutting_layout.tests.factories import ensure_item
 
 		# A fresh stock-less item has no Bin or Stock Ledger Entry rows, so the
 		# ERPNext valuation lookup falls back to the Item's valuation_rate field.

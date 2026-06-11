@@ -213,9 +213,7 @@ class TestModelWorkflowStateMachine(SheetCuttingLayoutTestCase):
 	def setUp(self) -> None:
 		super().setUp()
 		# frappe.copy_doc may not exist in this runtime; force the deepcopy fallback in _copy_layout.
-		copy_doc_patcher = patch.object(frappe, "copy_doc", new=None, create=True)
-		copy_doc_patcher.start()
-		self.addCleanup(copy_doc_patcher.stop)
+		self.start_patcher(patch.object(frappe, "copy_doc", new=None, create=True))
 
 	def test_project_manager_approval_moves_state_to_pm_approved(self) -> None:
 		machine = LayoutWorkflowModel()

@@ -14,6 +14,7 @@ from sheet_cutting_layout.services import release_service
 from sheet_cutting_layout.services.release_service import LayoutReleaseStatus
 from sheet_cutting_layout.services.versioning import LayoutVersionStatus
 from sheet_cutting_layout.tests.base import SheetCuttingLayoutTestCase
+from sheet_cutting_layout.tests.factories import make_layout, register_test_doc
 
 
 @dataclass
@@ -155,13 +156,9 @@ class ReleaseServiceIsolatedTestCase(SheetCuttingLayoutTestCase):
 
 	def setUp(self) -> None:
 		super().setUp()
-		frappe_patcher = patch.object(release_service, "frappe", new=None)
-		frappe_patcher.start()
-		self.addCleanup(frappe_patcher.stop)
+		self.start_patcher(patch.object(release_service, "frappe", new=None))
 		# frappe.copy_doc may not exist in this runtime; force the deepcopy fallback in _copy_layout.
-		copy_doc_patcher = patch.object(frappe, "copy_doc", new=None, create=True)
-		copy_doc_patcher.start()
-		self.addCleanup(copy_doc_patcher.stop)
+		self.start_patcher(patch.object(frappe, "copy_doc", new=None, create=True))
 
 
 class TestReleaseContracts(SheetCuttingLayoutTestCase):
@@ -613,9 +610,7 @@ class TestReleaseFlow(ReleaseServiceIsolatedTestCase):
 			def get_doc(_doctype: str, name: str) -> object:
 				return type("SavableBom", (), {"name": name, "save": lambda self, **kwargs: None})()
 
-		frappe_stub_patcher = patch.object(release_service, "frappe", FrappeStub)
-		frappe_stub_patcher.start()
-		self.addCleanup(frappe_stub_patcher.stop)
+		self.start_patcher(patch.object(release_service, "frappe", FrappeStub))
 
 		release_layout(
 			new_layout,
@@ -659,9 +654,7 @@ class TestReleaseFlow(ReleaseServiceIsolatedTestCase):
 			def get_doc(_doctype: str, name: str) -> object:
 				return type("SavableBom", (), {"name": name, "save": lambda self, **kwargs: None})()
 
-		frappe_stub_patcher = patch.object(release_service, "frappe", FrappeStub)
-		frappe_stub_patcher.start()
-		self.addCleanup(frappe_stub_patcher.stop)
+		self.start_patcher(patch.object(release_service, "frappe", FrappeStub))
 
 		release_layout(
 			new_layout,
@@ -778,14 +771,10 @@ class TestControllerWorkflow(ReleaseServiceIsolatedTestCase):
 			calls.append((layout, kwargs))
 			return type("ReleaseResult", (), {"status": "Released"})()
 
-		action_patcher = patch.object(
+		self.start_patcher(patch.object(
 			sheet_cutting_layout, "_get_selected_workflow_action", lambda: "MR Release"
-		)
-		action_patcher.start()
-		self.addCleanup(action_patcher.stop)
-		release_patcher = patch.object(sheet_cutting_layout, "release_layout", fake_release_layout)
-		release_patcher.start()
-		self.addCleanup(release_patcher.stop)
+		))
+		self.start_patcher(patch.object(sheet_cutting_layout, "release_layout", fake_release_layout))
 
 		doc = _new_sheet_cutting_layout_doc(sheet_cutting_layout)
 		doc.before_workflow_action()
@@ -822,17 +811,11 @@ class TestControllerWorkflow(ReleaseServiceIsolatedTestCase):
 				related_layout.validate()
 			return type("ReleaseResult", (), {"status": "Released"})()
 
-		frappe_patcher = patch.object(sheet_cutting_layout, "frappe", FrappeStub)
-		frappe_patcher.start()
-		self.addCleanup(frappe_patcher.stop)
-		release_patcher = patch.object(sheet_cutting_layout, "release_layout", fake_release_layout)
-		release_patcher.start()
-		self.addCleanup(release_patcher.stop)
-		validate_patcher = patch.object(
+		self.start_patcher(patch.object(sheet_cutting_layout, "frappe", FrappeStub))
+		self.start_patcher(patch.object(sheet_cutting_layout, "release_layout", fake_release_layout))
+		self.start_patcher(patch.object(
 			sheet_cutting_layout, "validate_sheet_cutting_layout", lambda _doc: None
-		)
-		validate_patcher.start()
-		self.addCleanup(validate_patcher.stop)
+		))
 
 		doc = _new_sheet_cutting_layout_doc(sheet_cutting_layout)
 		doc.approval_snapshot = []
@@ -856,21 +839,15 @@ class TestControllerWorkflow(ReleaseServiceIsolatedTestCase):
 			def now_datetime() -> datetime:
 				return datetime(2026, 5, 15, 9, 30, 0)
 
-		action_patcher = patch.object(
+		self.start_patcher(patch.object(
 			sheet_cutting_layout,
 			"_get_selected_workflow_action",
 			lambda: "Project Manager Approves",
-		)
-		action_patcher.start()
-		self.addCleanup(action_patcher.stop)
-		frappe_patcher = patch.object(sheet_cutting_layout, "frappe", FrappeStub)
-		frappe_patcher.start()
-		self.addCleanup(frappe_patcher.stop)
-		validate_patcher = patch.object(
+		))
+		self.start_patcher(patch.object(sheet_cutting_layout, "frappe", FrappeStub))
+		self.start_patcher(patch.object(
 			sheet_cutting_layout, "validate_sheet_cutting_layout", lambda _doc: None
-		)
-		validate_patcher.start()
-		self.addCleanup(validate_patcher.stop)
+		))
 
 		doc = _new_sheet_cutting_layout_doc(sheet_cutting_layout)
 		doc.approval_snapshot = []
@@ -898,21 +875,15 @@ class TestControllerWorkflow(ReleaseServiceIsolatedTestCase):
 			def now_datetime() -> datetime:
 				return datetime(2026, 5, 15, 10, 0, 0)
 
-		action_patcher = patch.object(
+		self.start_patcher(patch.object(
 			sheet_cutting_layout,
 			"_get_selected_workflow_action",
 			lambda: "Submit for Check",
-		)
-		action_patcher.start()
-		self.addCleanup(action_patcher.stop)
-		frappe_patcher = patch.object(sheet_cutting_layout, "frappe", FrappeStub)
-		frappe_patcher.start()
-		self.addCleanup(frappe_patcher.stop)
-		validate_patcher = patch.object(
+		))
+		self.start_patcher(patch.object(sheet_cutting_layout, "frappe", FrappeStub))
+		self.start_patcher(patch.object(
 			sheet_cutting_layout, "validate_sheet_cutting_layout", lambda _doc: None
-		)
-		validate_patcher.start()
-		self.addCleanup(validate_patcher.stop)
+		))
 
 		doc = _new_sheet_cutting_layout_doc(sheet_cutting_layout)
 		doc.approval_snapshot = []
@@ -948,12 +919,8 @@ class TestControllerWorkflow(ReleaseServiceIsolatedTestCase):
 				calls.append((doc, action, FrappeStub.flags.selected_workflow_action))
 				return "applied"
 
-		frappe_patcher = patch.object(sheet_cutting_layout, "frappe", FrappeStub)
-		frappe_patcher.start()
-		self.addCleanup(frappe_patcher.stop)
-		modules_patcher = patch.dict(sys.modules, {"frappe.model.workflow": FrappeWorkflowStub})
-		modules_patcher.start()
-		self.addCleanup(modules_patcher.stop)
+		self.start_patcher(patch.object(sheet_cutting_layout, "frappe", FrappeStub))
+		self.start_patcher(patch.dict(sys.modules, {"frappe.model.workflow": FrappeWorkflowStub}))
 
 		result = sheet_cutting_layout.apply_sheet_cutting_layout_workflow(
 			{"doctype": "Sheet Cutting Layout"},
@@ -991,9 +958,7 @@ class TestControllerWorkflow(ReleaseServiceIsolatedTestCase):
 		class FrappeStub:
 			db = DbStub()
 
-		frappe_patcher = patch.object(sheet_cutting_layout, "frappe", FrappeStub)
-		frappe_patcher.start()
-		self.addCleanup(frappe_patcher.stop)
+		self.start_patcher(patch.object(sheet_cutting_layout, "frappe", FrappeStub))
 
 		doc = _new_sheet_cutting_layout_doc(sheet_cutting_layout)
 		doc.name = "SCL-REJECTED"
@@ -1031,9 +996,7 @@ class TestControllerWorkflow(ReleaseServiceIsolatedTestCase):
 		class FrappeStub:
 			db = DbStub()
 
-		frappe_patcher = patch.object(sheet_cutting_layout, "frappe", FrappeStub)
-		frappe_patcher.start()
-		self.addCleanup(frappe_patcher.stop)
+		self.start_patcher(patch.object(sheet_cutting_layout, "frappe", FrappeStub))
 
 		doc = _new_sheet_cutting_layout_doc(sheet_cutting_layout)
 		doc.name = "SCL-RELEASED"
@@ -1050,18 +1013,14 @@ class TestControllerWorkflow(ReleaseServiceIsolatedTestCase):
 
 		calls: list[object] = []
 
-		action_patcher = patch.object(
+		self.start_patcher(patch.object(
 			sheet_cutting_layout, "_get_selected_workflow_action", lambda: "Supersede"
-		)
-		action_patcher.start()
-		self.addCleanup(action_patcher.stop)
-		deactivate_patcher = patch.object(
+		))
+		self.start_patcher(patch.object(
 			sheet_cutting_layout,
 			"deactivate_generated_bom",
 			lambda layout: calls.append(layout),
-		)
-		deactivate_patcher.start()
-		self.addCleanup(deactivate_patcher.stop)
+		))
 
 		doc = _new_sheet_cutting_layout_doc(sheet_cutting_layout)
 		doc.generated_bom = "BOM-PART001SHR-001"
@@ -1075,13 +1034,11 @@ class TestControllerWorkflow(ReleaseServiceIsolatedTestCase):
 		)
 
 		calls: list[object] = []
-		cancel_patcher = patch.object(
+		self.start_patcher(patch.object(
 			sheet_cutting_layout,
 			"cancel_generated_bom",
 			lambda layout: calls.append(layout),
-		)
-		cancel_patcher.start()
-		self.addCleanup(cancel_patcher.stop)
+		))
 
 		doc = _new_sheet_cutting_layout_doc(sheet_cutting_layout)
 		doc.status = "Superseded"
@@ -1130,9 +1087,7 @@ class TestPatches(ReleaseServiceIsolatedTestCase):
 		class FrappeStub:
 			db = DbStub
 
-		frappe_patcher = patch.object(v1_0_submit_released_layouts, "frappe", FrappeStub)
-		frappe_patcher.start()
-		self.addCleanup(frappe_patcher.stop)
+		self.start_patcher(patch.object(v1_0_submit_released_layouts, "frappe", FrappeStub))
 
 		v1_0_submit_released_layouts.execute()
 
@@ -1166,9 +1121,7 @@ class TestPatches(ReleaseServiceIsolatedTestCase):
 		class FrappeStub:
 			db = DbStub
 
-		frappe_patcher = patch.object(v1_0_submit_superseded_layouts, "frappe", FrappeStub)
-		frappe_patcher.start()
-		self.addCleanup(frappe_patcher.stop)
+		self.start_patcher(patch.object(v1_0_submit_superseded_layouts, "frappe", FrappeStub))
 
 		v1_0_submit_superseded_layouts.execute()
 
@@ -1223,9 +1176,7 @@ class TestPatches(ReleaseServiceIsolatedTestCase):
 		class FrappeStub:
 			db = DbStub
 
-		frappe_patcher = patch.object(v1_0_mark_cancelled_layouts_and_unlink_boms, "frappe", FrappeStub)
-		frappe_patcher.start()
-		self.addCleanup(frappe_patcher.stop)
+		self.start_patcher(patch.object(v1_0_mark_cancelled_layouts_and_unlink_boms, "frappe", FrappeStub))
 
 		v1_0_mark_cancelled_layouts_and_unlink_boms.execute()
 
@@ -1268,13 +1219,11 @@ class TestPatches(ReleaseServiceIsolatedTestCase):
 		class FrappeStub:
 			db = DbStub
 
-		frappe_patcher = patch.object(
+		self.start_patcher(patch.object(
 			v1_0_migrate_checked_workflow_state_to_pm_approved,
 			"frappe",
 			FrappeStub,
-		)
-		frappe_patcher.start()
-		self.addCleanup(frappe_patcher.stop)
+		))
 
 		v1_0_migrate_checked_workflow_state_to_pm_approved.execute()
 
@@ -1327,13 +1276,11 @@ class TestPatches(ReleaseServiceIsolatedTestCase):
 		class FrappeStub:
 			db = DbStub
 
-		frappe_patcher = patch.object(
+		self.start_patcher(patch.object(
 			v1_0_migrate_checked_workflow_state_to_pm_approved,
 			"frappe",
 			FrappeStub,
-		)
-		frappe_patcher.start()
-		self.addCleanup(frappe_patcher.stop)
+		))
 
 		v1_0_migrate_checked_workflow_state_to_pm_approved.execute()
 
@@ -1398,9 +1345,7 @@ class TestPatches(ReleaseServiceIsolatedTestCase):
 			def get_doc(row: dict[str, object]) -> InsertableDoc:
 				return InsertableDoc(row)
 
-		frappe_patcher = patch.object(v1_0_backfill_mr_approval_snapshots, "frappe", FrappeStub)
-		frappe_patcher.start()
-		self.addCleanup(frappe_patcher.stop)
+		self.start_patcher(patch.object(v1_0_backfill_mr_approval_snapshots, "frappe", FrappeStub))
 
 		v1_0_backfill_mr_approval_snapshots.execute()
 
@@ -1586,9 +1531,7 @@ class TestFrappeBomInsertAndEndPieces(ReleaseServiceIsolatedTestCase):
 
 		bom = BomDocument(item="PART001SHR", name="BOM-PART001SHR")
 		bom._layout = type("LayoutWithCompany", (), {"company": "Test Company", "name": "SCL-001"})()
-		frappe_patcher = patch.object(release_service, "frappe", FrappeStub)
-		frappe_patcher.start()
-		self.addCleanup(frappe_patcher.stop)
+		self.start_patcher(patch.object(release_service, "frappe", FrappeStub))
 
 		inserted = release_service._insert_frappe_bom(bom)
 
@@ -1627,16 +1570,12 @@ class TestFrappeBomInsertAndEndPieces(ReleaseServiceIsolatedTestCase):
 		bom = BomDocument(item="PART001SHR", name="BOM-PART001SHR")
 		bom._layout = type("LayoutWithCompany", (), {"company": "Test Company", "name": "SCL-001"})()
 		bom.scrap_items.append(BomItemRow(item_code="SCRAP-ITEM", qty=1.0, row_type="process_scrap"))
-		frappe_patcher = patch.object(release_service, "frappe", FrappeStub)
-		frappe_patcher.start()
-		self.addCleanup(frappe_patcher.stop)
+		self.start_patcher(patch.object(release_service, "frappe", FrappeStub))
 
 		def _raise_rate_error(**_kwargs: object) -> float:
 			raise ValueError("Valuation rate is required for scrap item SCRAP-ITEM")
 
-		resolve_patcher = patch.object(release_service, "resolve_scrap_item_rate", _raise_rate_error)
-		resolve_patcher.start()
-		self.addCleanup(resolve_patcher.stop)
+		self.start_patcher(patch.object(release_service, "resolve_scrap_item_rate", _raise_rate_error))
 
 		with self.assertRaisesRegex(
 			ValueError,
@@ -1704,15 +1643,9 @@ class TestFrappeBomInsertAndEndPieces(ReleaseServiceIsolatedTestCase):
 		def fake_ensure(_layout: object, _row: object) -> str:
 			return "FG002SHR-EP-1.6x1250x179"
 
-		frappe_patcher = patch.object(release_service, "frappe", FrappeStub)
-		frappe_patcher.start()
-		self.addCleanup(frappe_patcher.stop)
-		ensure_patcher = patch.object(release_service, "ensure_end_piece_item", fake_ensure)
-		ensure_patcher.start()
-		self.addCleanup(ensure_patcher.stop)
-		resolve_patcher = patch.object(release_service, "resolve_scrap_item_rate", lambda **_kwargs: 62.0)
-		resolve_patcher.start()
-		self.addCleanup(resolve_patcher.stop)
+		self.start_patcher(patch.object(release_service, "frappe", FrappeStub))
+		self.start_patcher(patch.object(release_service, "ensure_end_piece_item", fake_ensure))
+		self.start_patcher(patch.object(release_service, "resolve_scrap_item_rate", lambda **_kwargs: 62.0))
 
 		result = release_service.release_layout(
 			layout,
@@ -1829,15 +1762,9 @@ class TestFrappeBomInsertAndEndPieces(ReleaseServiceIsolatedTestCase):
 		def fake_ensure(_layout: object, _row: object) -> str:
 			return "FG002SHR-EP-1.6x1250x179"
 
-		frappe_patcher = patch.object(release_service, "frappe", FrappeStub)
-		frappe_patcher.start()
-		self.addCleanup(frappe_patcher.stop)
-		ensure_patcher = patch.object(release_service, "ensure_end_piece_item", fake_ensure)
-		ensure_patcher.start()
-		self.addCleanup(ensure_patcher.stop)
-		resolve_patcher = patch.object(release_service, "resolve_scrap_item_rate", lambda **_kwargs: 62.0)
-		resolve_patcher.start()
-		self.addCleanup(resolve_patcher.stop)
+		self.start_patcher(patch.object(release_service, "frappe", FrappeStub))
+		self.start_patcher(patch.object(release_service, "ensure_end_piece_item", fake_ensure))
+		self.start_patcher(patch.object(release_service, "resolve_scrap_item_rate", lambda **_kwargs: 62.0))
 
 		release_service.release_layout(
 			layout,
@@ -1886,9 +1813,7 @@ class TestReleaseContextAndHelpers(ReleaseServiceIsolatedTestCase):
 			is_active=False,
 			finished_parts=[FinishedPart("PART001SHR")],
 		)
-		frappe_patcher = patch.object(release_service, "frappe", FrappeStub)
-		frappe_patcher.start()
-		self.addCleanup(frappe_patcher.stop)
+		self.start_patcher(patch.object(release_service, "frappe", FrappeStub))
 
 		context = release_service.get_release_context(layout)
 
@@ -1911,9 +1836,7 @@ class TestReleaseContextAndHelpers(ReleaseServiceIsolatedTestCase):
 				"finished_parts": [],
 			},
 		)()
-		frappe_patcher = patch.object(release_service, "frappe", FrappeStub)
-		frappe_patcher.start()
-		self.addCleanup(frappe_patcher.stop)
+		self.start_patcher(patch.object(release_service, "frappe", FrappeStub))
 
 		context = release_service.get_release_context(layout)
 
@@ -2219,9 +2142,7 @@ class TestBomLifecycle(ReleaseServiceIsolatedTestCase):
 				assert (doctype, name) == ("BOM", "BOM-PART001SHR-001")
 				return bom_doc
 
-		frappe_patcher = patch.object(release_service, "frappe", FrappeStub)
-		frappe_patcher.start()
-		self.addCleanup(frappe_patcher.stop)
+		self.start_patcher(patch.object(release_service, "frappe", FrappeStub))
 
 		result = deactivate_generated_bom(type("Layout", (), {"generated_bom": "BOM-PART001SHR-001"})())
 
@@ -2269,9 +2190,7 @@ class TestBomLifecycle(ReleaseServiceIsolatedTestCase):
 				assert (doctype, name) == ("BOM", "BOM-PART001SHR-001")
 				return bom_doc
 
-		frappe_patcher = patch.object(release_service, "frappe", FrappeStub)
-		frappe_patcher.start()
-		self.addCleanup(frappe_patcher.stop)
+		self.start_patcher(patch.object(release_service, "frappe", FrappeStub))
 
 		result = deactivate_generated_bom(type("Layout", (), {"generated_bom": "BOM-PART001SHR-001"})())
 
@@ -2351,9 +2270,7 @@ class TestBomLifecycle(ReleaseServiceIsolatedTestCase):
 				assert doctype == "BOM"
 				return bom_docs[name]
 
-		frappe_patcher = patch.object(release_service, "frappe", FrappeStub)
-		frappe_patcher.start()
-		self.addCleanup(frappe_patcher.stop)
+		self.start_patcher(patch.object(release_service, "frappe", FrappeStub))
 
 		layout = type(
 			"Layout",
@@ -2418,9 +2335,7 @@ class TestBomLifecycle(ReleaseServiceIsolatedTestCase):
 				assert (doctype, name) == ("BOM", "BOM-PART001SHR-001")
 				return bom_doc
 
-		frappe_patcher = patch.object(release_service, "frappe", FrappeStub)
-		frappe_patcher.start()
-		self.addCleanup(frappe_patcher.stop)
+		self.start_patcher(patch.object(release_service, "frappe", FrappeStub))
 
 		layout = type(
 			"Layout",
@@ -2497,9 +2412,7 @@ class TestBomLifecycle(ReleaseServiceIsolatedTestCase):
 				assert doctype == "BOM"
 				return bom_docs[name]
 
-		frappe_patcher = patch.object(release_service, "frappe", FrappeStub)
-		frappe_patcher.start()
-		self.addCleanup(frappe_patcher.stop)
+		self.start_patcher(patch.object(release_service, "frappe", FrappeStub))
 
 		layout = type(
 			"Layout",
@@ -2540,9 +2453,7 @@ class TestBomLifecycle(ReleaseServiceIsolatedTestCase):
 				raise RuntimeError("BOM is linked with Work Order")
 
 		frappe_stub = _SavepointFrappeStub({"BOM-PART001SHR-001": BomDoc()})
-		frappe_patcher = patch.object(release_service, "frappe", frappe_stub)
-		frappe_patcher.start()
-		self.addCleanup(frappe_patcher.stop)
+		self.start_patcher(patch.object(release_service, "frappe", frappe_stub))
 
 		layout = type(
 			"Layout",
@@ -2576,9 +2487,7 @@ class TestBomLifecycle(ReleaseServiceIsolatedTestCase):
 				raise RuntimeError("draft BOM save failed")
 
 		frappe_stub = _SavepointFrappeStub({"BOM-PART001SHR-001": BomDoc()})
-		frappe_patcher = patch.object(release_service, "frappe", frappe_stub)
-		frappe_patcher.start()
-		self.addCleanup(frappe_patcher.stop)
+		self.start_patcher(patch.object(release_service, "frappe", frappe_stub))
 
 		layout = type(
 			"Layout",
@@ -2596,8 +2505,6 @@ class TestBomLifecycle(ReleaseServiceIsolatedTestCase):
 
 class TestReleaseServiceIntegration(SheetCuttingLayoutTestCase):
 	def _release_ready_layout(self):
-		from sheet_cutting_layout.tests.factories import make_layout, register_test_doc
-
 		suffix = frappe.generate_hash(length=5).upper()
 		layout = make_layout(
 			finished_part_code=f"SCLTESTFG{suffix}SHR",
@@ -2614,7 +2521,6 @@ class TestReleaseServiceIntegration(SheetCuttingLayoutTestCase):
 
 	def _release(self, layout):
 		from sheet_cutting_layout.services.release_service import release_layout
-		from sheet_cutting_layout.tests.factories import register_test_doc
 
 		result = release_layout(layout)
 		if layout.generated_bom:
@@ -2638,8 +2544,6 @@ class TestReleaseServiceIntegration(SheetCuttingLayoutTestCase):
 		self.assertEqual(raw_rows[0].uom, "Kg")
 
 	def test_mr_release_save_cycle_persists_released_status(self) -> None:
-		from sheet_cutting_layout.tests.factories import register_test_doc
-
 		layout = self._release_ready_layout()
 
 		# Drive the real controller save cycle: the production "MR Release" action flag
@@ -2703,7 +2607,6 @@ class TestReleaseServiceIntegration(SheetCuttingLayoutTestCase):
 		from sheet_cutting_layout.sheet_cutting_layout.doctype.sheet_cutting_layout.sheet_cutting_layout import (
 			create_sheet_cutting_layout_revision,
 		)
-		from sheet_cutting_layout.tests.factories import register_test_doc
 
 		layout = self._release_ready_layout()
 		self._release(layout)

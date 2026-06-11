@@ -16,5 +16,11 @@ class SheetCuttingLayoutTestCase(FrappeTestCase):
 
 		cls.addClassCleanup(cleanup_test_records)
 
+	def start_patcher(self, patcher: object) -> object:
+		"""Start a mock patcher and guarantee teardown, returning what start() returns."""
+		started = patcher.start()
+		self.addCleanup(patcher.stop)
+		return started
+
 	def assertFloatAlmostEqual(self, actual: float | int, expected: float | int, places: int = 6) -> None:
 		self.assertAlmostEqual(float(actual), float(expected), places=places)
