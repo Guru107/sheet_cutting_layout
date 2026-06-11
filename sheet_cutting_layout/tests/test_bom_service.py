@@ -421,7 +421,9 @@ class TestBomServiceIntegration(SheetCuttingLayoutTestCase):
 
 		# A fresh stock-less item has no Bin or Stock Ledger Entry rows, so the
 		# ERPNext valuation lookup falls back to the Item's valuation_rate field.
-		company = frappe.get_all("Company", pluck="name", limit=1)[0]
+		companies = frappe.get_all("Company", pluck="name", limit=1)
+		self.assertTrue(companies, "Test requires at least one Company record on the site")
+		company = companies[0]
 		scrap_item = ensure_item("SCLTESTSCRAPRATE001", stock_uom="Kg", valuation_rate=62.5)
 
 		rate = resolve_scrap_item_rate(item_code=scrap_item, company=company, existing_rate=0)

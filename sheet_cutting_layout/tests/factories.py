@@ -235,6 +235,12 @@ def make_release_ready_layout(*, finished_part_code: str | None = None, **overri
 	layout.insert()
 	register_test_doc("Sheet Cutting Layout", layout.name)
 	layout.db_set("status", "Approved by Purchase", update_modified=False)
+	# Persist the release-gate weight too, so re-fetching the record by name also
+	# yields a release-ready document (db_set keeps the in-memory value in sync).
+	layout.db_set(
+		"net_weight_per_part_kg",
+		layout.gross_weight_per_part_kg,
+		update_modified=False,
+	)
 	layout.reload()
-	layout.net_weight_per_part_kg = layout.gross_weight_per_part_kg
 	return layout
