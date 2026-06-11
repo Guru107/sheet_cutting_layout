@@ -150,7 +150,6 @@ class SubmittedRevisionLayout(RevisionLayout):
 		raise AssertionError("submitted layout state changes must use db_set")
 
 
-
 class ReleaseServiceIsolatedTestCase(SheetCuttingLayoutTestCase):
 	"""Keep unit-style tests deterministic under bench by disabling live persistence paths."""
 
@@ -271,7 +270,9 @@ class TestReleaseContracts(SheetCuttingLayoutTestCase):
 		workflow_states = {
 			row["state"]: row
 			for row in json.loads(
-				(Path(__file__).resolve().parents[1] / "fixtures" / "workflow.json").read_text(encoding="utf-8")
+				(Path(__file__).resolve().parents[1] / "fixtures" / "workflow.json").read_text(
+					encoding="utf-8"
+				)
 			)[0]["states"]
 		}
 
@@ -720,7 +721,9 @@ class TestSaveTimeAudit(ReleaseServiceIsolatedTestCase):
 		layout = _audit_layout(end_piece_fields=_AUDIT_REUSE_END_PIECE, sheet_thickness_mm=1.6)
 
 		with (
-			patch.object(validators, "frappe", _audit_frappe_stub(bom_quantity=77, include_end_piece_scrap_row=False)),
+			patch.object(
+				validators, "frappe", _audit_frappe_stub(bom_quantity=77, include_end_piece_scrap_row=False)
+			),
 			patch.object(validators, "_", lambda message: message),
 			self.assertRaisesRegex(ValueError, "BOM scrap item mismatch"),
 		):
@@ -775,7 +778,9 @@ class TestControllerWorkflow(ReleaseServiceIsolatedTestCase):
 			calls.append((layout, kwargs))
 			return type("ReleaseResult", (), {"status": "Released"})()
 
-		action_patcher = patch.object(sheet_cutting_layout, "_get_selected_workflow_action", lambda: "MR Release")
+		action_patcher = patch.object(
+			sheet_cutting_layout, "_get_selected_workflow_action", lambda: "MR Release"
+		)
 		action_patcher.start()
 		self.addCleanup(action_patcher.stop)
 		release_patcher = patch.object(sheet_cutting_layout, "release_layout", fake_release_layout)
@@ -823,7 +828,9 @@ class TestControllerWorkflow(ReleaseServiceIsolatedTestCase):
 		release_patcher = patch.object(sheet_cutting_layout, "release_layout", fake_release_layout)
 		release_patcher.start()
 		self.addCleanup(release_patcher.stop)
-		validate_patcher = patch.object(sheet_cutting_layout, "validate_sheet_cutting_layout", lambda _doc: None)
+		validate_patcher = patch.object(
+			sheet_cutting_layout, "validate_sheet_cutting_layout", lambda _doc: None
+		)
 		validate_patcher.start()
 		self.addCleanup(validate_patcher.stop)
 
@@ -859,7 +866,9 @@ class TestControllerWorkflow(ReleaseServiceIsolatedTestCase):
 		frappe_patcher = patch.object(sheet_cutting_layout, "frappe", FrappeStub)
 		frappe_patcher.start()
 		self.addCleanup(frappe_patcher.stop)
-		validate_patcher = patch.object(sheet_cutting_layout, "validate_sheet_cutting_layout", lambda _doc: None)
+		validate_patcher = patch.object(
+			sheet_cutting_layout, "validate_sheet_cutting_layout", lambda _doc: None
+		)
 		validate_patcher.start()
 		self.addCleanup(validate_patcher.stop)
 
@@ -899,7 +908,9 @@ class TestControllerWorkflow(ReleaseServiceIsolatedTestCase):
 		frappe_patcher = patch.object(sheet_cutting_layout, "frappe", FrappeStub)
 		frappe_patcher.start()
 		self.addCleanup(frappe_patcher.stop)
-		validate_patcher = patch.object(sheet_cutting_layout, "validate_sheet_cutting_layout", lambda _doc: None)
+		validate_patcher = patch.object(
+			sheet_cutting_layout, "validate_sheet_cutting_layout", lambda _doc: None
+		)
 		validate_patcher.start()
 		self.addCleanup(validate_patcher.stop)
 
@@ -1039,7 +1050,9 @@ class TestControllerWorkflow(ReleaseServiceIsolatedTestCase):
 
 		calls: list[object] = []
 
-		action_patcher = patch.object(sheet_cutting_layout, "_get_selected_workflow_action", lambda: "Supersede")
+		action_patcher = patch.object(
+			sheet_cutting_layout, "_get_selected_workflow_action", lambda: "Supersede"
+		)
 		action_patcher.start()
 		self.addCleanup(action_patcher.stop)
 		deactivate_patcher = patch.object(
@@ -1429,7 +1442,6 @@ def _in_memory_bom_factory(layout: Layout | RevisionLayout, row: FinishedPart, i
 	bom.name = f"BOM-{layout.name}-{index:03d}"
 	bom.sheet_cutting_layout = layout.name
 	return bom
-
 
 
 def _audit_frappe_stub(*, bom_quantity: float, include_end_piece_scrap_row: bool = True) -> type:
@@ -2320,7 +2332,12 @@ class TestBomLifecycle(ReleaseServiceIsolatedTestCase):
 					value: object = None,
 					update_modified: bool = True,
 				) -> None:
-					assert (doctype, fieldname, value, update_modified) == ("Item", "default_bom", None, False)
+					assert (doctype, fieldname, value, update_modified) == (
+						"Item",
+						"default_bom",
+						None,
+						False,
+					)
 					item_default_boms[name] = value
 
 			@staticmethod
