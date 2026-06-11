@@ -754,6 +754,673 @@ class TestSaveTimeAudit(ReleaseServiceIsolatedTestCase):
 			validators.validate_sheet_cutting_layout(layout)
 
 
+class TestControllerWorkflow(ReleaseServiceIsolatedTestCase):
+	def test_controller_before_insert_clears_copied_release_artifacts(self) -> None:
+		from sheet_cutting_layout.sheet_cutting_layout.doctype.sheet_cutting_layout import (
+			sheet_cutting_layout,
+		)
+
+		doc = object.__new__(sheet_cutting_layout.SheetCuttingLayout)
+		doc.generated_bom = "BOM-OLD"
+		doc.finished_parts = [SimpleNamespace(generated_bom="BOM-OLD")]
+		doc.approval_snapshot = [SimpleNamespace(step_name="MR Approval")]
+		doc.status = "Released"
+		doc.is_active = True
+		doc.end_piece_bom_status = "Generated"
+		doc.end_pieces = [EndPiece(weight_kg=2.5, end_piece_item_code="FG01SHR-EP-1x1250x260")]
+
+		doc.before_insert()
+
+		assert doc.generated_bom is None
+		assert doc.finished_parts == []
+		assert doc.approval_snapshot == []
+		assert doc.status == "Draft"
+		assert doc.is_active is False
+		assert doc.end_piece_bom_status == "Pending"
+		assert doc.end_pieces[0].end_piece_item_code is None
+
+	def test_controller_mr_release_action_calls_release_service(self) -> None:
+		from sheet_cutting_layout.sheet_cutting_layout.doctype.sheet_cutting_layout import (
+			sheet_cutting_layout,
+		)
+
+		calls: list[object] = []
+
+		def fake_release_layout(layout: object, **kwargs: object) -> None:
+			calls.append((layout, kwargs))
+			return type("ReleaseResult", (), {"status": "Released"})()
+
+		action_patcher = patch.object(sheet_cutting_layout, "_get_selected_workflow_action", lambda: "MR Release")
+		action_patcher.start()
+		self.addCleanup(action_patcher.stop)
+		release_patcher = patch.object(sheet_cutting_layout, "release_layout", fake_release_layout)
+		release_patcher.start()
+		self.addCleanup(release_patcher.stop)
+
+		doc = _new_sheet_cutting_layout_doc(sheet_cutting_layout)
+		doc.before_workflow_action()
+
+		assert calls == [(doc, {})]
+
+	def test_controller_mr_release_suppresses_side_effects_during_internal_layout_saves(self) -> None:
+		from sheet_cutting_layout.sheet_cutting_layout.doctype.sheet_cutting_layout import (
+			sheet_cutting_layout,
+		)
+
+		class Flags:
+			selected_workflow_action = "MR Release"
+
+		class FrappeStub:
+			flags = Flags()
+
+			class _Session:
+				user = "mr@example.com"
+
+			session = _Session()
+
+			@staticmethod
+			def now_datetime() -> datetime:
+				return datetime(2026, 5, 15, 12, 30, 0)
+
+		calls: list[object] = []
+
+		def fake_release_layout(layout: object, **kwargs: object) -> object:
+			calls.append((layout, kwargs))
+			if len(calls) == 1:
+				related_layout = _new_sheet_cutting_layout_doc(sheet_cutting_layout)
+				related_layout.approval_snapshot = []
+				related_layout.validate()
+			return type("ReleaseResult", (), {"status": "Released"})()
+
+		frappe_patcher = patch.object(sheet_cutting_layout, "frappe", FrappeStub)
+		frappe_patcher.start()
+		self.addCleanup(frappe_patcher.stop)
+		release_patcher = patch.object(sheet_cutting_layout, "release_layout", fake_release_layout)
+		release_patcher.start()
+		self.addCleanup(release_patcher.stop)
+		validate_patcher = patch.object(sheet_cutting_layout, "validate_sheet_cutting_layout", lambda _doc: None)
+		validate_patcher.start()
+		self.addCleanup(validate_patcher.stop)
+
+		doc = _new_sheet_cutting_layout_doc(sheet_cutting_layout)
+		doc.approval_snapshot = []
+
+		doc.before_workflow_action()
+
+		assert calls == [(doc, {})]
+
+	def test_controller_validate_applies_workflow_side_effects_and_records_snapshot(self) -> None:
+		from sheet_cutting_layout.sheet_cutting_layout.doctype.sheet_cutting_layout import (
+			sheet_cutting_layout,
+		)
+
+		class FrappeStub:
+			class _Session:
+				user = "projects@example.com"
+
+			session = _Session()
+
+			@staticmethod
+			def now_datetime() -> datetime:
+				return datetime(2026, 5, 15, 9, 30, 0)
+
+		action_patcher = patch.object(
+			sheet_cutting_layout,
+			"_get_selected_workflow_action",
+			lambda: "Project Manager Approves",
+		)
+		action_patcher.start()
+		self.addCleanup(action_patcher.stop)
+		frappe_patcher = patch.object(sheet_cutting_layout, "frappe", FrappeStub)
+		frappe_patcher.start()
+		self.addCleanup(frappe_patcher.stop)
+		validate_patcher = patch.object(sheet_cutting_layout, "validate_sheet_cutting_layout", lambda _doc: None)
+		validate_patcher.start()
+		self.addCleanup(validate_patcher.stop)
+
+		doc = _new_sheet_cutting_layout_doc(sheet_cutting_layout)
+		doc.approval_snapshot = []
+
+		doc.validate()
+
+		assert len(doc.approval_snapshot) == 1
+		assert doc.approval_snapshot[0]["step_name"] == "Project Manager Approval"
+		assert doc.approval_snapshot[0]["approver"] == "projects@example.com"
+		assert doc.approval_snapshot[0]["decision"] == "Approved"
+		assert doc.approval_snapshot[0]["decision_time"] == datetime(2026, 5, 15, 9, 30, 0)
+
+	def test_controller_validate_records_submit_for_check_snapshot(self) -> None:
+		from sheet_cutting_layout.sheet_cutting_layout.doctype.sheet_cutting_layout import (
+			sheet_cutting_layout,
+		)
+
+		class FrappeStub:
+			class _Session:
+				user = "system@example.com"
+
+			session = _Session()
+
+			@staticmethod
+			def now_datetime() -> datetime:
+				return datetime(2026, 5, 15, 10, 0, 0)
+
+		action_patcher = patch.object(
+			sheet_cutting_layout,
+			"_get_selected_workflow_action",
+			lambda: "Submit for Check",
+		)
+		action_patcher.start()
+		self.addCleanup(action_patcher.stop)
+		frappe_patcher = patch.object(sheet_cutting_layout, "frappe", FrappeStub)
+		frappe_patcher.start()
+		self.addCleanup(frappe_patcher.stop)
+		validate_patcher = patch.object(sheet_cutting_layout, "validate_sheet_cutting_layout", lambda _doc: None)
+		validate_patcher.start()
+		self.addCleanup(validate_patcher.stop)
+
+		doc = _new_sheet_cutting_layout_doc(sheet_cutting_layout)
+		doc.approval_snapshot = []
+
+		doc.validate()
+
+		assert len(doc.approval_snapshot) == 1
+		assert doc.approval_snapshot[0]["step_name"] == "Submit for Check"
+		assert doc.approval_snapshot[0]["approver"] == "system@example.com"
+		assert doc.approval_snapshot[0]["decision"] == "Submitted"
+		assert doc.approval_snapshot[0]["decision_time"] == datetime(2026, 5, 15, 10, 0, 0)
+
+	def test_workflow_wrapper_sets_selected_action_for_sheet_cutting_layout(self) -> None:
+		from sheet_cutting_layout.sheet_cutting_layout.doctype.sheet_cutting_layout import (
+			sheet_cutting_layout,
+		)
+
+		calls: list[tuple[object, str, object]] = []
+
+		class Flags:
+			selected_workflow_action = "old-action"
+
+		class FrappeStub:
+			flags = Flags()
+
+			@staticmethod
+			def parse_json(doc: object) -> dict[str, str]:
+				return doc  # type: ignore[return-value]
+
+		class FrappeWorkflowStub:
+			@staticmethod
+			def apply_workflow(doc: object, action: str) -> str:
+				calls.append((doc, action, FrappeStub.flags.selected_workflow_action))
+				return "applied"
+
+		frappe_patcher = patch.object(sheet_cutting_layout, "frappe", FrappeStub)
+		frappe_patcher.start()
+		self.addCleanup(frappe_patcher.stop)
+		modules_patcher = patch.dict(sys.modules, {"frappe.model.workflow": FrappeWorkflowStub})
+		modules_patcher.start()
+		self.addCleanup(modules_patcher.stop)
+
+		result = sheet_cutting_layout.apply_sheet_cutting_layout_workflow(
+			{"doctype": "Sheet Cutting Layout"},
+			"MR Release",
+		)
+
+		assert result == "applied"
+		assert calls == [({"doctype": "Sheet Cutting Layout"}, "MR Release", "MR Release")]
+		assert FrappeStub.flags.selected_workflow_action == "old-action"
+
+	def test_rejected_layout_on_trash_removes_workflow_action_links(self) -> None:
+		from sheet_cutting_layout.sheet_cutting_layout.doctype.sheet_cutting_layout import (
+			sheet_cutting_layout,
+		)
+
+		deletions: list[tuple[str, dict[str, str]]] = []
+
+		class DbStub:
+			@staticmethod
+			def get_all(doctype: str, **kwargs: object) -> list[str]:
+				assert doctype == "Workflow Action"
+				assert kwargs == {
+					"filters": {
+						"reference_doctype": "Sheet Cutting Layout",
+						"reference_name": "SCL-REJECTED",
+					},
+					"pluck": "name",
+				}
+				return ["WF-ACTION-1", "WF-ACTION-2"]
+
+			@staticmethod
+			def delete(doctype: str, filters: dict[str, str]) -> None:
+				deletions.append((doctype, filters))
+
+		class FrappeStub:
+			db = DbStub()
+
+		frappe_patcher = patch.object(sheet_cutting_layout, "frappe", FrappeStub)
+		frappe_patcher.start()
+		self.addCleanup(frappe_patcher.stop)
+
+		doc = _new_sheet_cutting_layout_doc(sheet_cutting_layout)
+		doc.name = "SCL-REJECTED"
+		doc.status = "Rejected"
+
+		doc.on_trash()
+
+		assert deletions == [
+			(
+				"Workflow Action Permitted Role",
+				{"parenttype": "Workflow Action", "parent": ["in", ["WF-ACTION-1", "WF-ACTION-2"]]},
+			),
+			(
+				"Workflow Action",
+				{"reference_doctype": "Sheet Cutting Layout", "reference_name": "SCL-REJECTED"},
+			),
+		]
+
+	def test_non_rejected_layout_on_trash_keeps_workflow_action_links(self) -> None:
+		from sheet_cutting_layout.sheet_cutting_layout.doctype.sheet_cutting_layout import (
+			sheet_cutting_layout,
+		)
+
+		deletions: list[object] = []
+
+		class DbStub:
+			@staticmethod
+			def get_all(doctype: str, **kwargs: object) -> list[str]:
+				raise AssertionError("non-rejected layouts must not query workflow actions")
+
+			@staticmethod
+			def delete(doctype: str, filters: dict[str, str]) -> None:
+				deletions.append((doctype, filters))
+
+		class FrappeStub:
+			db = DbStub()
+
+		frappe_patcher = patch.object(sheet_cutting_layout, "frappe", FrappeStub)
+		frappe_patcher.start()
+		self.addCleanup(frappe_patcher.stop)
+
+		doc = _new_sheet_cutting_layout_doc(sheet_cutting_layout)
+		doc.name = "SCL-RELEASED"
+		doc.status = "Released"
+
+		doc.on_trash()
+
+		assert deletions == []
+
+	def test_controller_supersede_action_deactivates_generated_bom(self) -> None:
+		from sheet_cutting_layout.sheet_cutting_layout.doctype.sheet_cutting_layout import (
+			sheet_cutting_layout,
+		)
+
+		calls: list[object] = []
+
+		action_patcher = patch.object(sheet_cutting_layout, "_get_selected_workflow_action", lambda: "Supersede")
+		action_patcher.start()
+		self.addCleanup(action_patcher.stop)
+		deactivate_patcher = patch.object(
+			sheet_cutting_layout,
+			"deactivate_generated_bom",
+			lambda layout: calls.append(layout),
+		)
+		deactivate_patcher.start()
+		self.addCleanup(deactivate_patcher.stop)
+
+		doc = _new_sheet_cutting_layout_doc(sheet_cutting_layout)
+		doc.generated_bom = "BOM-PART001SHR-001"
+		doc.before_workflow_action()
+
+		assert calls == [doc]
+
+	def test_controller_before_cancel_cancels_generated_bom(self) -> None:
+		from sheet_cutting_layout.sheet_cutting_layout.doctype.sheet_cutting_layout import (
+			sheet_cutting_layout,
+		)
+
+		calls: list[object] = []
+		cancel_patcher = patch.object(
+			sheet_cutting_layout,
+			"cancel_generated_bom",
+			lambda layout: calls.append(layout),
+		)
+		cancel_patcher.start()
+		self.addCleanup(cancel_patcher.stop)
+
+		doc = _new_sheet_cutting_layout_doc(sheet_cutting_layout)
+		doc.status = "Superseded"
+		doc.generated_bom = "BOM-PART001SHR-001"
+		doc.before_cancel()
+
+		assert calls == [doc]
+		assert doc.status == "Cancel"
+
+	def test_form_cancel_lets_layout_controller_cancel_linked_bom(self) -> None:
+		content = (
+			Path(__file__)
+			.resolve()
+			.parents[1]
+			.joinpath(
+				"sheet_cutting_layout",
+				"doctype",
+				"sheet_cutting_layout",
+				"sheet_cutting_layout.js",
+			)
+			.read_text(encoding="utf-8")
+		)
+
+		assert "ignoreBomInGenericCancelAll(frm);" in content
+		assert 'frm.ignore_doctypes_on_cancel_all || []), "BOM"' in content
+
+
+class TestPatches(ReleaseServiceIsolatedTestCase):
+	def test_patch_submits_existing_released_layouts(self) -> None:
+		from sheet_cutting_layout.patches import v1_0_submit_released_layouts
+
+		class DbStub:
+			calls: ClassVar[list[tuple[str, dict[str, object], str, int, str | None]]] = []
+
+			@classmethod
+			def set_value(
+				cls,
+				doctype: str,
+				filters: dict[str, object],
+				fieldname: str,
+				value: int,
+				update_modified: bool = False,
+			) -> None:
+				cls.calls.append((doctype, filters, fieldname, value, str(update_modified)))
+
+		class FrappeStub:
+			db = DbStub
+
+		frappe_patcher = patch.object(v1_0_submit_released_layouts, "frappe", FrappeStub)
+		frappe_patcher.start()
+		self.addCleanup(frappe_patcher.stop)
+
+		v1_0_submit_released_layouts.execute()
+
+		assert DbStub.calls == [
+			(
+				"Sheet Cutting Layout",
+				{"status": "Released", "docstatus": 0},
+				"docstatus",
+				1,
+				"False",
+			)
+		]
+
+	def test_patch_submits_existing_superseded_layouts(self) -> None:
+		from sheet_cutting_layout.patches import v1_0_submit_superseded_layouts
+
+		class DbStub:
+			calls: ClassVar[list[tuple[str, dict[str, object], str, int, str | None]]] = []
+
+			@classmethod
+			def set_value(
+				cls,
+				doctype: str,
+				filters: dict[str, object],
+				fieldname: str,
+				value: int,
+				update_modified: bool = False,
+			) -> None:
+				cls.calls.append((doctype, filters, fieldname, value, str(update_modified)))
+
+		class FrappeStub:
+			db = DbStub
+
+		frappe_patcher = patch.object(v1_0_submit_superseded_layouts, "frappe", FrappeStub)
+		frappe_patcher.start()
+		self.addCleanup(frappe_patcher.stop)
+
+		v1_0_submit_superseded_layouts.execute()
+
+		assert DbStub.calls == [
+			(
+				"Sheet Cutting Layout",
+				{"status": "Superseded", "docstatus": 0},
+				"docstatus",
+				1,
+				"False",
+			)
+		]
+
+	def test_patch_marks_cancelled_layouts_and_unlinks_generated_boms(self) -> None:
+		from sheet_cutting_layout.patches import v1_0_mark_cancelled_layouts_and_unlink_boms
+
+		class DbStub:
+			set_value_calls: ClassVar[list[tuple[str, object, object, object, bool]]] = []
+
+			@staticmethod
+			def get_all(
+				doctype: str,
+				filters: dict[str, object],
+				fields: list[str] | None = None,
+				pluck: str | None = None,
+			) -> list[object]:
+				if doctype == "Sheet Cutting Layout":
+					assert filters == {"docstatus": 2}
+					assert fields == ["name", "generated_bom"]
+					return [{"name": "002-R2", "generated_bom": "BOM-FG01SHR-004"}]
+				if doctype == "BOM":
+					assert filters == {"docstatus": 2, "sheet_cutting_layout": ["is", "set"]}
+					assert pluck == "name"
+					return ["BOM-CANCELLED-LINKED"]
+				raise AssertionError(doctype)
+
+			@staticmethod
+			def exists(doctype: str, name: str) -> bool:
+				return (doctype, name) == ("BOM", "BOM-FG01SHR-004")
+
+			@classmethod
+			def set_value(
+				cls,
+				doctype: str,
+				name: object,
+				fieldname: object,
+				value: object = None,
+				update_modified: bool = False,
+			) -> None:
+				cls.set_value_calls.append((doctype, name, fieldname, value, update_modified))
+
+		class FrappeStub:
+			db = DbStub
+
+		frappe_patcher = patch.object(v1_0_mark_cancelled_layouts_and_unlink_boms, "frappe", FrappeStub)
+		frappe_patcher.start()
+		self.addCleanup(frappe_patcher.stop)
+
+		v1_0_mark_cancelled_layouts_and_unlink_boms.execute()
+
+		assert DbStub.set_value_calls == [
+			(
+				"Sheet Cutting Layout",
+				"002-R2",
+				{"status": "Cancel", "generated_bom": None},
+				None,
+				False,
+			),
+			("BOM", "BOM-FG01SHR-004", "sheet_cutting_layout", None, False),
+			("BOM", "BOM-CANCELLED-LINKED", "sheet_cutting_layout", None, False),
+		]
+
+	def test_patch_repairs_checked_workflow_state_to_pm_approved(self) -> None:
+		from sheet_cutting_layout.patches import (
+			v1_0_migrate_checked_workflow_state_to_pm_approved,
+		)
+
+		class DbStub:
+			calls: ClassVar[list[tuple[str, dict[str, object], str, str, bool]]] = []
+
+			@classmethod
+			def set_value(
+				cls,
+				doctype: str,
+				filters: dict[str, object],
+				fieldname: str,
+				value: str,
+				update_modified: bool = False,
+			) -> None:
+				cls.calls.append((doctype, filters, fieldname, value, update_modified))
+
+			@staticmethod
+			def has_column(doctype: str, fieldname: str) -> bool:
+				assert doctype == "Sheet Cutting Layout"
+				return fieldname in {"project_manager_ok", "manufacturing_manager_ok"}
+
+		class FrappeStub:
+			db = DbStub
+
+		frappe_patcher = patch.object(
+			v1_0_migrate_checked_workflow_state_to_pm_approved,
+			"frappe",
+			FrappeStub,
+		)
+		frappe_patcher.start()
+		self.addCleanup(frappe_patcher.stop)
+
+		v1_0_migrate_checked_workflow_state_to_pm_approved.execute()
+
+		assert DbStub.calls == [
+			(
+				"Sheet Cutting Layout",
+				{"status": "Checked"},
+				"status",
+				"PM Approved",
+				False,
+			),
+			(
+				"Sheet Cutting Layout",
+				{
+					"status": "Submitted for Check",
+					"project_manager_ok": 1,
+					"manufacturing_manager_ok": 1,
+				},
+				"status",
+				"PM Approved",
+				False,
+			),
+		]
+
+	def test_patch_skips_legacy_hidden_flag_repair_when_columns_are_absent(self) -> None:
+		from sheet_cutting_layout.patches import (
+			v1_0_migrate_checked_workflow_state_to_pm_approved,
+		)
+
+		class DbStub:
+			calls: ClassVar[list[tuple[str, dict[str, object], str, str, bool]]] = []
+
+			@classmethod
+			def set_value(
+				cls,
+				doctype: str,
+				filters: dict[str, object],
+				fieldname: str,
+				value: str,
+				update_modified: bool = False,
+			) -> None:
+				cls.calls.append((doctype, filters, fieldname, value, update_modified))
+
+			@staticmethod
+			def has_column(doctype: str, fieldname: str) -> bool:
+				assert doctype == "Sheet Cutting Layout"
+				assert fieldname in {"project_manager_ok", "manufacturing_manager_ok"}
+				return False
+
+		class FrappeStub:
+			db = DbStub
+
+		frappe_patcher = patch.object(
+			v1_0_migrate_checked_workflow_state_to_pm_approved,
+			"frappe",
+			FrappeStub,
+		)
+		frappe_patcher.start()
+		self.addCleanup(frappe_patcher.stop)
+
+		v1_0_migrate_checked_workflow_state_to_pm_approved.execute()
+
+		assert DbStub.calls == [
+			(
+				"Sheet Cutting Layout",
+				{"status": "Checked"},
+				"status",
+				"PM Approved",
+				False,
+			)
+		]
+
+	def test_patch_backfills_missing_mr_approval_snapshots(self) -> None:
+		from sheet_cutting_layout.patches import v1_0_backfill_mr_approval_snapshots
+
+		inserted_rows: list[dict[str, object]] = []
+
+		class DbStub:
+			@staticmethod
+			def get_all(doctype: str, **kwargs: object) -> list[dict[str, object]]:
+				assert doctype == "Sheet Cutting Layout"
+				assert kwargs == {
+					"filters": {"status": ["in", ["Released", "Superseded"]]},
+					"fields": ["name", "owner", "modified_by", "modified"],
+				}
+				return [
+					{
+						"name": "SCL-RELEASED",
+						"owner": "owner@example.com",
+						"modified_by": "mr@example.com",
+						"modified": datetime(2026, 5, 18, 14, 30, 0),
+					},
+					{
+						"name": "SCL-ALREADY-HAS-MR",
+						"owner": "owner@example.com",
+						"modified_by": "mr@example.com",
+						"modified": datetime(2026, 5, 18, 14, 31, 0),
+					},
+				]
+
+			@staticmethod
+			def exists(doctype: str, filters: dict[str, object]) -> bool:
+				assert doctype == "Layout Approval Snapshot"
+				return filters["parent"] == "SCL-ALREADY-HAS-MR"
+
+			@staticmethod
+			def count(doctype: str, filters: dict[str, object]) -> int:
+				assert doctype == "Layout Approval Snapshot"
+				assert filters == {"parent": "SCL-RELEASED", "parenttype": "Sheet Cutting Layout"}
+				return 4
+
+		class InsertableDoc(dict[str, object]):
+			def insert(self, **kwargs: object) -> None:
+				assert kwargs == {"ignore_permissions": True}
+				inserted_rows.append(dict(self))
+
+		class FrappeStub:
+			db = DbStub
+
+			@staticmethod
+			def get_doc(row: dict[str, object]) -> InsertableDoc:
+				return InsertableDoc(row)
+
+		frappe_patcher = patch.object(v1_0_backfill_mr_approval_snapshots, "frappe", FrappeStub)
+		frappe_patcher.start()
+		self.addCleanup(frappe_patcher.stop)
+
+		v1_0_backfill_mr_approval_snapshots.execute()
+
+		assert inserted_rows == [
+			{
+				"doctype": "Layout Approval Snapshot",
+				"parent": "SCL-RELEASED",
+				"parenttype": "Sheet Cutting Layout",
+				"parentfield": "approval_snapshot",
+				"idx": 5,
+				"step_name": "MR Approval",
+				"approver": "mr@example.com",
+				"decision": "Approved",
+				"decision_time": datetime(2026, 5, 18, 14, 30, 0),
+			}
+		]
+
+
 def _new_sheet_cutting_layout_doc(sheet_cutting_layout_module: object):
 	doc = object.__new__(sheet_cutting_layout_module.SheetCuttingLayout)
 	doc.doctype = "Sheet Cutting Layout"
@@ -777,29 +1444,6 @@ def _in_memory_bom_factory(layout: Layout | RevisionLayout, row: FinishedPart, i
 	bom.name = f"BOM-{layout.name}-{index:03d}"
 	bom.sheet_cutting_layout = layout.name
 	return bom
-
-
-def test_controller_before_insert_clears_copied_release_artifacts() -> None:
-	from sheet_cutting_layout.sheet_cutting_layout.doctype.sheet_cutting_layout import sheet_cutting_layout
-
-	doc = object.__new__(sheet_cutting_layout.SheetCuttingLayout)
-	doc.generated_bom = "BOM-OLD"
-	doc.finished_parts = [SimpleNamespace(generated_bom="BOM-OLD")]
-	doc.approval_snapshot = [SimpleNamespace(step_name="MR Approval")]
-	doc.status = "Released"
-	doc.is_active = True
-	doc.end_piece_bom_status = "Generated"
-	doc.end_pieces = [EndPiece(weight_kg=2.5, end_piece_item_code="FG01SHR-EP-1x1250x260")]
-
-	doc.before_insert()
-
-	assert doc.generated_bom is None
-	assert doc.finished_parts == []
-	assert doc.approval_snapshot == []
-	assert doc.status == "Draft"
-	assert doc.is_active is False
-	assert doc.end_piece_bom_status == "Pending"
-	assert doc.end_pieces[0].end_piece_item_code is None
 
 
 
@@ -909,565 +1553,6 @@ def _audit_layout(
 			"consumption_status": None,
 		},
 	)()
-
-
-def test_controller_mr_release_action_calls_release_service(
-	monkeypatch: MonkeyPatch,
-) -> None:
-	from sheet_cutting_layout.sheet_cutting_layout.doctype.sheet_cutting_layout import sheet_cutting_layout
-
-	calls: list[object] = []
-
-	def fake_release_layout(layout: object, **kwargs: object) -> None:
-		calls.append((layout, kwargs))
-		return type("ReleaseResult", (), {"status": "Released"})()
-
-	monkeypatch.setattr(sheet_cutting_layout, "_get_selected_workflow_action", lambda: "MR Release")
-	monkeypatch.setattr(sheet_cutting_layout, "release_layout", fake_release_layout)
-
-	doc = _new_sheet_cutting_layout_doc(sheet_cutting_layout)
-	doc.before_workflow_action()
-
-	assert calls == [(doc, {})]
-
-
-def test_controller_mr_release_suppresses_side_effects_during_internal_layout_saves(
-	monkeypatch: MonkeyPatch,
-) -> None:
-	from sheet_cutting_layout.sheet_cutting_layout.doctype.sheet_cutting_layout import sheet_cutting_layout
-
-	class Flags:
-		selected_workflow_action = "MR Release"
-
-	class FrappeStub:
-		flags = Flags()
-
-		class _Session:
-			user = "mr@example.com"
-
-		session = _Session()
-
-		@staticmethod
-		def now_datetime() -> datetime:
-			return datetime(2026, 5, 15, 12, 30, 0)
-
-	calls: list[object] = []
-
-	def fake_release_layout(layout: object, **kwargs: object) -> object:
-		calls.append((layout, kwargs))
-		if len(calls) == 1:
-			related_layout = _new_sheet_cutting_layout_doc(sheet_cutting_layout)
-			related_layout.approval_snapshot = []
-			related_layout.validate()
-		return type("ReleaseResult", (), {"status": "Released"})()
-
-	monkeypatch.setattr(sheet_cutting_layout, "frappe", FrappeStub)
-	monkeypatch.setattr(sheet_cutting_layout, "release_layout", fake_release_layout)
-	monkeypatch.setattr(sheet_cutting_layout, "validate_sheet_cutting_layout", lambda _doc: None)
-
-	doc = _new_sheet_cutting_layout_doc(sheet_cutting_layout)
-	doc.approval_snapshot = []
-
-	doc.before_workflow_action()
-
-	assert calls == [(doc, {})]
-
-
-def test_controller_validate_applies_workflow_side_effects_and_records_snapshot(
-	monkeypatch: MonkeyPatch,
-) -> None:
-	from sheet_cutting_layout.sheet_cutting_layout.doctype.sheet_cutting_layout import sheet_cutting_layout
-
-	class FrappeStub:
-		class _Session:
-			user = "projects@example.com"
-
-		session = _Session()
-
-		@staticmethod
-		def now_datetime() -> datetime:
-			return datetime(2026, 5, 15, 9, 30, 0)
-
-	monkeypatch.setattr(
-		sheet_cutting_layout,
-		"_get_selected_workflow_action",
-		lambda: "Project Manager Approves",
-	)
-	monkeypatch.setattr(sheet_cutting_layout, "frappe", FrappeStub)
-	monkeypatch.setattr(sheet_cutting_layout, "validate_sheet_cutting_layout", lambda _doc: None)
-
-	doc = _new_sheet_cutting_layout_doc(sheet_cutting_layout)
-	doc.approval_snapshot = []
-
-	doc.validate()
-
-	assert len(doc.approval_snapshot) == 1
-	assert doc.approval_snapshot[0]["step_name"] == "Project Manager Approval"
-	assert doc.approval_snapshot[0]["approver"] == "projects@example.com"
-	assert doc.approval_snapshot[0]["decision"] == "Approved"
-	assert doc.approval_snapshot[0]["decision_time"] == datetime(2026, 5, 15, 9, 30, 0)
-
-
-def test_controller_validate_records_submit_for_check_snapshot(
-	monkeypatch: MonkeyPatch,
-) -> None:
-	from sheet_cutting_layout.sheet_cutting_layout.doctype.sheet_cutting_layout import sheet_cutting_layout
-
-	class FrappeStub:
-		class _Session:
-			user = "system@example.com"
-
-		session = _Session()
-
-		@staticmethod
-		def now_datetime() -> datetime:
-			return datetime(2026, 5, 15, 10, 0, 0)
-
-	monkeypatch.setattr(
-		sheet_cutting_layout,
-		"_get_selected_workflow_action",
-		lambda: "Submit for Check",
-	)
-	monkeypatch.setattr(sheet_cutting_layout, "frappe", FrappeStub)
-	monkeypatch.setattr(sheet_cutting_layout, "validate_sheet_cutting_layout", lambda _doc: None)
-
-	doc = _new_sheet_cutting_layout_doc(sheet_cutting_layout)
-	doc.approval_snapshot = []
-
-	doc.validate()
-
-	assert len(doc.approval_snapshot) == 1
-	assert doc.approval_snapshot[0]["step_name"] == "Submit for Check"
-	assert doc.approval_snapshot[0]["approver"] == "system@example.com"
-	assert doc.approval_snapshot[0]["decision"] == "Submitted"
-	assert doc.approval_snapshot[0]["decision_time"] == datetime(2026, 5, 15, 10, 0, 0)
-
-
-def test_workflow_wrapper_sets_selected_action_for_sheet_cutting_layout(
-	monkeypatch: MonkeyPatch,
-) -> None:
-	from sheet_cutting_layout.sheet_cutting_layout.doctype.sheet_cutting_layout import sheet_cutting_layout
-
-	calls: list[tuple[object, str, object]] = []
-
-	class Flags:
-		selected_workflow_action = "old-action"
-
-	class FrappeStub:
-		flags = Flags()
-
-		@staticmethod
-		def parse_json(doc: object) -> dict[str, str]:
-			return doc  # type: ignore[return-value]
-
-	class FrappeWorkflowStub:
-		@staticmethod
-		def apply_workflow(doc: object, action: str) -> str:
-			calls.append((doc, action, FrappeStub.flags.selected_workflow_action))
-			return "applied"
-
-	monkeypatch.setattr(sheet_cutting_layout, "frappe", FrappeStub)
-	monkeypatch.setitem(sys.modules, "frappe.model.workflow", FrappeWorkflowStub)
-
-	result = sheet_cutting_layout.apply_sheet_cutting_layout_workflow(
-		{"doctype": "Sheet Cutting Layout"},
-		"MR Release",
-	)
-
-	assert result == "applied"
-	assert calls == [({"doctype": "Sheet Cutting Layout"}, "MR Release", "MR Release")]
-	assert FrappeStub.flags.selected_workflow_action == "old-action"
-
-
-def test_rejected_layout_on_trash_removes_workflow_action_links(
-	monkeypatch: MonkeyPatch,
-) -> None:
-	from sheet_cutting_layout.sheet_cutting_layout.doctype.sheet_cutting_layout import sheet_cutting_layout
-
-	deletions: list[tuple[str, dict[str, str]]] = []
-
-	class DbStub:
-		@staticmethod
-		def get_all(doctype: str, **kwargs: object) -> list[str]:
-			assert doctype == "Workflow Action"
-			assert kwargs == {
-				"filters": {
-					"reference_doctype": "Sheet Cutting Layout",
-					"reference_name": "SCL-REJECTED",
-				},
-				"pluck": "name",
-			}
-			return ["WF-ACTION-1", "WF-ACTION-2"]
-
-		@staticmethod
-		def delete(doctype: str, filters: dict[str, str]) -> None:
-			deletions.append((doctype, filters))
-
-	class FrappeStub:
-		db = DbStub()
-
-	monkeypatch.setattr(sheet_cutting_layout, "frappe", FrappeStub)
-
-	doc = _new_sheet_cutting_layout_doc(sheet_cutting_layout)
-	doc.name = "SCL-REJECTED"
-	doc.status = "Rejected"
-
-	doc.on_trash()
-
-	assert deletions == [
-		(
-			"Workflow Action Permitted Role",
-			{"parenttype": "Workflow Action", "parent": ["in", ["WF-ACTION-1", "WF-ACTION-2"]]},
-		),
-		(
-			"Workflow Action",
-			{"reference_doctype": "Sheet Cutting Layout", "reference_name": "SCL-REJECTED"},
-		),
-	]
-
-
-def test_non_rejected_layout_on_trash_keeps_workflow_action_links(
-	monkeypatch: MonkeyPatch,
-) -> None:
-	from sheet_cutting_layout.sheet_cutting_layout.doctype.sheet_cutting_layout import sheet_cutting_layout
-
-	deletions: list[object] = []
-
-	class DbStub:
-		@staticmethod
-		def get_all(doctype: str, **kwargs: object) -> list[str]:
-			raise AssertionError("non-rejected layouts must not query workflow actions")
-
-		@staticmethod
-		def delete(doctype: str, filters: dict[str, str]) -> None:
-			deletions.append((doctype, filters))
-
-	class FrappeStub:
-		db = DbStub()
-
-	monkeypatch.setattr(sheet_cutting_layout, "frappe", FrappeStub)
-
-	doc = _new_sheet_cutting_layout_doc(sheet_cutting_layout)
-	doc.name = "SCL-RELEASED"
-	doc.status = "Released"
-
-	doc.on_trash()
-
-	assert deletions == []
-
-
-def test_patch_submits_existing_released_layouts(
-	monkeypatch: MonkeyPatch,
-) -> None:
-	from sheet_cutting_layout.patches import v1_0_submit_released_layouts
-
-	class DbStub:
-		calls: ClassVar[list[tuple[str, dict[str, object], str, int, str | None]]] = []
-
-		@classmethod
-		def set_value(
-			cls,
-			doctype: str,
-			filters: dict[str, object],
-			fieldname: str,
-			value: int,
-			update_modified: bool = False,
-		) -> None:
-			cls.calls.append((doctype, filters, fieldname, value, str(update_modified)))
-
-	class FrappeStub:
-		db = DbStub
-
-	monkeypatch.setattr(v1_0_submit_released_layouts, "frappe", FrappeStub)
-
-	v1_0_submit_released_layouts.execute()
-
-	assert DbStub.calls == [
-		(
-			"Sheet Cutting Layout",
-			{"status": "Released", "docstatus": 0},
-			"docstatus",
-			1,
-			"False",
-		)
-	]
-
-
-def test_patch_submits_existing_superseded_layouts(
-	monkeypatch: MonkeyPatch,
-) -> None:
-	from sheet_cutting_layout.patches import v1_0_submit_superseded_layouts
-
-	class DbStub:
-		calls: ClassVar[list[tuple[str, dict[str, object], str, int, str | None]]] = []
-
-		@classmethod
-		def set_value(
-			cls,
-			doctype: str,
-			filters: dict[str, object],
-			fieldname: str,
-			value: int,
-			update_modified: bool = False,
-		) -> None:
-			cls.calls.append((doctype, filters, fieldname, value, str(update_modified)))
-
-	class FrappeStub:
-		db = DbStub
-
-	monkeypatch.setattr(v1_0_submit_superseded_layouts, "frappe", FrappeStub)
-
-	v1_0_submit_superseded_layouts.execute()
-
-	assert DbStub.calls == [
-		(
-			"Sheet Cutting Layout",
-			{"status": "Superseded", "docstatus": 0},
-			"docstatus",
-			1,
-			"False",
-		)
-	]
-
-
-def test_patch_marks_cancelled_layouts_and_unlinks_generated_boms(
-	monkeypatch: MonkeyPatch,
-) -> None:
-	from sheet_cutting_layout.patches import v1_0_mark_cancelled_layouts_and_unlink_boms
-
-	class DbStub:
-		set_value_calls: ClassVar[list[tuple[str, object, object, object, bool]]] = []
-
-		@staticmethod
-		def get_all(
-			doctype: str,
-			filters: dict[str, object],
-			fields: list[str] | None = None,
-			pluck: str | None = None,
-		) -> list[object]:
-			if doctype == "Sheet Cutting Layout":
-				assert filters == {"docstatus": 2}
-				assert fields == ["name", "generated_bom"]
-				return [{"name": "002-R2", "generated_bom": "BOM-FG01SHR-004"}]
-			if doctype == "BOM":
-				assert filters == {"docstatus": 2, "sheet_cutting_layout": ["is", "set"]}
-				assert pluck == "name"
-				return ["BOM-CANCELLED-LINKED"]
-			raise AssertionError(doctype)
-
-		@staticmethod
-		def exists(doctype: str, name: str) -> bool:
-			return (doctype, name) == ("BOM", "BOM-FG01SHR-004")
-
-		@classmethod
-		def set_value(
-			cls,
-			doctype: str,
-			name: object,
-			fieldname: object,
-			value: object = None,
-			update_modified: bool = False,
-		) -> None:
-			cls.set_value_calls.append((doctype, name, fieldname, value, update_modified))
-
-	class FrappeStub:
-		db = DbStub
-
-	monkeypatch.setattr(v1_0_mark_cancelled_layouts_and_unlink_boms, "frappe", FrappeStub)
-
-	v1_0_mark_cancelled_layouts_and_unlink_boms.execute()
-
-	assert DbStub.set_value_calls == [
-		(
-			"Sheet Cutting Layout",
-			"002-R2",
-			{"status": "Cancel", "generated_bom": None},
-			None,
-			False,
-		),
-		("BOM", "BOM-FG01SHR-004", "sheet_cutting_layout", None, False),
-		("BOM", "BOM-CANCELLED-LINKED", "sheet_cutting_layout", None, False),
-	]
-
-
-def test_patch_repairs_checked_workflow_state_to_pm_approved(
-	monkeypatch: MonkeyPatch,
-) -> None:
-	from sheet_cutting_layout.patches import (
-		v1_0_migrate_checked_workflow_state_to_pm_approved,
-	)
-
-	class DbStub:
-		calls: ClassVar[list[tuple[str, dict[str, object], str, str, bool]]] = []
-
-		@classmethod
-		def set_value(
-			cls,
-			doctype: str,
-			filters: dict[str, object],
-			fieldname: str,
-			value: str,
-			update_modified: bool = False,
-		) -> None:
-			cls.calls.append((doctype, filters, fieldname, value, update_modified))
-
-		@staticmethod
-		def has_column(doctype: str, fieldname: str) -> bool:
-			assert doctype == "Sheet Cutting Layout"
-			return fieldname in {"project_manager_ok", "manufacturing_manager_ok"}
-
-	class FrappeStub:
-		db = DbStub
-
-	monkeypatch.setattr(
-		v1_0_migrate_checked_workflow_state_to_pm_approved,
-		"frappe",
-		FrappeStub,
-	)
-
-	v1_0_migrate_checked_workflow_state_to_pm_approved.execute()
-
-	assert DbStub.calls == [
-		(
-			"Sheet Cutting Layout",
-			{"status": "Checked"},
-			"status",
-			"PM Approved",
-			False,
-		),
-		(
-			"Sheet Cutting Layout",
-			{
-				"status": "Submitted for Check",
-				"project_manager_ok": 1,
-				"manufacturing_manager_ok": 1,
-			},
-			"status",
-			"PM Approved",
-			False,
-		),
-	]
-
-
-def test_patch_skips_legacy_hidden_flag_repair_when_columns_are_absent(
-	monkeypatch: MonkeyPatch,
-) -> None:
-	from sheet_cutting_layout.patches import (
-		v1_0_migrate_checked_workflow_state_to_pm_approved,
-	)
-
-	class DbStub:
-		calls: ClassVar[list[tuple[str, dict[str, object], str, str, bool]]] = []
-
-		@classmethod
-		def set_value(
-			cls,
-			doctype: str,
-			filters: dict[str, object],
-			fieldname: str,
-			value: str,
-			update_modified: bool = False,
-		) -> None:
-			cls.calls.append((doctype, filters, fieldname, value, update_modified))
-
-		@staticmethod
-		def has_column(doctype: str, fieldname: str) -> bool:
-			assert doctype == "Sheet Cutting Layout"
-			assert fieldname in {"project_manager_ok", "manufacturing_manager_ok"}
-			return False
-
-	class FrappeStub:
-		db = DbStub
-
-	monkeypatch.setattr(
-		v1_0_migrate_checked_workflow_state_to_pm_approved,
-		"frappe",
-		FrappeStub,
-	)
-
-	v1_0_migrate_checked_workflow_state_to_pm_approved.execute()
-
-	assert DbStub.calls == [
-		(
-			"Sheet Cutting Layout",
-			{"status": "Checked"},
-			"status",
-			"PM Approved",
-			False,
-		)
-	]
-
-
-def test_patch_backfills_missing_mr_approval_snapshots(
-	monkeypatch: MonkeyPatch,
-) -> None:
-	from sheet_cutting_layout.patches import v1_0_backfill_mr_approval_snapshots
-
-	inserted_rows: list[dict[str, object]] = []
-
-	class DbStub:
-		@staticmethod
-		def get_all(doctype: str, **kwargs: object) -> list[dict[str, object]]:
-			assert doctype == "Sheet Cutting Layout"
-			assert kwargs == {
-				"filters": {"status": ["in", ["Released", "Superseded"]]},
-				"fields": ["name", "owner", "modified_by", "modified"],
-			}
-			return [
-				{
-					"name": "SCL-RELEASED",
-					"owner": "owner@example.com",
-					"modified_by": "mr@example.com",
-					"modified": datetime(2026, 5, 18, 14, 30, 0),
-				},
-				{
-					"name": "SCL-ALREADY-HAS-MR",
-					"owner": "owner@example.com",
-					"modified_by": "mr@example.com",
-					"modified": datetime(2026, 5, 18, 14, 31, 0),
-				},
-			]
-
-		@staticmethod
-		def exists(doctype: str, filters: dict[str, object]) -> bool:
-			assert doctype == "Layout Approval Snapshot"
-			return filters["parent"] == "SCL-ALREADY-HAS-MR"
-
-		@staticmethod
-		def count(doctype: str, filters: dict[str, object]) -> int:
-			assert doctype == "Layout Approval Snapshot"
-			assert filters == {"parent": "SCL-RELEASED", "parenttype": "Sheet Cutting Layout"}
-			return 4
-
-	class InsertableDoc(dict[str, object]):
-		def insert(self, **kwargs: object) -> None:
-			assert kwargs == {"ignore_permissions": True}
-			inserted_rows.append(dict(self))
-
-	class FrappeStub:
-		db = DbStub
-
-		@staticmethod
-		def get_doc(row: dict[str, object]) -> InsertableDoc:
-			return InsertableDoc(row)
-
-	monkeypatch.setattr(v1_0_backfill_mr_approval_snapshots, "frappe", FrappeStub)
-
-	v1_0_backfill_mr_approval_snapshots.execute()
-
-	assert inserted_rows == [
-		{
-			"doctype": "Layout Approval Snapshot",
-			"parent": "SCL-RELEASED",
-			"parenttype": "Sheet Cutting Layout",
-			"parentfield": "approval_snapshot",
-			"idx": 5,
-			"step_name": "MR Approval",
-			"approver": "mr@example.com",
-			"decision": "Approved",
-			"decision_time": datetime(2026, 5, 18, 14, 30, 0),
-		}
-	]
 
 
 def test_frappe_bom_insert_sets_required_company_from_layout(
@@ -2507,62 +2592,6 @@ def test_cancel_generated_bom_rolls_back_savepoint_when_draft_save_fails(
 	assert len(frappe_stub.db.savepoint_names) == 1
 	assert frappe_stub.db.rollback_savepoints == frappe_stub.db.savepoint_names
 	assert frappe_stub.db.set_value_calls == []
-
-
-def test_controller_supersede_action_deactivates_generated_bom(monkeypatch: MonkeyPatch) -> None:
-	from sheet_cutting_layout.sheet_cutting_layout.doctype.sheet_cutting_layout import sheet_cutting_layout
-
-	calls: list[object] = []
-
-	monkeypatch.setattr(sheet_cutting_layout, "_get_selected_workflow_action", lambda: "Supersede")
-	monkeypatch.setattr(
-		sheet_cutting_layout,
-		"deactivate_generated_bom",
-		lambda layout: calls.append(layout),
-	)
-
-	doc = _new_sheet_cutting_layout_doc(sheet_cutting_layout)
-	doc.generated_bom = "BOM-PART001SHR-001"
-	doc.before_workflow_action()
-
-	assert calls == [doc]
-
-
-def test_controller_before_cancel_cancels_generated_bom(monkeypatch: MonkeyPatch) -> None:
-	from sheet_cutting_layout.sheet_cutting_layout.doctype.sheet_cutting_layout import sheet_cutting_layout
-
-	calls: list[object] = []
-	monkeypatch.setattr(
-		sheet_cutting_layout,
-		"cancel_generated_bom",
-		lambda layout: calls.append(layout),
-	)
-
-	doc = _new_sheet_cutting_layout_doc(sheet_cutting_layout)
-	doc.status = "Superseded"
-	doc.generated_bom = "BOM-PART001SHR-001"
-	doc.before_cancel()
-
-	assert calls == [doc]
-	assert doc.status == "Cancel"
-
-
-def test_form_cancel_lets_layout_controller_cancel_linked_bom() -> None:
-	content = (
-		Path(__file__)
-		.resolve()
-		.parents[1]
-		.joinpath(
-			"sheet_cutting_layout",
-			"doctype",
-			"sheet_cutting_layout",
-			"sheet_cutting_layout.js",
-		)
-		.read_text(encoding="utf-8")
-	)
-
-	assert "ignoreBomInGenericCancelAll(frm);" in content
-	assert 'frm.ignore_doctypes_on_cancel_all || []), "BOM"' in content
 
 
 class TestReleaseService(SheetCuttingLayoutTestCase):
