@@ -12,7 +12,7 @@ LEGACY_FLAG_FIELDS = ("project_manager_ok", "manufacturing_manager_ok")
 
 
 def execute() -> None:
-	if frappe is None:
+	if not frappe:
 		raise RuntimeError("Frappe is required to migrate Sheet Cutting Layout workflow state")
 
 	frappe.db.set_value(

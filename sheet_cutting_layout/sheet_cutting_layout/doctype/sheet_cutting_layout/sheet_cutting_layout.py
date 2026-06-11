@@ -117,6 +117,8 @@ def _clear_copied_release_artifacts(doc: object) -> None:
 	for end_piece in end_pieces:
 		if hasattr(end_piece, "end_piece_item_code"):
 			end_piece.end_piece_item_code = None
+		if hasattr(end_piece, "generated_end_piece_bom"):
+			end_piece.generated_end_piece_bom = None
 	if hasattr(doc, "end_piece_bom_status"):
 		apply_end_piece_bom_status(doc, end_pieces)
 
