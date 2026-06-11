@@ -447,3 +447,20 @@ class TestBomService(SheetCuttingLayoutTestCase):
 
 	def _sum_bom_qty(self, items: list[object], row_type: str) -> float:
 		return sum(item.qty for item in items if item.row_type == row_type)
+
+
+class TestBomServiceIntegration(SheetCuttingLayoutTestCase):
+	def test_resolve_scrap_item_rate_reads_real_item_valuation(self) -> None:
+		import frappe
+
+		from sheet_cutting_layout.services.bom_service import resolve_scrap_item_rate
+		from sheet_cutting_layout.tests.factories import ensure_item
+
+		# A fresh stock-less item has no Bin or Stock Ledger Entry rows, so the
+		# ERPNext valuation lookup falls back to the Item's valuation_rate field.
+		company = frappe.get_all("Company", pluck="name", limit=1)[0]
+		scrap_item = ensure_item("SCLTESTSCRAPRATE001", stock_uom="Kg", valuation_rate=62.5)
+
+		rate = resolve_scrap_item_rate(item_code=scrap_item, company=company, existing_rate=0)
+
+		self.assertFloatAlmostEqual(rate, 62.5)
