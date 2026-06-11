@@ -222,7 +222,7 @@ class TestBomService(SheetCuttingLayoutTestCase):
 				existing_rate=42.5,
 			)
 
-		self.assertFloatAlmostEqual(rate, 42.5)
+		self.assertEqual(rate, 42.5)
 		fetch_rate.assert_not_called()
 
 	def test_resolve_scrap_item_rate_looks_up_when_existing_rate_is_zero_or_invalid(self) -> None:
@@ -239,8 +239,8 @@ class TestBomService(SheetCuttingLayoutTestCase):
 				existing_rate="not-a-number",
 			)
 
-		self.assertFloatAlmostEqual(rate_zero, 88.25)
-		self.assertFloatAlmostEqual(rate_invalid, 88.25)
+		self.assertEqual(rate_zero, 88.25)
+		self.assertEqual(rate_invalid, 88.25)
 		assert fetch_rate.call_count == 2
 		assert fetch_rate.call_args_list[0].kwargs == {"item_code": "SCRAP-001", "company": "Test Company"}
 		assert fetch_rate.call_args_list[1].kwargs == {"item_code": "SCRAP-001", "company": "Test Company"}
