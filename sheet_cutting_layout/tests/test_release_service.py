@@ -2586,3 +2586,66 @@ class TestBomLifecycle(ReleaseServiceIsolatedTestCase):
 		assert len(frappe_stub.db.savepoint_names) == 1
 		assert frappe_stub.db.rollback_savepoints == frappe_stub.db.savepoint_names
 		assert frappe_stub.db.set_value_calls == []
+
+
+class TestReleaseServiceIntegration(SheetCuttingLayoutTestCase):
+	def _release_ready_layout(self):
+		from sheet_cutting_layout.tests.factories import make_layout, register_test_doc
+
+		suffix = frappe.generate_hash(length=5).upper()
+		layout = make_layout(
+			finished_part_code=f"SCLTESTFG{suffix}SHR",
+			parts_per_strip=1,
+			no_of_strips=1,
+			strip_length_mm=2500,
+		)
+		layout.insert()
+		register_test_doc("Sheet Cutting Layout", layout.name)
+		layout.db_set("status", "Approved by Purchase", update_modified=False)
+		layout.reload()
+		layout.net_weight_per_part_kg = layout.gross_weight_per_part_kg
+		return layout
+
+	def _release(self, layout):
+		from sheet_cutting_layout.services.release_service import release_layout
+		from sheet_cutting_layout.tests.factories import register_test_doc
+
+		result = release_layout(layout)
+		if layout.generated_bom:
+			register_test_doc("BOM", layout.generated_bom)
+		return result
+
+	def test_release_layout_creates_active_bom_with_sheet_weight_raw_row(self) -> None:
+		layout = self._release_ready_layout()
+
+		self._release(layout)
+
+		self.assertEqual(layout.status, "Released")
+		self.assertTrue(layout.generated_bom)
+		bom = frappe.get_doc("BOM", layout.generated_bom)
+		self.assertEqual(bom.item, layout.finished_part_code)
+		self.assertEqual(bom.is_active, 1)
+		self.assertFloatAlmostEqual(bom.quantity, layout.parts_per_sheet)
+		raw_rows = [row for row in bom.items if row.item_code == layout.raw_material_item]
+		self.assertEqual(len(raw_rows), 1)
+		self.assertFloatAlmostEqual(raw_rows[0].qty, layout.weight_per_sheet_kg)
+		self.assertEqual(raw_rows[0].uom, "Kg")
+
+	def test_mr_release_save_cycle_persists_released_status(self) -> None:
+		from sheet_cutting_layout.tests.factories import register_test_doc
+
+		layout = self._release_ready_layout()
+
+		# Drive the real controller save cycle: the production "MR Release" action flag
+		# makes validate() call release_layout(), and the outer save persists the mutation.
+		frappe.flags.selected_workflow_action = "MR Release"
+		self.addCleanup(lambda: setattr(frappe.flags, "selected_workflow_action", None))
+		layout.save(ignore_permissions=True)
+		if layout.generated_bom:
+			register_test_doc("BOM", layout.generated_bom)
+
+		self.assertEqual(
+			frappe.db.get_value("Sheet Cutting Layout", layout.name, "status"),
+			"Released",
+		)
+		self.assertTrue(frappe.db.get_value("Sheet Cutting Layout", layout.name, "generated_bom"))
