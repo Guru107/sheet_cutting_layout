@@ -1783,7 +1783,7 @@ class TestFrappeBomInsertAndEndPieces(ReleaseServiceIsolatedTestCase):
 			def throw(message: str) -> None:
 				raise ValueError(message)
 
-		layout = Layout(
+		layout = SavableLayout(
 			name="002-R2",
 			weight_per_sheet_kg=39.3,
 			parts_per_sheet=77,
@@ -1846,8 +1846,10 @@ class TestFrappeBomInsertAndEndPieces(ReleaseServiceIsolatedTestCase):
 		)
 
 		assert layout.end_pieces[0].end_piece_item_code == "FG002SHR-EP-1.6x1250x179"
-		assert persisted_layout.save_calls == 1
-		assert persisted_layout.end_pieces[0].end_piece_item_code == "FG002SHR-EP-1.6x1250x179"
+		# The in-memory layout being released is the record that gets persisted; the
+		# re-fetched context copy must not be saved (it would write stale state back).
+		assert layout.save_calls == 1
+		assert persisted_layout.save_calls == 0
 
 
 class TestReleaseContextAndHelpers(ReleaseServiceIsolatedTestCase):
@@ -2652,6 +2654,20 @@ class TestReleaseServiceIntegration(SheetCuttingLayoutTestCase):
 		)
 		self.assertTrue(frappe.db.get_value("Sheet Cutting Layout", layout.name, "generated_bom"))
 
+	def test_release_layout_persists_released_status_and_bom_link(self) -> None:
+		layout = self._release_ready_layout()
+
+		self._release(layout)
+
+		self.assertEqual(
+			frappe.db.get_value("Sheet Cutting Layout", layout.name, "status"),
+			"Released",
+		)
+		self.assertEqual(
+			frappe.db.get_value("Sheet Cutting Layout", layout.name, "generated_bom"),
+			layout.generated_bom,
+		)
+
 	def test_deactivate_generated_bom_supersedes_real_bom(self) -> None:
 		from sheet_cutting_layout.services.release_service import deactivate_generated_bom
 
@@ -2688,18 +2704,7 @@ class TestReleaseServiceIntegration(SheetCuttingLayoutTestCase):
 		from sheet_cutting_layout.tests.factories import register_test_doc
 
 		layout = self._release_ready_layout()
-		# create_sheet_cutting_layout_revision re-fetches the layout from the DB, so the
-		# released status must actually be persisted. A direct release_layout() call saves
-		# a stale twin row (known quirk: DB status stays "Approved by Purchase"); drive the
-		# production "MR Release" save cycle instead, which persists the released state.
-		frappe.flags.selected_workflow_action = "MR Release"
-		self.addCleanup(lambda: setattr(frappe.flags, "selected_workflow_action", None))
-		layout.save(ignore_permissions=True)
-		# Clear the action flag before inserting the revision below, or its validate()
-		# would also try to run the MR Release flow on the not-yet-inserted clone.
-		frappe.flags.selected_workflow_action = None
-		if layout.generated_bom:
-			register_test_doc("BOM", layout.generated_bom)
+		self._release(layout)
 
 		revision_name = create_sheet_cutting_layout_revision(layout.name)
 		register_test_doc("Sheet Cutting Layout", revision_name)
@@ -2716,16 +2721,12 @@ class TestReleaseServiceIntegration(SheetCuttingLayoutTestCase):
 
 		layout = self._release_ready_layout()
 		self._release(layout)
-		# release_layout persists through a stale twin of the layout row (known quirk),
-		# so the DB row reloaded here has generated_bom unset; capture the BOM name from
-		# the in-memory layout before reload and assert against that.
-		generated_bom = layout.generated_bom
-		self.assertTrue(generated_bom)
 		layout.reload()
+		self.assertTrue(layout.generated_bom)
 
 		context = get_release_context(layout)
 
 		context_layout_names = [getattr(row, "name", None) for row in context.layouts]
 		self.assertIn(layout.name, context_layout_names)
 		context_bom_names = [getattr(row, "name", None) for row in context.boms]
-		self.assertIn(generated_bom, context_bom_names)
+		self.assertIn(layout.generated_bom, context_bom_names)

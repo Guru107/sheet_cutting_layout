@@ -133,11 +133,15 @@ Goes integration (real records):
 1. Release service: release to BOM generation, supersede, cancel, and revision/versioning flows
    against real `Sheet Cutting Layout`, `Item`, `BOM`, and `Project` documents.
 
-   Implementation note (2026-06-11): the supersede integration test is deliberately deferred.
-   `deactivate_generated_bom`'s submitted-BOM branch `db_set`s columns (`disabled`, `status`)
-   that do not exist on the BOM doctype, so it crashes on every real released BOM
-   (pymysql 1054 "Unknown column 'disabled'"). The fix plus the prepared integration test are
-   tracked as a separate task; fake-based supersede coverage in `TestBomLifecycle` remains.
+   Implementation note (2026-06-11): the integration tests surfaced two production bugs,
+   both fixed on this branch. (1) `deactivate_generated_bom`'s submitted-BOM branch `db_set`
+   wrote columns (`disabled`, `status`) that do not exist on the BOM doctype, crashing every
+   real supersede; the dict is now filtered through the field-support check and the supersede
+   integration test landed. (2) `release_layout` saved a stale re-fetched copy of the layout
+   instead of the mutated in-memory document, so direct service callers never had `Released`
+   or `generated_bom` persisted; the service now saves the in-memory layout (skipping the
+   nested save during the controller's own save cycle) and an integration test pins the
+   persisted state.
 2. Audit validator paths that read real BOM documents.
 3. BOM-service paths where ERPNext BOM document behavior matters (defaults, submission,
    `is_default` flag).

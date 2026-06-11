@@ -474,22 +474,10 @@ def _release_layout_records(
 	layouts: Sequence[object],
 	layout: ReleaseLayoutDocument,
 ) -> Sequence[object]:
-	layout_name = getattr(layout, "name", None)
-	for existing_layout in layouts:
-		if getattr(existing_layout, "name", None) == layout_name:
-			if existing_layout is not layout:
-				_copy_generated_end_piece_item_links(source=layout, target=existing_layout)
-			return (existing_layout,)
+	# Always persist the in-memory layout being released. The release context
+	# contains a re-fetched copy of the same record; saving that copy instead
+	# would write the pre-release status back and lose generated_bom.
 	return (layout,)
-
-
-def _copy_generated_end_piece_item_links(*, source: object, target: object) -> None:
-	source_rows = list(getattr(source, "end_pieces", []) or [])
-	target_rows = list(getattr(target, "end_pieces", []) or [])
-	for source_row, target_row in zip(source_rows, target_rows, strict=False):
-		item_code = getattr(source_row, "end_piece_item_code", None)
-		if item_code and hasattr(target_row, "end_piece_item_code"):
-			target_row.end_piece_item_code = item_code
 
 
 def _get_same_project_layouts(layout: ReleaseLayoutDocument) -> list[object]:
@@ -546,6 +534,12 @@ def _save_bom_records(boms: Sequence[BomRecord]) -> None:
 
 def _save_layout_records(layouts: Sequence[object]) -> None:
 	if not frappe:
+		return
+
+	if getattr(getattr(frappe, "flags", None), "sheet_cutting_layout_suppress_workflow_side_effects", False):
+		# The layout controller is mid-save (workflow action cycle): the outer save
+		# persists the released layout, and a nested save of the same document
+		# would trip Frappe's timestamp conflict check.
 		return
 
 	for layout in layouts:
