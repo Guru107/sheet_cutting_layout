@@ -234,7 +234,7 @@ class RevisionVersioningStateMachine(RuleBasedStateMachine):
 		assert new_layout.finished_part_code == active_layout.finished_part_code
 		assert new_layout.net_weight_per_part_kg == active_layout.net_weight_per_part_kg
 
-		finalize_new_revision_release(self.layouts, new_layout, [])
+		finalize_new_revision_release(new_layout)
 
 		assert new_layout.status == "Released"
 		assert new_layout.is_active is True

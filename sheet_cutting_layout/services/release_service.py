@@ -4,10 +4,12 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from typing import Literal, Protocol
 
-from sheet_cutting_layout.overrides.bom import APP_CONTROLLED_BOM_UPDATE_FLAG
+from sheet_cutting_layout.overrides.bom import mark_bom_app_controlled
 from sheet_cutting_layout.services.bom_service import (
 	BomDocument,
+	ParentFinishedPartRow,
 	build_bom_from_layout_row,
+	parent_finished_part_row,
 	resolve_scrap_item_rate,
 )
 from sheet_cutting_layout.services.end_piece_item_service import ensure_end_piece_item
@@ -75,22 +77,12 @@ class BomRecord(Protocol):
 class ReleaseResult:
 	status: LayoutReleaseStatus
 	generated_boms: list[BomDocument] = field(default_factory=list)
-	superseded_layout: object | None = None
 
 
 @dataclass
 class ReleaseContext:
 	layouts: Sequence[object] = ()
 	boms: list[BomRecord] | None = None
-
-
-@dataclass
-class ParentFinishedPartRow:
-	finished_part_item: str
-	parts_per_sheet: int
-	gross_weight_per_part_kg: float
-	scrap_weight_per_part_kg: float
-	generated_bom: str | None = None
 
 
 @dataclass
@@ -136,17 +128,13 @@ def release_layout(
 	_activate_boms(generated_boms)
 	layout.status = "Released"
 	if layouts:
-		finalize_new_revision_release(layouts, layout, generated_boms)  # type: ignore[arg-type]
-	_sync_finished_part_reference_rows(layout, generated_boms, _release_finished_part_rows(layout))
+		finalize_new_revision_release(layout)  # type: ignore[arg-type]
+	_sync_finished_part_reference_rows(layout, generated_boms, _parent_finished_part_rows(layout))
 	if layouts:
 		_save_layout_records(_release_layout_records(layouts, layout))
 	_save_bom_records(generated_boms)
 
-	return ReleaseResult(
-		status=layout.status,
-		generated_boms=generated_boms,
-		superseded_layout=None,
-	)
+	return ReleaseResult(status=layout.status, generated_boms=generated_boms)
 
 
 def deactivate_generated_bom(layout: object) -> object | None:
@@ -172,7 +160,7 @@ def deactivate_generated_bom(layout: object) -> object | None:
 				notify=False,
 			)
 		else:
-			_mark_bom_app_controlled(bom_doc)
+			mark_bom_app_controlled(bom_doc)
 			bom_doc.save(ignore_permissions=True)
 		_clear_item_default_bom_reference(bom_doc)
 	return deactivated_boms[0]
@@ -198,7 +186,7 @@ def cancel_generated_bom(layout: object) -> object | None:
 			_set_frappe_field_if_supported(bom_doc, "is_active", 0)
 			_set_frappe_field_if_supported(bom_doc, "disabled", 1)
 			_set_frappe_field_if_supported(bom_doc, "is_default", 0)
-			_mark_bom_app_controlled(bom_doc)
+			mark_bom_app_controlled(bom_doc)
 			# The submitted layout's own backlinks must be cleared before cancelling the
 			# BOM, or ERPNext link validation would always block the cancellation below.
 			_unlink_layout_bom_reference_fields(layout, bom_name)
@@ -325,7 +313,7 @@ def _generate_boms(
 	bom_name_factory: Callable[[ReleaseLayoutDocument, FinishedPartRow, int], str] | None,
 	bom_document_factory: BomDocumentFactory | None,
 ) -> list[BomDocument]:
-	finished_parts = _release_finished_part_rows(layout)
+	finished_parts = _parent_finished_part_rows(layout)
 	generated_boms: list[BomDocument] = []
 
 	for index, finished_part in enumerate(finished_parts, start=1):
@@ -334,7 +322,6 @@ def _generate_boms(
 			if bom_document_factory is not None
 			else _default_bom_document_factory(layout, finished_part, index, bom_name_factory)
 		)
-		finished_part.generated_bom = bom.name
 		_set_frappe_field_if_supported(layout, "generated_bom", bom.name)
 		generated_boms.append(bom)
 
@@ -397,7 +384,7 @@ def _insert_frappe_bom(bom: BomDocument) -> BomDocument:
 	bom_doc.sheet_cutting_layout = bom.sheet_cutting_layout or getattr(
 		getattr(bom, "_layout", None), "name", None
 	)
-	_mark_bom_app_controlled(bom_doc)
+	mark_bom_app_controlled(bom_doc)
 	for row in bom.items:
 		bom_doc.append(
 			"items",
@@ -432,7 +419,6 @@ def _insert_frappe_bom(bom: BomDocument) -> BomDocument:
 			},
 		)
 	bom_doc.insert()
-	_mark_bom_app_controlled(bom_doc)
 	bom_doc.submit()
 
 	bom.name = bom_doc.name
@@ -443,24 +429,10 @@ def _insert_frappe_bom(bom: BomDocument) -> BomDocument:
 	return bom
 
 
-def _release_finished_part_rows(layout: ReleaseLayoutDocument) -> list[FinishedPartRow]:
-	return _parent_finished_part_rows(layout)
-
-
 def _parent_finished_part_rows(layout: ReleaseLayoutDocument) -> list[ParentFinishedPartRow]:
-	finished_part_code = str(getattr(layout, "finished_part_code", "") or "").strip()
-	if not finished_part_code:
+	if not str(getattr(layout, "finished_part_code", "") or "").strip():
 		return []
-
-	return [
-		ParentFinishedPartRow(
-			finished_part_item=finished_part_code,
-			parts_per_sheet=int(getattr(layout, "parts_per_sheet", 0) or 0),
-			gross_weight_per_part_kg=float(getattr(layout, "gross_weight_per_part_kg", 0) or 0),
-			scrap_weight_per_part_kg=float(getattr(layout, "scrap_weight_per_part_kg", 0) or 0),
-			generated_bom=getattr(layout, "generated_bom", None),
-		)
-	]
+	return [parent_finished_part_row(layout)]  # type: ignore[arg-type]
 
 
 def _sync_finished_part_reference_rows(
@@ -541,7 +513,7 @@ def _get_finished_part_boms(layout: ReleaseLayoutDocument) -> list[BomRecord]:
 		raise RuntimeError("Frappe is required to discover BOM records")
 
 	finished_part_items = [
-		row.finished_part_item for row in _release_finished_part_rows(layout) if row.finished_part_item
+		row.finished_part_item for row in _parent_finished_part_rows(layout) if row.finished_part_item
 	]
 	if not finished_part_items:
 		return []
@@ -565,7 +537,7 @@ def _save_bom_records(boms: Sequence[BomRecord]) -> None:
 		_set_frappe_field_if_supported(bom_doc, "is_active", 1 if bom.is_active else 0)
 		_set_frappe_field_if_supported(bom_doc, "disabled", 1 if bom.disabled else 0)
 		_set_frappe_field_if_supported(bom_doc, "status", bom.status)
-		_mark_bom_app_controlled(bom_doc)
+		mark_bom_app_controlled(bom_doc)
 		bom_doc.save(ignore_permissions=True)
 
 
@@ -637,14 +609,6 @@ def _set_frappe_field_if_supported(doc: object, fieldname: str, value: object) -
 
 def _sum_bom_qty(rows: Sequence[object]) -> float:
 	return sum(float(getattr(row, "qty", 0) or 0) for row in rows)
-
-
-def _mark_bom_app_controlled(bom_doc: object) -> None:
-	flags = getattr(bom_doc, "flags", None)
-	if flags is None:
-		flags = type("Flags", (), {})()
-		bom_doc.flags = flags
-	setattr(flags, APP_CONTROLLED_BOM_UPDATE_FLAG, True)
 
 
 def _unlink_generated_bom_from_layout(layout: object, generated_bom: str) -> None:

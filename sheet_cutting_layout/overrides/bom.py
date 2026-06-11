@@ -49,3 +49,11 @@ def validate_shearing_bom_source(doc: object, method: str | None = None) -> None
 def _is_app_controlled_bom_update(doc: object) -> bool:
 	flags = getattr(doc, "flags", None)
 	return bool(getattr(flags, APP_CONTROLLED_BOM_UPDATE_FLAG, False))
+
+
+def mark_bom_app_controlled(doc: object) -> None:
+	flags = getattr(doc, "flags", None)
+	if flags is None:
+		flags = type("Flags", (), {})()
+		doc.flags = flags
+	setattr(flags, APP_CONTROLLED_BOM_UPDATE_FLAG, True)

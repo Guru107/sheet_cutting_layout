@@ -158,7 +158,6 @@ class TestSheetCuttingLayoutController(SheetCuttingLayoutTestCase):
 		with (
 			patch.object(controller, "_get_selected_workflow_action", return_value="MR Release"),
 			patch.object(controller, "record_approval_snapshot") as record_approval_snapshot,
-			patch.object(controller, "get_release_context", return_value="CTX") as get_release_context,
 			patch.object(controller, "release_layout") as release_layout,
 			patch.object(controller, "validate_sheet_cutting_layout") as validate_sheet_cutting_layout,
 			patch.object(controller, "_get_session_user", return_value="Administrator"),
@@ -167,8 +166,7 @@ class TestSheetCuttingLayoutController(SheetCuttingLayoutTestCase):
 			doc.validate()
 
 		record_approval_snapshot.assert_called_once()
-		get_release_context.assert_called_once_with(doc)
-		release_layout.assert_called_once_with(doc, release_context="CTX")
+		release_layout.assert_called_once_with(doc)
 		validate_sheet_cutting_layout.assert_called_once_with(doc)
 
 	def test_generate_end_piece_boms_checks_write_permission_and_calls_service(self) -> None:

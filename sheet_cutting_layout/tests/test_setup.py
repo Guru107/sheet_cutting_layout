@@ -2,7 +2,13 @@ from __future__ import annotations
 
 from importlib import import_module
 
-import frappe
+try:
+	import frappe
+except ImportError:
+	# Bench-only test bootstrap: this module is executed via
+	# `bench execute sheet_cutting_layout.tests.test_setup.before_tests`,
+	# but pytest also collects it by name in frappe-less runs.
+	frappe = None
 
 
 def _call_erpnext_before_tests() -> None:

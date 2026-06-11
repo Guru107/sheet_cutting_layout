@@ -152,6 +152,8 @@ class FakeFrappe:
 		self.created_docs: list[FakeDoc] = []
 		self.defaults = SimpleNamespace(get_user_default=lambda _key: "")
 		self.ValidationError = ValueError
+		self.DuplicateEntryError = ValueError
+		self.logged_errors: list[dict[str, str | None]] = []
 		self._ = lambda message: message
 
 	def new_doc(self, doctype: str) -> FakeDoc:
@@ -161,6 +163,12 @@ class FakeFrappe:
 
 	def throw(self, message: str) -> None:
 		raise ValueError(message)
+
+	def log_error(self, message: str | None = None, title: str | None = None) -> None:
+		self.logged_errors.append({"message": message, "title": title})
+
+	def get_traceback(self) -> str:
+		return "traceback"
 
 
 class TestEndPieceBomService(SheetCuttingLayoutTestCase):

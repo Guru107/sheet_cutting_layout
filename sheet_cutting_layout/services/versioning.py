@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from collections.abc import Sequence
 from copy import deepcopy
 from typing import Literal, Protocol, TypeVar
 
@@ -28,14 +27,6 @@ class RevisionLayoutDocument(Protocol):
 	finished_parts: list[FinishedPartRow]
 	finished_part_code: str | None
 	generated_bom: str | None
-
-
-class BomDocument(Protocol):
-	name: str
-	item: str
-	is_active: bool
-	disabled: bool
-	status: str
 
 
 RevisionLayoutT = TypeVar("RevisionLayoutT", bound=RevisionLayoutDocument)
@@ -73,22 +64,9 @@ def create_revision(old_layout: RevisionLayoutT) -> RevisionLayoutT:
 	return new_layout
 
 
-def finalize_new_revision_release(
-	layouts: Sequence[RevisionLayoutDocument],
-	new_layout: RevisionLayoutDocument,
-	boms: Sequence[BomDocument],
-) -> RevisionLayoutDocument:
-	_ = layouts
+def finalize_new_revision_release(new_layout: RevisionLayoutDocument) -> RevisionLayoutDocument:
 	new_layout.status = "Released"
 	new_layout.is_active = True
-
-	generated_bom = str(getattr(new_layout, "generated_bom", "") or "").strip()
-	for bom in boms:
-		if bom.name == generated_bom:
-			bom.is_active = True
-			bom.disabled = False
-			bom.status = "Active"
-
 	return new_layout
 
 

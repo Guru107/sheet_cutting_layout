@@ -31,7 +31,6 @@ from sheet_cutting_layout.services.end_piece_bom_service import (
 from sheet_cutting_layout.services.release_service import (
 	cancel_generated_bom,
 	deactivate_generated_bom,
-	get_release_context,
 	release_layout,
 )
 from sheet_cutting_layout.services.validators import apply_end_piece_bom_status, validate_sheet_cutting_layout
@@ -93,10 +92,9 @@ class SheetCuttingLayout(Document):
 			approver=_get_session_user(),
 			decision_time=_get_now_datetime(),
 		)
-		context = get_release_context(self) if action == "MR Release" else None
 		if action == "MR Release":
 			with _suppress_workflow_side_effects():
-				release_layout(self, release_context=context)
+				release_layout(self)
 		if action == "Supersede":
 			deactivate_generated_bom(self)
 

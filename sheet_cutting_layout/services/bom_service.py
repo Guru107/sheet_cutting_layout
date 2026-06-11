@@ -4,8 +4,6 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from typing import Literal, Protocol
 
-import frappe
-
 from sheet_cutting_layout.services.end_piece_item_service import derive_end_piece_item_code_from_row
 
 
@@ -76,16 +74,6 @@ class ParentFinishedPartRow:
 	parts_per_sheet: int
 	gross_weight_per_part_kg: float
 	scrap_weight_per_part_kg: float
-
-
-@dataclass
-class ExpectedBomConsumption:
-	item: str
-	quantity: int
-	raw_material_rows: list[BomItemRow]
-	scrap_rows: list[BomItemRow]
-	total_raw_material_qty: float
-	total_scrap_qty: float
 
 
 @dataclass
@@ -217,28 +205,14 @@ def build_bom_from_layout(
 ) -> BomDocument:
 	return build_bom_from_layout_row(
 		layout_doc,
-		_parent_finished_part_row(layout_doc),
+		parent_finished_part_row(layout_doc),
 		document_factory=document_factory,
 		end_piece_item_code_resolver=end_piece_item_code_resolver,
 	)
 
 
-def expected_bom_consumption_from_layout(layout_doc: LayoutDocument) -> ExpectedBomConsumption:
-	bom = build_bom_from_layout(layout_doc)
-	total_raw_material_qty = sum(row.qty for row in bom.items)
-	total_scrap_qty = sum(row.qty for row in bom.scrap_items)
-	return ExpectedBomConsumption(
-		item=bom.item,
-		quantity=bom.quantity,
-		raw_material_rows=list(bom.items),
-		scrap_rows=list(bom.scrap_items),
-		total_raw_material_qty=total_raw_material_qty,
-		total_scrap_qty=total_scrap_qty,
-	)
-
-
 def expected_main_bom_weight_balance(layout_doc: LayoutDocument) -> ExpectedBomWeightBalance:
-	finished_part = _parent_finished_part_row(layout_doc)
+	finished_part = parent_finished_part_row(layout_doc)
 	bom = build_bom_from_layout_row(layout_doc, finished_part)
 	raw_material_weight = sum(row.qty for row in bom.items)
 	scrap_and_byproduct_weight = sum(row.qty for row in bom.scrap_items)
@@ -253,7 +227,7 @@ def expected_main_bom_weight_balance(layout_doc: LayoutDocument) -> ExpectedBomW
 	)
 
 
-def _parent_finished_part_row(layout_doc: LayoutDocument) -> ParentFinishedPartRow:
+def parent_finished_part_row(layout_doc: LayoutDocument) -> ParentFinishedPartRow:
 	finished_part_item = str(getattr(layout_doc, "finished_part_code", "") or "").strip()
 	if not finished_part_item:
 		raise ValueError("finished_part_code is required to create generated BOM")
@@ -318,6 +292,7 @@ def _sheet_weight_kg(layout_doc: LayoutDocument, finished_part_row: FinishedPart
 
 
 def _fetch_valuation_rate(*, item_code: str, company: str) -> float | int | str | None:
+	import frappe
 	from erpnext.manufacturing.doctype.bom.bom import get_valuation_rate
 
 	args = frappe._dict({"item_code": item_code, "company": company})

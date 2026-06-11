@@ -6,7 +6,7 @@ from typing import Protocol
 
 from sheet_cutting_layout.services.bom_service import (
 	BomItemRow,
-	expected_bom_consumption_from_layout,
+	build_bom_from_layout,
 )
 from sheet_cutting_layout.services.end_piece_item_service import (
 	derive_end_piece_item_code,
@@ -274,7 +274,7 @@ def _validate_parent_finished_part_fields(layout: SheetCuttingLayoutDocument) ->
 	net_weight = getattr(layout, "net_weight_per_part_kg", None)
 	if net_weight is None:
 		frappe.throw(_("Net weight per part is required"))
-	if net_weight is not None and net_weight < 0:
+	if net_weight < 0:
 		frappe.throw(_("Net weight per part must be non-negative"))
 
 	gross_weight = _flt(getattr(layout, "gross_weight_per_part_kg", 0))
@@ -518,7 +518,7 @@ def _validate_generated_bom_matches_layout(layout: SheetCuttingLayoutDocument) -
 		return
 
 	bom = get_doc("BOM", generated_bom)
-	expected = expected_bom_consumption_from_layout(layout)  # type: ignore[arg-type]
+	expected = build_bom_from_layout(layout)  # type: ignore[arg-type]
 
 	if str(getattr(bom, "item", "") or "").strip() != expected.item:
 		frappe.throw(
@@ -538,13 +538,13 @@ def _validate_generated_bom_matches_layout(layout: SheetCuttingLayoutDocument) -
 
 	_validate_bom_rows(
 		actual_rows=list(getattr(bom, "items", []) or []),
-		expected_rows=expected.raw_material_rows,
+		expected_rows=expected.items,
 		qty_getter=_bom_row_qty,
 		category="raw material",
 	)
 	_validate_bom_rows(
 		actual_rows=list(getattr(bom, "scrap_items", []) or []),
-		expected_rows=expected.scrap_rows,
+		expected_rows=expected.scrap_items,
 		qty_getter=_bom_scrap_row_qty,
 		category="scrap",
 	)

@@ -2,9 +2,33 @@ from __future__ import annotations
 
 from typing import Protocol
 
-import frappe
+try:
+	import frappe
+except ImportError:
 
-_ = frappe._
+	class _ValidationError(Exception):
+		pass
+
+	class _FrappeCompat:
+		ValidationError = _ValidationError
+		DuplicateEntryError = _ValidationError
+		_ = staticmethod(lambda message: message)
+
+		@staticmethod
+		def throw(message: str) -> None:
+			raise _ValidationError(message)
+
+		@staticmethod
+		def log_error(message: str | None = None, title: str | None = None) -> None:
+			return None
+
+		@staticmethod
+		def get_traceback() -> str:
+			return ""
+
+	frappe = _FrappeCompat()
+
+_ = getattr(frappe, "_", lambda message: message)
 
 
 class EndPieceRow(Protocol):
@@ -106,21 +130,20 @@ def ensure_end_piece_item(layout: LayoutDocument, row: EndPieceRow) -> str:
 	item.is_stock_item = 1
 	item.disabled = 0
 	_append_app_created_item_uoms(item, stock_uom=item.stock_uom, weight_kg=weight_kg)
-	insert_error_types = _item_insert_exception_types()
-	if insert_error_types:
-		try:
-			item.insert(ignore_permissions=True)
-		except insert_error_types as error:
-			_log_item_insert_error(item_code=item_code, row=row, error=error)
-			_throw(
-				_("Row {0}: Failed to create end piece item '{1}': {2}").format(
-					getattr(row, "idx", 0),
-					item_code,
-					str(error),
-				)
-			)
-	else:
+	try:
 		item.insert(ignore_permissions=True)
+	except (frappe.ValidationError, frappe.DuplicateEntryError) as error:
+		frappe.log_error(
+			message=frappe.get_traceback(),
+			title=f"Row {getattr(row, 'idx', 0)}: Failed to create end piece item '{item_code}'",
+		)
+		_throw(
+			_("Row {0}: Failed to create end piece item '{1}': {2}").format(
+				getattr(row, "idx", 0),
+				item_code,
+				str(error),
+			)
+		)
 	return item_code
 
 
@@ -204,27 +227,6 @@ def _get_value(doctype: str, name: str | None, fieldname: str) -> object:
 	if callable(get_value):
 		return get_value(doctype, name, fieldname)
 	return None
-
-
-def _item_insert_exception_types() -> tuple[type[Exception], ...]:
-	exception_types: list[type[Exception]] = []
-	for attr in ("ValidationError", "DuplicateEntryError"):
-		error_type = getattr(frappe, attr, None)
-		if isinstance(error_type, type) and issubclass(error_type, Exception):
-			exception_types.append(error_type)
-	return tuple(dict.fromkeys(exception_types))
-
-
-def _log_item_insert_error(*, item_code: str, row: EndPieceRow, error: Exception) -> None:
-	log_error = getattr(frappe, "log_error", None)
-	if not callable(log_error):
-		return
-	get_traceback = getattr(frappe, "get_traceback", None)
-	traceback = get_traceback() if callable(get_traceback) else str(error)
-	log_error(
-		message=traceback,
-		title=f"Row {getattr(row, 'idx', 0)}: Failed to create end piece item '{item_code}'",
-	)
 
 
 def _clean(value: object) -> str | None:

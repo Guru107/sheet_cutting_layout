@@ -553,10 +553,22 @@ def test_release_syncs_finished_part_reference_rows_from_saved_bom() -> None:
 	assert self_reference.scrap_weight_kg == 14.233142
 
 
-def test_save_time_audit_rejects_generated_bom_quantity_drift(
-	monkeypatch: MonkeyPatch,
-) -> None:
-	from sheet_cutting_layout.services import validators
+def _audit_frappe_stub(*, bom_quantity: float, include_end_piece_scrap_row: bool = True) -> type:
+	scrap_items = [
+		type(
+			"ScrapItem",
+			(),
+			{"item_code": "PROCESSSCRAP001", "stock_qty": 14.233142, "qty": 14.233142},
+		)(),
+	]
+	if include_end_piece_scrap_row:
+		scrap_items.append(
+			type(
+				"ScrapItem",
+				(),
+				{"item_code": "ENDSCRAP001", "stock_qty": 2.81388, "qty": 2.81388},
+			)()
+		)
 
 	class FrappeStub:
 		ValidationError = ValueError
@@ -573,20 +585,9 @@ def test_save_time_audit_rejects_generated_bom_quantity_drift(
 				(),
 				{
 					"item": "FG01SHR",
-					"quantity": 99,
+					"quantity": bom_quantity,
 					"items": [type("BomItem", (), {"item_code": "RMSHEET001", "qty": 39.3})()],
-					"scrap_items": [
-						type(
-							"ScrapItem",
-							(),
-							{"item_code": "PROCESSSCRAP001", "stock_qty": 14.233142, "qty": 14.233142},
-						)(),
-						type(
-							"ScrapItem",
-							(),
-							{"item_code": "ENDSCRAP001", "stock_qty": 2.81388, "qty": 2.81388},
-						)(),
-					],
+					"scrap_items": scrap_items,
 				},
 			)()
 
@@ -594,31 +595,53 @@ def test_save_time_audit_rejects_generated_bom_quantity_drift(
 		def throw(message: str) -> None:
 			raise ValueError(message)
 
-	layout = type(
+	return FrappeStub
+
+
+_AUDIT_SCRAP_END_PIECE = {
+	"weight_kg": 2.81388,
+	"qty_per_sheet": 1,
+	"width_mm": 1250,
+	"length_mm": 179,
+	"disposition": "Scrap",
+	"scrap_item": "ENDSCRAP001",
+}
+
+_AUDIT_REUSE_END_PIECE = {
+	"idx": 1,
+	"end_piece_item_code": None,
+	"weight_kg": 2.81388,
+	"qty_per_sheet": 1,
+	"width_mm": 1250,
+	"length_mm": 179,
+	"disposition": "Reuse",
+	"scrap_item": None,
+	"used_for_finished_part": "FG002SHR",
+	"bom_quantity": 1,
+	"net_weight_per_part_kg": 2.81388,
+	"gross_weight_per_part_kg": 2.81388,
+	"scrap_weight_per_part_kg": 0,
+	"bom_scrap_quantity_kg": 0,
+}
+
+
+def _audit_layout(
+	*,
+	end_piece_fields: dict[str, object] = _AUDIT_SCRAP_END_PIECE,
+	sheet_thickness_mm: float | None = None,
+) -> object:
+	return type(
 		"AuditLayout",
 		(),
 		{
 			"finished_part_code": "FG01SHR",
 			"net_weight_per_part_kg": 0.289,
 			"generated_bom": "BOM-FG01SHR",
-			"end_pieces": [
-				type(
-					"EndPieceRow",
-					(),
-					{
-						"weight_kg": 2.81388,
-						"qty_per_sheet": 1,
-						"width_mm": 1250,
-						"length_mm": 179,
-						"disposition": "Scrap",
-						"scrap_item": "ENDSCRAP001",
-					},
-				)()
-			],
+			"end_pieces": [type("EndPieceRow", (), dict(end_piece_fields))()],
 			"raw_material_item": "RMSHEET001",
 			"process_scrap_item": "PROCESSSCRAP001",
 			"end_piece_bom_status": "",
-			"sheet_thickness_mm": None,
+			"sheet_thickness_mm": sheet_thickness_mm,
 			"sheet_width_mm": None,
 			"sheet_length_mm": None,
 			"weight_per_sheet_kg": 39.3,
@@ -636,11 +659,18 @@ def test_save_time_audit_rejects_generated_bom_quantity_drift(
 			"consumption_status": None,
 		},
 	)()
-	monkeypatch.setattr(validators, "frappe", FrappeStub)
+
+
+def test_save_time_audit_rejects_generated_bom_quantity_drift(
+	monkeypatch: MonkeyPatch,
+) -> None:
+	from sheet_cutting_layout.services import validators
+
+	monkeypatch.setattr(validators, "frappe", _audit_frappe_stub(bom_quantity=99))
 	monkeypatch.setattr(validators, "_", lambda message: message)
 
 	with raises(ValueError, match="BOM quantity mismatch"):
-		validators.validate_sheet_cutting_layout(layout)
+		validators.validate_sheet_cutting_layout(_audit_layout())
 
 
 def test_save_time_audit_rejects_missing_reuse_end_piece_byproduct_row(
@@ -648,89 +678,13 @@ def test_save_time_audit_rejects_missing_reuse_end_piece_byproduct_row(
 ) -> None:
 	from sheet_cutting_layout.services import validators
 
-	class FrappeStub:
-		ValidationError = ValueError
-
-		@staticmethod
-		def get_system_settings(_fieldname: str) -> None:
-			return None
-
-		@staticmethod
-		def get_doc(doctype: str, name: str) -> object:
-			assert (doctype, name) == ("BOM", "BOM-FG01SHR")
-			return type(
-				"Bom",
-				(),
-				{
-					"item": "FG01SHR",
-					"quantity": 77,
-					"items": [type("BomItem", (), {"item_code": "RMSHEET001", "qty": 39.3})()],
-					"scrap_items": [
-						type(
-							"ScrapItem",
-							(),
-							{"item_code": "PROCESSSCRAP001", "stock_qty": 14.233142, "qty": 14.233142},
-						)(),
-					],
-				},
-			)()
-
-		@staticmethod
-		def throw(message: str) -> None:
-			raise ValueError(message)
-
-	layout = type(
-		"AuditLayout",
-		(),
-		{
-			"finished_part_code": "FG01SHR",
-			"net_weight_per_part_kg": 0.289,
-			"generated_bom": "BOM-FG01SHR",
-			"end_pieces": [
-				type(
-					"EndPieceRow",
-					(),
-					{
-						"idx": 1,
-						"end_piece_item_code": None,
-						"weight_kg": 2.81388,
-						"qty_per_sheet": 1,
-						"width_mm": 1250,
-						"length_mm": 179,
-						"disposition": "Reuse",
-						"scrap_item": None,
-						"used_for_finished_part": "FG002SHR",
-						"bom_quantity": 1,
-						"net_weight_per_part_kg": 2.81388,
-						"gross_weight_per_part_kg": 2.81388,
-						"scrap_weight_per_part_kg": 0,
-						"bom_scrap_quantity_kg": 0,
-					},
-				)()
-			],
-			"raw_material_item": "RMSHEET001",
-			"process_scrap_item": "PROCESSSCRAP001",
-			"end_piece_bom_status": "",
-			"sheet_thickness_mm": 1.6,
-			"sheet_width_mm": None,
-			"sheet_length_mm": None,
-			"weight_per_sheet_kg": 39.3,
-			"strip_thickness_mm": None,
-			"strip_width_mm": None,
-			"strip_length_mm": None,
-			"weight_of_strip_kg": None,
-			"gross_weight_per_part_kg": 0.473846,
-			"scrap_weight_per_part_kg": 0.184846,
-			"parts_per_strip": 7,
-			"no_of_strips": 11,
-			"parts_per_sheet": 77,
-			"consumed_weight_kg": None,
-			"leftover_weight_kg": None,
-			"consumption_status": None,
-		},
-	)()
-	monkeypatch.setattr(validators, "frappe", FrappeStub)
+	monkeypatch.setattr(
+		validators,
+		"frappe",
+		_audit_frappe_stub(bom_quantity=77, include_end_piece_scrap_row=False),
+	)
 	monkeypatch.setattr(validators, "_", lambda message: message)
+	layout = _audit_layout(end_piece_fields=_AUDIT_REUSE_END_PIECE, sheet_thickness_mm=1.6)
 
 	with raises(ValueError, match="BOM scrap item mismatch"):
 		validators.validate_sheet_cutting_layout(layout)
@@ -741,89 +695,11 @@ def test_save_time_audit_rejects_fractional_generated_bom_quantity(
 ) -> None:
 	from sheet_cutting_layout.services import validators
 
-	class FrappeStub:
-		ValidationError = ValueError
-
-		@staticmethod
-		def get_system_settings(_fieldname: str) -> None:
-			return None
-
-		@staticmethod
-		def get_doc(doctype: str, name: str) -> object:
-			assert (doctype, name) == ("BOM", "BOM-FG01SHR")
-			return type(
-				"Bom",
-				(),
-				{
-					"item": "FG01SHR",
-					"quantity": 11.5,
-					"items": [type("BomItem", (), {"item_code": "RMSHEET001", "qty": 39.3})()],
-					"scrap_items": [
-						type(
-							"ScrapItem",
-							(),
-							{"item_code": "PROCESSSCRAP001", "stock_qty": 14.233142, "qty": 14.233142},
-						)(),
-						type(
-							"ScrapItem",
-							(),
-							{"item_code": "ENDSCRAP001", "stock_qty": 2.81388, "qty": 2.81388},
-						)(),
-					],
-				},
-			)()
-
-		@staticmethod
-		def throw(message: str) -> None:
-			raise ValueError(message)
-
-	layout = type(
-		"AuditLayout",
-		(),
-		{
-			"finished_part_code": "FG01SHR",
-			"net_weight_per_part_kg": 0.289,
-			"generated_bom": "BOM-FG01SHR",
-			"end_pieces": [
-				type(
-					"EndPieceRow",
-					(),
-					{
-						"weight_kg": 2.81388,
-						"qty_per_sheet": 1,
-						"width_mm": 1250,
-						"length_mm": 179,
-						"disposition": "Scrap",
-						"scrap_item": "ENDSCRAP001",
-					},
-				)()
-			],
-			"raw_material_item": "RMSHEET001",
-			"process_scrap_item": "PROCESSSCRAP001",
-			"end_piece_bom_status": "",
-			"sheet_thickness_mm": None,
-			"sheet_width_mm": None,
-			"sheet_length_mm": None,
-			"weight_per_sheet_kg": 39.3,
-			"strip_thickness_mm": None,
-			"strip_width_mm": None,
-			"strip_length_mm": None,
-			"weight_of_strip_kg": None,
-			"gross_weight_per_part_kg": 0.473846,
-			"scrap_weight_per_part_kg": 0.184846,
-			"parts_per_strip": 7,
-			"no_of_strips": 11,
-			"parts_per_sheet": 77,
-			"consumed_weight_kg": None,
-			"leftover_weight_kg": None,
-			"consumption_status": None,
-		},
-	)()
-	monkeypatch.setattr(validators, "frappe", FrappeStub)
+	monkeypatch.setattr(validators, "frappe", _audit_frappe_stub(bom_quantity=11.5))
 	monkeypatch.setattr(validators, "_", lambda message: message)
 
 	with raises(ValueError, match="BOM quantity mismatch"):
-		validators.validate_sheet_cutting_layout(layout)
+		validators.validate_sheet_cutting_layout(_audit_layout())
 
 
 def test_release_generates_bom_for_one_sheet_in_kg_with_scrap_outputs() -> None:
@@ -999,26 +875,24 @@ def test_release_does_not_db_set_unchanged_submitted_layouts(
 	assert old_layout.db_set_calls == []
 
 
-def test_controller_mr_release_action_calls_release_service_with_release_context(
+def test_controller_mr_release_action_calls_release_service(
 	monkeypatch: MonkeyPatch,
 ) -> None:
 	from sheet_cutting_layout.sheet_cutting_layout.doctype.sheet_cutting_layout import sheet_cutting_layout
 
 	calls: list[object] = []
-	context = object()
 
 	def fake_release_layout(layout: object, **kwargs: object) -> None:
 		calls.append((layout, kwargs))
 		return type("ReleaseResult", (), {"status": "Released"})()
 
 	monkeypatch.setattr(sheet_cutting_layout, "_get_selected_workflow_action", lambda: "MR Release")
-	monkeypatch.setattr(sheet_cutting_layout, "get_release_context", lambda layout: context)
 	monkeypatch.setattr(sheet_cutting_layout, "release_layout", fake_release_layout)
 
 	doc = _new_sheet_cutting_layout_doc(sheet_cutting_layout)
 	doc.before_workflow_action()
 
-	assert calls == [(doc, {"release_context": context})]
+	assert calls == [(doc, {})]
 
 
 def test_mr_release_records_mr_approval_snapshot() -> None:
@@ -1066,7 +940,6 @@ def test_controller_mr_release_suppresses_side_effects_during_internal_layout_sa
 			return datetime(2026, 5, 15, 12, 30, 0)
 
 	calls: list[object] = []
-	context = object()
 
 	def fake_release_layout(layout: object, **kwargs: object) -> object:
 		calls.append((layout, kwargs))
@@ -1077,7 +950,6 @@ def test_controller_mr_release_suppresses_side_effects_during_internal_layout_sa
 		return type("ReleaseResult", (), {"status": "Released"})()
 
 	monkeypatch.setattr(sheet_cutting_layout, "frappe", FrappeStub)
-	monkeypatch.setattr(sheet_cutting_layout, "get_release_context", lambda layout: context)
 	monkeypatch.setattr(sheet_cutting_layout, "release_layout", fake_release_layout)
 	monkeypatch.setattr(sheet_cutting_layout, "validate_sheet_cutting_layout", lambda _doc: None)
 
@@ -1086,7 +958,7 @@ def test_controller_mr_release_suppresses_side_effects_during_internal_layout_sa
 
 	doc.before_workflow_action()
 
-	assert calls == [(doc, {"release_context": context})]
+	assert calls == [(doc, {})]
 
 
 def test_controller_validate_applies_workflow_side_effects_and_records_snapshot(
@@ -2095,121 +1967,7 @@ def test_revision_resets_approval_snapshot_and_generated_boms() -> None:
 	]
 
 
-def test_finalizing_new_revision_keeps_previous_active_layouts_released() -> None:
-	from sheet_cutting_layout.services.versioning import finalize_new_revision_release
-
-	old_layout = RevisionLayout(
-		name="SCL-001",
-		project="FAM-001",
-		revision_no=1,
-		status="Released",
-		is_active=True,
-	)
-	other_family_layout = RevisionLayout(
-		name="SCL-OTHER",
-		project="FAM-OTHER",
-		revision_no=1,
-		status="Released",
-		is_active=True,
-	)
-	new_layout = RevisionLayout(
-		name="SCL-002",
-		project="FAM-001",
-		revision_no=2,
-		status="Approved by Purchase",
-		is_active=False,
-	)
-
-	finalize_new_revision_release([old_layout, other_family_layout, new_layout], new_layout, [])
-
-	assert old_layout.status == "Released"
-	assert old_layout.is_active is True
-	assert new_layout.status == "Released"
-	assert new_layout.is_active is True
-	assert other_family_layout.status == "Released"
-	assert other_family_layout.is_active is True
-
-
-def test_finalizing_new_revision_keeps_old_boms_for_affected_finished_parts_active() -> None:
-	from sheet_cutting_layout.services.versioning import finalize_new_revision_release
-
-	old_layout = RevisionLayout(
-		name="SCL-001",
-		project="FAM-001",
-		revision_no=1,
-		status="Released",
-		is_active=True,
-		finished_parts=[
-			FinishedPart("PART001SHR", generated_bom="BOM-PART-001-OLD"),
-			FinishedPart("PARTUNTOUCHEDSHR", generated_bom="BOM-UNTOUCHED-OLD"),
-		],
-	)
-	new_layout = RevisionLayout(
-		name="SCL-002",
-		project="FAM-001",
-		revision_no=2,
-		status="Approved by Purchase",
-		is_active=False,
-		finished_parts=[FinishedPart("PART001SHR", generated_bom="BOM-PART-001-NEW")],
-	)
-	old_bom = Bom("BOM-PART-001-OLD", item="PART001SHR")
-	new_bom = Bom("BOM-PART-001-NEW", item="PART001SHR")
-	unaffected_bom = Bom("BOM-UNTOUCHED-OLD", item="PARTUNTOUCHEDSHR")
-
-	finalize_new_revision_release([old_layout, new_layout], new_layout, [old_bom, new_bom, unaffected_bom])
-
-	assert old_bom.is_active is True
-	assert old_bom.disabled is False
-	assert old_bom.status == "Active"
-	assert new_bom.is_active is True
-	assert new_bom.disabled is False
-	assert new_bom.status == "Active"
-	assert unaffected_bom.is_active is True
-	assert unaffected_bom.disabled is False
-	assert unaffected_bom.status == "Active"
-
-
-def test_finalizing_new_revision_keeps_unlinked_same_item_boms_active() -> None:
-	from sheet_cutting_layout.services.versioning import finalize_new_revision_release
-
-	old_layout = RevisionLayout(
-		name="SCL-001",
-		project="FAM-001",
-		revision_no=1,
-		status="Released",
-		is_active=True,
-		finished_parts=[FinishedPart("PART001SHR", generated_bom="BOM-PART-001-OLD")],
-	)
-	new_layout = RevisionLayout(
-		name="SCL-002",
-		project="FAM-001",
-		revision_no=2,
-		status="Approved by Purchase",
-		is_active=False,
-		finished_parts=[FinishedPart("PART001SHR", generated_bom="BOM-PART-001-NEW")],
-	)
-	old_linked_bom = Bom("BOM-PART-001-OLD", item="PART001SHR")
-	unlinked_same_item_bom = Bom("BOM-PART-001-UNRELATED", item="PART001SHR")
-	new_bom = Bom("BOM-PART-001-NEW", item="PART001SHR")
-
-	finalize_new_revision_release(
-		[old_layout, new_layout],
-		new_layout,
-		[old_linked_bom, unlinked_same_item_bom, new_bom],
-	)
-
-	assert old_linked_bom.is_active is True
-	assert old_linked_bom.disabled is False
-	assert old_linked_bom.status == "Active"
-	assert unlinked_same_item_bom.is_active is True
-	assert unlinked_same_item_bom.disabled is False
-	assert unlinked_same_item_bom.status == "Active"
-	assert new_bom.is_active is True
-	assert new_bom.disabled is False
-	assert new_bom.status == "Active"
-
-
-def test_finalizing_new_revision_keeps_old_parent_generated_bom_active() -> None:
+def test_finalizing_new_revision_marks_only_the_new_layout_released_and_active() -> None:
 	from sheet_cutting_layout.services.versioning import finalize_new_revision_release
 
 	old_layout = RevisionLayout(
@@ -2219,7 +1977,7 @@ def test_finalizing_new_revision_keeps_old_parent_generated_bom_active() -> None
 		status="Released",
 		is_active=True,
 		generated_bom="BOM-PART-001-OLD",
-		finished_parts=[FinishedPart("PART001SHR")],
+		finished_parts=[FinishedPart("PART001SHR", generated_bom="BOM-PART-001-OLD")],
 	)
 	new_layout = RevisionLayout(
 		name="SCL-002",
@@ -2228,19 +1986,15 @@ def test_finalizing_new_revision_keeps_old_parent_generated_bom_active() -> None
 		status="Approved by Purchase",
 		is_active=False,
 		generated_bom="BOM-PART-001-NEW",
-		finished_parts=[FinishedPart("PART001SHR")],
+		finished_parts=[FinishedPart("PART001SHR", generated_bom="BOM-PART-001-NEW")],
 	)
-	old_bom = Bom("BOM-PART-001-OLD", item="PART001SHR")
-	new_bom = Bom("BOM-PART-001-NEW", item="PART001SHR")
 
-	finalize_new_revision_release([old_layout, new_layout], new_layout, [old_bom, new_bom])
+	finalize_new_revision_release(new_layout)
 
-	assert old_bom.is_active is True
-	assert old_bom.disabled is False
-	assert old_bom.status == "Active"
-	assert new_bom.is_active is True
-	assert new_bom.disabled is False
-	assert new_bom.status == "Active"
+	assert new_layout.status == "Released"
+	assert new_layout.is_active is True
+	assert old_layout.status == "Released"
+	assert old_layout.is_active is True
 
 
 def test_release_generates_one_bom_for_single_finished_part_and_keeps_existing_boms_active() -> None:
@@ -2288,7 +2042,6 @@ def test_release_generates_one_bom_for_single_finished_part_and_keeps_existing_b
 	assert new_layout.generated_bom == result.generated_boms[0].name
 	assert [row.finished_part_item for row in new_layout.finished_parts] == ["PART001SHR"]
 	assert [row.bom_quantity for row in new_layout.finished_parts] == [1]
-	assert result.superseded_layout is None
 	assert old_layout.status == "Released"
 	assert old_layout.is_active is True
 	assert old_bom.is_active is True

@@ -3,9 +3,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import Protocol
 
-import frappe
-
-from sheet_cutting_layout.overrides.bom import APP_CONTROLLED_BOM_UPDATE_FLAG
+from sheet_cutting_layout.overrides.bom import mark_bom_app_controlled
 from sheet_cutting_layout.services import validators
 from sheet_cutting_layout.services.bom_service import (
 	build_weight_split_bom_rows,
@@ -13,7 +11,23 @@ from sheet_cutting_layout.services.bom_service import (
 )
 from sheet_cutting_layout.services.end_piece_item_service import ensure_end_piece_item
 
-_ = frappe._
+try:
+	import frappe
+except ImportError:
+
+	class _ValidationError(Exception):
+		pass
+
+	class _FrappeCompat:
+		ValidationError = _ValidationError
+
+		@staticmethod
+		def throw(message: str) -> None:
+			raise _ValidationError(message)
+
+	frappe = _FrappeCompat()
+
+_ = getattr(frappe, "_", lambda message: message)
 
 
 class EndPieceRow(Protocol):
@@ -117,17 +131,12 @@ def _create_end_piece_bom(layout: LayoutDocument, row: EndPieceRow, item_code: s
 			},
 		)
 
-	flags = getattr(bom, "flags", None)
-	if flags is None:
-		flags = type("Flags", (), {})()
-		bom.flags = flags
-	setattr(flags, APP_CONTROLLED_BOM_UPDATE_FLAG, True)
+	mark_bom_app_controlled(bom)
 	bom.is_active = 1
 	bom.disabled = 0
 	if hasattr(bom, "status"):
 		bom.status = "Active"
 	bom.insert(ignore_permissions=True)
-	setattr(flags, APP_CONTROLLED_BOM_UPDATE_FLAG, True)
 	bom.submit()
 	return bom.name
 
