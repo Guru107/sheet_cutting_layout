@@ -1867,13 +1867,15 @@ class TestReleaseContextAndHelpers(ReleaseServiceIsolatedTestCase):
 			@staticmethod
 			def get_all(doctype: str, **kwargs: object) -> list[object]:
 				if doctype == "Sheet Cutting Layout":
-					return ["SCL-OLD"]
+					# Layout discovery uses lightweight name rows, not full documents.
+					return [frappe._dict(name="SCL-OLD")]
 				if doctype == "BOM":
 					return ["BOM-OLD"]
 				raise AssertionError(f"Unexpected doctype {doctype}")
 
 			@staticmethod
 			def get_doc(doctype: str, name: str) -> object:
+				assert doctype == "BOM", f"only BOMs are fetched as full documents, got {doctype}"
 				return type("Doc", (), {"doctype": doctype, "name": name})()
 
 		layout = RevisionLayout(

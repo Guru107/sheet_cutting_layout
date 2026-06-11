@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 try:
-	from frappe.tests.utils import FrappeTestCase
-except ImportError:  # Frappe v16 renamed the integration base class.
+	# Frappe v16's canonical base class; probe it first because v16 still ships
+	# frappe.tests.utils.FrappeTestCase as a deprecated shim slated for removal.
 	from frappe.tests import IntegrationTestCase as FrappeTestCase
+except ImportError:  # Frappe v15 ships FrappeTestCase instead.
+	from frappe.tests.utils import FrappeTestCase
 
 
 class SheetCuttingLayoutTestCase(FrappeTestCase):

@@ -25,6 +25,10 @@ _ = getattr(frappe, "_", lambda message: message)
 
 LayoutReleaseStatus = Literal["Approved by Purchase", "Released"]
 
+# Set on frappe.flags by the layout controller while its own save cycle runs
+# release_layout; _save_layout_records skips the nested save when it is active.
+SUPPRESS_WORKFLOW_SIDE_EFFECTS_FLAG = "sheet_cutting_layout_suppress_workflow_side_effects"
+
 
 class EndPieceRow(Protocol):
 	weight_kg: float
@@ -481,14 +485,18 @@ def _get_same_project_layouts(layout: ReleaseLayoutDocument) -> list[object]:
 	if not project:
 		return [layout]
 
-	layout_names = frappe.get_all(
+	# Lightweight rows are enough here: release_layout only uses this list to
+	# decide whether the revision path applies, and the released layout itself
+	# must be the in-memory document, never a re-fetched copy. Full get_doc
+	# fetches would be wasted reads on the release hot path.
+	layout_rows = frappe.get_all(
 		"Sheet Cutting Layout",
 		filters={"project": project},
-		pluck="name",
+		fields=["name"],
 	)
-	layouts = [frappe.get_doc("Sheet Cutting Layout", name) for name in layout_names]
-	if getattr(layout, "name", None) not in {getattr(existing, "name", None) for existing in layouts}:
-		layouts.append(layout)
+	layout_name = getattr(layout, "name", None)
+	layouts: list[object] = [row for row in layout_rows if row["name"] != layout_name]
+	layouts.append(layout)
 	return layouts
 
 
@@ -529,7 +537,7 @@ def _save_layout_records(layouts: Sequence[object]) -> None:
 	if not frappe:
 		return
 
-	if getattr(getattr(frappe, "flags", None), "sheet_cutting_layout_suppress_workflow_side_effects", False):
+	if getattr(getattr(frappe, "flags", None), SUPPRESS_WORKFLOW_SIDE_EFFECTS_FLAG, False):
 		# The layout controller is mid-save (workflow action cycle): the outer save
 		# persists the released layout, and a nested save of the same document
 		# would trip Frappe's timestamp conflict check.
@@ -537,14 +545,15 @@ def _save_layout_records(layouts: Sequence[object]) -> None:
 
 	for layout in layouts:
 		if _is_submitted_document(layout) and hasattr(layout, "db_set"):
-			layout.db_set(
+			state_values = _supported_field_values(
+				layout,
 				{
 					"status": getattr(layout, "status", None),
 					"is_active": getattr(layout, "is_active", None),
 				},
-				update_modified=True,
-				notify=False,
 			)
+			if state_values:
+				layout.db_set(state_values, update_modified=True, notify=False)
 		elif hasattr(layout, "save"):
 			layout.save(ignore_permissions=True)
 
@@ -588,20 +597,20 @@ def _company_for_layout(layout: object | None) -> str:
 	raise RuntimeError("Company is required to create generated BOMs")
 
 
-def _set_frappe_field_if_supported(doc: object, fieldname: str, value: object) -> None:
+def _field_is_supported(doc: object, fieldname: str) -> bool:
 	meta = getattr(doc, "meta", None)
-	if meta is not None and hasattr(meta, "has_field") and not meta.has_field(fieldname):
-		return
-	if meta is None and not hasattr(doc, fieldname):
-		return
-	setattr(doc, fieldname, value)
+	if meta is not None and hasattr(meta, "has_field"):
+		return bool(meta.has_field(fieldname))
+	return hasattr(doc, fieldname)
+
+
+def _set_frappe_field_if_supported(doc: object, fieldname: str, value: object) -> None:
+	if _field_is_supported(doc, fieldname):
+		setattr(doc, fieldname, value)
 
 
 def _supported_field_values(doc: object, values: dict[str, object]) -> dict[str, object]:
-	meta = getattr(doc, "meta", None)
-	if meta is not None and hasattr(meta, "has_field"):
-		return {field: value for field, value in values.items() if meta.has_field(field)}
-	return {field: value for field, value in values.items() if hasattr(doc, field)}
+	return {field: value for field, value in values.items() if _field_is_supported(doc, field)}
 
 
 def _sum_bom_qty(rows: Sequence[object]) -> float:
