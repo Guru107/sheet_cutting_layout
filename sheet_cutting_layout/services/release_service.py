@@ -160,19 +160,21 @@ def deactivate_generated_bom(layout: object) -> object | None:
 		deactivated_boms.append(bom_doc)
 		_set_frappe_field_if_supported(bom_doc, "is_active", 0)
 		_set_frappe_field_if_supported(bom_doc, "disabled", 1)
+		_set_frappe_field_if_supported(bom_doc, "is_default", 0)
 		_set_frappe_field_if_supported(bom_doc, "status", "Superseded")
 		if _is_submitted_document(bom_doc) and hasattr(bom_doc, "db_set"):
 			# Submitted BOMs cannot be safely re-saved through the layout flow here.
 			# Persist the retirement fields directly and leave broader ERPNext BOM-update
 			# orchestration to the explicit submitted-BOM lifecycle follow-up.
 			bom_doc.db_set(
-				{"is_active": 0, "disabled": 1, "status": "Superseded"},
+				{"is_active": 0, "disabled": 1, "is_default": 0, "status": "Superseded"},
 				update_modified=True,
 				notify=False,
 			)
 		else:
 			_mark_bom_app_controlled(bom_doc)
 			bom_doc.save(ignore_permissions=True)
+		_clear_item_default_bom_reference(bom_doc)
 	return deactivated_boms[0]
 
 
@@ -195,6 +197,7 @@ def cancel_generated_bom(layout: object) -> object | None:
 		try:
 			_set_frappe_field_if_supported(bom_doc, "is_active", 0)
 			_set_frappe_field_if_supported(bom_doc, "disabled", 1)
+			_set_frappe_field_if_supported(bom_doc, "is_default", 0)
 			_mark_bom_app_controlled(bom_doc)
 			# The submitted layout's own backlinks must be cleared before cancelling the
 			# BOM, or ERPNext link validation would always block the cancellation below.
@@ -206,17 +209,35 @@ def cancel_generated_bom(layout: object) -> object | None:
 					raise RuntimeError(f"Submitted generated BOM {bom_name} cannot be cancelled")
 				cancel()
 				_unlink_layout_from_generated_bom(bom_doc)
+				_clear_item_default_bom_reference(bom_doc)
 				continue
 
 			save = getattr(bom_doc, "save", None)
 			_unlink_layout_from_generated_bom(bom_doc)
 			if callable(save):
 				save(ignore_permissions=True)
+			_clear_item_default_bom_reference(bom_doc)
 		except Exception:
 			_db_rollback_to_savepoint(savepoint)
 			raise
 
 	return cancelled_boms[0]
+
+
+def _clear_item_default_bom_reference(bom_doc: object) -> None:
+	"""Mirror ERPNext's manage_default_bom for retirements persisted via db_set."""
+	item_code = str(getattr(bom_doc, "item", "") or "").strip()
+	bom_name = str(getattr(bom_doc, "name", "") or "").strip()
+	if not item_code or not bom_name:
+		return
+
+	db = getattr(frappe, "db", None) if frappe else None
+	get_value = getattr(db, "get_value", None)
+	set_value = getattr(db, "set_value", None)
+	if not callable(get_value) or not callable(set_value):
+		return
+	if get_value("Item", item_code, "default_bom") == bom_name:
+		set_value("Item", item_code, "default_bom", None, update_modified=False)
 
 
 def _db_savepoint(name: str) -> None:

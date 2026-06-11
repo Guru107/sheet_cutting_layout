@@ -2308,9 +2308,11 @@ def test_deactivate_generated_bom_marks_linked_bom_superseded(
 	class BomDoc:
 		def __init__(self) -> None:
 			self.name = "BOM-PART001SHR-001"
+			self.item = "PART001SHR"
 			self.flags = type("Flags", (), {})()
 			self.is_active = 1
 			self.disabled = 0
+			self.is_default = 1
 			self.status = "Active"
 			self.save_calls: list[dict[str, object]] = []
 
@@ -2320,6 +2322,18 @@ def test_deactivate_generated_bom_marks_linked_bom_superseded(
 	bom_doc = BomDoc()
 
 	class FrappeStub:
+		class db:
+			set_value_calls: ClassVar[list[tuple[object, ...]]] = []
+
+			@staticmethod
+			def get_value(doctype: str, name: str, fieldname: str) -> str:
+				assert (doctype, name, fieldname) == ("Item", "PART001SHR", "default_bom")
+				return "BOM-OTHER-001"
+
+			@classmethod
+			def set_value(cls, *args: object, **kwargs: object) -> None:
+				cls.set_value_calls.append(args)
+
 		@staticmethod
 		def get_doc(doctype: str, name: str) -> BomDoc:
 			assert (doctype, name) == ("BOM", "BOM-PART001SHR-001")
@@ -2332,9 +2346,12 @@ def test_deactivate_generated_bom_marks_linked_bom_superseded(
 	assert result is bom_doc
 	assert bom_doc.is_active == 0
 	assert bom_doc.disabled == 1
+	assert bom_doc.is_default == 0
 	assert bom_doc.status == "Superseded"
 	assert getattr(bom_doc.flags, "sheet_cutting_layout_allow_bom_update", False) is True
 	assert bom_doc.save_calls == [{"ignore_permissions": True}]
+	# Item.default_bom points at another BOM, so it must be left untouched.
+	assert FrappeStub.db.set_value_calls == []
 
 
 def test_deactivate_generated_bom_uses_db_set_for_submitted_bom(
@@ -2381,7 +2398,9 @@ def test_deactivate_generated_bom_uses_db_set_for_submitted_bom(
 	assert bom_doc.is_active == 0
 	assert bom_doc.disabled == 1
 	assert bom_doc.status == "Superseded"
-	assert bom_doc.db_set_calls == [({"is_active": 0, "disabled": 1, "status": "Superseded"}, True, False)]
+	assert bom_doc.db_set_calls == [
+		({"is_active": 0, "disabled": 1, "is_default": 0, "status": "Superseded"}, True, False)
+	]
 	assert bom_doc.save_calls == []
 
 
@@ -2394,10 +2413,12 @@ def test_deactivate_generated_bom_deactivates_every_bom_linked_to_layout(
 	class BomDoc:
 		docstatus = 1
 
-		def __init__(self, name: str) -> None:
+		def __init__(self, name: str, item: str) -> None:
 			self.name = name
+			self.item = item
 			self.is_active = 1
 			self.disabled = 0
+			self.is_default = 1
 			self.status = "Active"
 			self.db_set_calls: list[tuple[dict[str, object], bool, bool]] = []
 
@@ -2410,9 +2431,10 @@ def test_deactivate_generated_bom_deactivates_every_bom_linked_to_layout(
 			self.db_set_calls.append((values, update_modified, notify))
 
 	bom_docs = {
-		"BOM-MAIN-001": BomDoc("BOM-MAIN-001"),
-		"BOM-ENDPIECE-001": BomDoc("BOM-ENDPIECE-001"),
+		"BOM-MAIN-001": BomDoc("BOM-MAIN-001", "PART001SHR"),
+		"BOM-ENDPIECE-001": BomDoc("BOM-ENDPIECE-001", "EPITEM001"),
 	}
+	item_default_boms = {"PART001SHR": "BOM-MAIN-001", "EPITEM001": "BOM-ENDPIECE-001"}
 
 	class FrappeStub:
 		class db:
@@ -2422,6 +2444,22 @@ def test_deactivate_generated_bom_deactivates_every_bom_linked_to_layout(
 				assert filters == {"sheet_cutting_layout": "SCL-001"}
 				assert pluck == "name"
 				return ["BOM-MAIN-001", "BOM-ENDPIECE-001"]
+
+			@staticmethod
+			def get_value(doctype: str, name: str, fieldname: str) -> str | None:
+				assert (doctype, fieldname) == ("Item", "default_bom")
+				return item_default_boms.get(name)
+
+			@staticmethod
+			def set_value(
+				doctype: str,
+				name: str,
+				fieldname: str,
+				value: object = None,
+				update_modified: bool = True,
+			) -> None:
+				assert (doctype, fieldname, value, update_modified) == ("Item", "default_bom", None, False)
+				item_default_boms[name] = value
 
 		@staticmethod
 		def get_doc(doctype: str, name: str) -> BomDoc:
@@ -2440,11 +2478,12 @@ def test_deactivate_generated_bom_deactivates_every_bom_linked_to_layout(
 
 	assert result is bom_docs["BOM-MAIN-001"]
 	assert bom_docs["BOM-MAIN-001"].db_set_calls == [
-		({"is_active": 0, "disabled": 1, "status": "Superseded"}, True, False)
+		({"is_active": 0, "disabled": 1, "is_default": 0, "status": "Superseded"}, True, False)
 	]
 	assert bom_docs["BOM-ENDPIECE-001"].db_set_calls == [
-		({"is_active": 0, "disabled": 1, "status": "Superseded"}, True, False)
+		({"is_active": 0, "disabled": 1, "is_default": 0, "status": "Superseded"}, True, False)
 	]
+	assert item_default_boms == {"PART001SHR": None, "EPITEM001": None}
 
 
 def test_cancel_generated_bom_cancels_submitted_bom_with_app_control_flag(
