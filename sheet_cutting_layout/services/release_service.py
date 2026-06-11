@@ -131,7 +131,10 @@ def release_layout(
 		finalize_new_revision_release(layout)  # type: ignore[arg-type]
 	_sync_finished_part_reference_rows(layout, generated_boms, _parent_finished_part_rows(layout))
 	if layouts:
-		_save_layout_records(_release_layout_records(layouts, layout))
+		# Always persist the in-memory layout being released. The release context
+		# contains a re-fetched copy of the same record; saving that copy instead
+		# would write the pre-release status back and lose generated_bom.
+		_save_layout_records((layout,))
 	_save_bom_records(generated_boms)
 
 	return ReleaseResult(status=layout.status, generated_boms=generated_boms)
@@ -468,16 +471,6 @@ def _activate_boms(boms: Sequence[BomRecord]) -> None:
 		bom.is_active = True
 		bom.disabled = False
 		bom.status = "Active"
-
-
-def _release_layout_records(
-	layouts: Sequence[object],
-	layout: ReleaseLayoutDocument,
-) -> Sequence[object]:
-	# Always persist the in-memory layout being released. The release context
-	# contains a re-fetched copy of the same record; saving that copy instead
-	# would write the pre-release status back and lose generated_bom.
-	return (layout,)
 
 
 def _get_same_project_layouts(layout: ReleaseLayoutDocument) -> list[object]:
