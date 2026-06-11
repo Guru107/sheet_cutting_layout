@@ -4,6 +4,7 @@ import atexit
 from collections import defaultdict
 
 import frappe
+from frappe.utils import cint
 
 TEST_PREFIX = "SCL-TEST-"
 ITEM_CODE_PREFIX = "SCLTEST"
@@ -37,6 +38,17 @@ def _ensure_connection() -> bool:
 	return True
 
 
+def _cancel_submitted_bom(name: str) -> None:
+	# Submitted BOMs must be cancelled before deletion. Mirror the production
+	# cancel path (release_service.cancel_generated_bom) by setting the
+	# app-control flag so the before_cancel guard in overrides/bom.py allows it.
+	from sheet_cutting_layout.overrides.bom import mark_bom_app_controlled
+
+	doc = frappe.get_doc("BOM", name)
+	mark_bom_app_controlled(doc)
+	doc.cancel()
+
+
 def delete_if_exists(doctype: str, name: str) -> None:
 	if doctype == "Item" and not name.startswith(ITEM_CODE_PREFIX):
 		return
@@ -45,6 +57,8 @@ def delete_if_exists(doctype: str, name: str) -> None:
 	if not frappe.db.exists(doctype, name):
 		return
 	try:
+		if doctype == "BOM" and cint(frappe.db.get_value("BOM", name, "docstatus")) == 1:
+			_cancel_submitted_bom(name)
 		frappe.delete_doc(doctype, name, force=True, ignore_permissions=True)
 	except Exception:
 		pass
@@ -57,6 +71,30 @@ def get_prefixed_records(doctype: str) -> list[str]:
 	return frappe.get_all(doctype, filters={"name": ["like", f"{prefix}%"]}, pluck="name")
 
 
+def get_generated_test_boms() -> list[str]:
+	# Generated BOMs are named like "BOM-SCLTEST..." (not "SCL-TEST-..."), so the
+	# generic prefix sweep misses them. Sweep narrowly via the layout backlink
+	# and the generated-name prefix only.
+	if not frappe.db.table_exists("BOM"):
+		return []
+	names: set[str] = set()
+	names.update(
+		frappe.get_all(
+			"BOM",
+			filters={"sheet_cutting_layout": ["like", f"{TEST_PREFIX}%"]},
+			pluck="name",
+		)
+	)
+	names.update(
+		frappe.get_all(
+			"BOM",
+			filters={"name": ["like", f"BOM-{ITEM_CODE_PREFIX}%"]},
+			pluck="name",
+		)
+	)
+	return sorted(names)
+
+
 def cleanup_test_records() -> None:
 	if not _ensure_connection():
 		return
@@ -64,6 +102,9 @@ def cleanup_test_records() -> None:
 	for doctype in cleanup_order():
 		for name in sorted(_created_docs.get(doctype, set()), reverse=True):
 			delete_if_exists(doctype, name)
+		if doctype == "BOM":
+			for name in get_generated_test_boms():
+				delete_if_exists(doctype, name)
 		for name in get_prefixed_records(doctype):
 			delete_if_exists(doctype, name)
 
