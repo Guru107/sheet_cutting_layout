@@ -49,7 +49,9 @@ def import_bom_service() -> types.ModuleType:
 	try:
 		return importlib.import_module("sheet_cutting_layout.services.bom_service")
 	except ModuleNotFoundError as error:
-		raise AssertionError(f"BOM service module is not implemented: {error}")
+		if error.name != "sheet_cutting_layout.services.bom_service":
+			raise
+		raise AssertionError("BOM service module is not implemented") from error
 
 
 class TestBomService(SheetCuttingLayoutTestCase):
