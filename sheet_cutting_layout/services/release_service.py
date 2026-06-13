@@ -29,7 +29,6 @@ SUPPRESS_WORKFLOW_SIDE_EFFECTS_FLAG = "sheet_cutting_layout_suppress_workflow_si
 
 class EndPieceRow(Protocol):
 	weight_kg: float
-	qty_per_sheet: float
 	disposition: str
 	scrap_item: str | None
 

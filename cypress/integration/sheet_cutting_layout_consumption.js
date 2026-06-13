@@ -47,11 +47,9 @@ describe("Sheet Cutting Layout consumption tracking", () => {
 			return win.frappe.run_serially([
 				() => win.frappe.model.set_value(row.doctype, row.name, "width_mm", 1250),
 				() => win.frappe.model.set_value(row.doctype, row.name, "length_mm", 179),
-				() => win.frappe.model.set_value(row.doctype, row.name, "qty_per_sheet", 1),
 				() => win.frappe.model.set_value(row.doctype, row.name, "disposition", "Scrap"),
 				() =>
 					win.frappe.model.set_value(row.doctype, row.name, "scrap_item", endPieceItem),
-				() => frm.script_manager.trigger("qty_per_sheet", row.doctype, row.name),
 				() => frm.refresh_field("end_pieces"),
 			]);
 		});

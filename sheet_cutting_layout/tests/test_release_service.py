@@ -66,7 +66,6 @@ class FinishedPart:
 @dataclass
 class EndPiece:
 	weight_kg: float
-	qty_per_sheet: float = 1
 	disposition: str = "Reuse"
 	scrap_item: str | None = None
 	end_piece_item_code: str | None = None
@@ -534,7 +533,6 @@ class TestReleaseFlow(ReleaseServiceIsolatedTestCase):
 			end_pieces=[
 				EndPiece(
 					weight_kg=10.0,
-					qty_per_sheet=2,
 					disposition="Scrap",
 					scrap_item="ENDSCRAP001",
 				)
@@ -1450,7 +1448,6 @@ def _audit_frappe_stub(*, bom_quantity: float, include_end_piece_scrap_row: bool
 
 _AUDIT_SCRAP_END_PIECE = {
 	"weight_kg": 2.81388,
-	"qty_per_sheet": 1,
 	"width_mm": 1250,
 	"length_mm": 179,
 	"disposition": "Scrap",
@@ -1461,7 +1458,6 @@ _AUDIT_REUSE_END_PIECE = {
 	"idx": 1,
 	"end_piece_item_code": None,
 	"weight_kg": 2.81388,
-	"qty_per_sheet": 1,
 	"width_mm": 1250,
 	"length_mm": 179,
 	"disposition": "Reuse",

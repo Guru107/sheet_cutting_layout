@@ -16,7 +16,6 @@ class FinishedPartRow(Protocol):
 
 class EndPieceRow(Protocol):
 	weight_kg: float
-	qty_per_sheet: float
 	disposition: str
 	scrap_item: str | None
 	end_piece_item_code: str | None

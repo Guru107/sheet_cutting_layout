@@ -47,7 +47,6 @@ class EndPiece:
 	generated_end_piece_item: str | None = None
 	generated_end_piece_bom: str | None = None
 	weight_kg: float | None = 2.5545
-	qty_per_sheet: float | None = 1
 	width_mm: float | None = 1250
 	length_mm: float | None = 260
 	disposition: str | None = "Reuse"
@@ -121,6 +120,27 @@ class TestValidators(SheetCuttingLayoutTestCase):
 		self._translation_patch.start()
 		self.addCleanup(self._frappe_patch.stop)
 		self.addCleanup(self._translation_patch.stop)
+
+	def test_legacy_end_piece_multiplicity_guard_is_removed(self) -> None:
+		import inspect
+		from pathlib import Path
+
+		from sheet_cutting_layout.services import bom_service, release_service, validators
+
+		legacy_field = "qty" + "_per_sheet"
+		repo_root = Path(__file__).resolve().parents[2]
+		layout_end_piece_json = repo_root / (
+			"sheet_cutting_layout/sheet_cutting_layout/doctype/layout_end_piece/layout_end_piece.json"
+		)
+		consumption_spec = repo_root / "cypress/integration/sheet_cutting_layout_consumption.js"
+
+		validators_source = inspect.getsource(validators)
+		self.assertNotIn(legacy_field, validators_source)
+		self.assertNotIn("_validate_unreleased_legacy_end_piece_multiplicity", validators_source)
+		self.assertNotIn(legacy_field, inspect.getsource(bom_service))
+		self.assertNotIn(legacy_field, inspect.getsource(release_service))
+		self.assertNotIn(legacy_field, layout_end_piece_json.read_text())
+		self.assertNotIn(legacy_field, consumption_spec.read_text())
 
 	def _balanced_layout(
 		self,
@@ -706,24 +726,6 @@ class TestValidators(SheetCuttingLayoutTestCase):
 		with self.assertRaisesRegex(ValidationError, "Process scrap item cannot be the finished part item"):
 			self.validators.validate_sheet_cutting_layout(layout)
 
-	def test_qty_per_sheet_is_not_required_for_end_piece_validation(self) -> None:
-		layout = self._balanced_layout(end_piece=EndPiece(qty_per_sheet=None, scrap_item="EP-SCRAP"))
-
-		self.validators.validate_sheet_cutting_layout(layout)
-
-		self.assertEqual(layout.consumption_status, "Balanced")
-
-	def test_stale_qty_per_sheet_payload_is_ignored_for_weight_and_consumption(self) -> None:
-		layout = self._balanced_layout(end_piece=EndPiece(qty_per_sheet=3, scrap_item="EP-SCRAP"))
-		layout.status = "Released"
-
-		self.validators.validate_sheet_cutting_layout(layout)
-
-		self.assertEqual(layout.end_pieces[0].weight_kg, 2.5545)
-		self.assertEqual(layout.consumed_weight_kg, 24.562)
-		self.assertEqual(layout.leftover_weight_kg, 0.0)
-		self.assertEqual(layout.consumption_status, "Balanced")
-
 	def test_apply_end_piece_bom_status_uses_generated_bom_presence(self) -> None:
 		no_reuse = self._balanced_layout(
 			end_piece=EndPiece(
@@ -756,7 +758,6 @@ class TestValidators(SheetCuttingLayoutTestCase):
 			current_code="FG01SHR-EP-1x1250x261",
 			generated_end_piece_item="FG01SHR-EP-1x1250x260",
 			weight_kg=2.5545,
-			qty_per_sheet=1,
 			width_mm=1250,
 			length_mm=260,
 			disposition="Reuse",
@@ -776,7 +777,6 @@ class TestValidators(SheetCuttingLayoutTestCase):
 			previous_code="FG01SHR-EP-1x1250x260",
 			current_code="FG01SHR-EP-1x1250x261",
 			weight_kg=2.5545,
-			qty_per_sheet=1,
 			width_mm=1250,
 			length_mm=260,
 			disposition="Reuse",
@@ -796,7 +796,6 @@ class TestValidators(SheetCuttingLayoutTestCase):
 			previous_code=None,
 			current_code="FG01SHR-EP-1x1250x260",
 			weight_kg=2.5545,
-			qty_per_sheet=1,
 			width_mm=1250,
 			length_mm=260,
 			disposition="Reuse",

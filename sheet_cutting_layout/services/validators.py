@@ -23,7 +23,6 @@ class EndPieceRow(Protocol):
 	width_mm: float | None
 	length_mm: float | None
 	weight_kg: float | None
-	qty_per_sheet: float | None
 	disposition: str | None
 	used_for_finished_part: str | None
 	bom_quantity: float | None
@@ -81,7 +80,6 @@ def validate_sheet_cutting_layout(layout: SheetCuttingLayoutDocument) -> None:
 	apply_parent_scrap_weight_per_part_formula(layout)
 	end_pieces = list(getattr(layout, "end_pieces", []) or [])
 	apply_parts_per_sheet_formula(layout)
-	_validate_unreleased_legacy_end_piece_multiplicity(layout, end_pieces)
 	apply_end_piece_weight_formulas(layout, end_pieces)
 	apply_end_piece_reuse_weight_formulas(end_pieces)
 	_validate_parent_finished_part_fields(layout)
@@ -299,28 +297,6 @@ def _validate_end_piece_required_fields(
 		_validate_reuse_weight_split(layout, end_piece)
 	if _is_scrap_end_piece(end_piece) and _is_missing(getattr(end_piece, "scrap_item", None)):
 		frappe.throw(_("Scrap item is required for scrap end pieces"))
-
-
-def _validate_unreleased_legacy_end_piece_multiplicity(
-	layout: SheetCuttingLayoutDocument,
-	end_pieces: Sequence[EndPieceRow],
-) -> None:
-	if getattr(layout, "status", None) == "Released":
-		return
-	if any(_has_legacy_qty_per_sheet_multiplicity(end_piece) for end_piece in end_pieces):
-		frappe.throw(
-			_(
-				"End piece Qty Per Sheet greater than 1 is legacy data; "
-				"split into duplicate rows before release."
-			)
-		)
-
-
-def _has_legacy_qty_per_sheet_multiplicity(end_piece: EndPieceRow) -> bool:
-	try:
-		return float(getattr(end_piece, "qty_per_sheet", 0) or 0) > 1
-	except (TypeError, ValueError):
-		return False
 
 
 def _validate_end_piece_disposition(end_piece: EndPieceRow) -> None:

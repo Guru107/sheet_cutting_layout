@@ -4,8 +4,6 @@ from dataclasses import dataclass
 from types import SimpleNamespace
 from unittest.mock import patch
 
-import frappe
-
 from sheet_cutting_layout.tests.base import SheetCuttingLayoutTestCase
 from sheet_cutting_layout.tests.factories import (
 	make_layout,
@@ -192,28 +190,3 @@ class TestSheetCuttingLayoutController(SheetCuttingLayoutTestCase):
 
 		self.assertEqual(layout.status, "Released")
 		self.assertTrue(layout.generated_bom)
-
-	def test_unreleased_layout_with_qty_per_sheet_gt_one_is_blocked_until_rows_are_split(
-		self,
-	) -> None:
-		layout = make_layout(
-			finished_part_code="FG01SHR",
-			net_weight_per_part_kg=11.004,
-			generated_bom=None,
-		)
-		layout.strip_length_mm = 2240
-		layout.append(
-			"end_pieces",
-			{
-				"width_mm": 1250,
-				"length_mm": 260,
-				"qty_per_sheet": 2,
-				"disposition": "Reuse",
-				"used_for_finished_part": "FG01SHR",
-				"bom_quantity": 1,
-				"bom_scrap_quantity_kg": 0,
-			},
-		)
-
-		with self.assertRaisesRegex(frappe.ValidationError, "split into duplicate rows"):
-			layout.insert()
