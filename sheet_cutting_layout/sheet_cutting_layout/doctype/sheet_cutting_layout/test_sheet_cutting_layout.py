@@ -10,7 +10,6 @@ from sheet_cutting_layout.tests.base import SheetCuttingLayoutTestCase
 from sheet_cutting_layout.tests.factories import (
 	make_layout,
 	make_release_ready_layout,
-	register_test_doc,
 )
 
 from . import sheet_cutting_layout as controller
@@ -151,7 +150,6 @@ class TestSheetCuttingLayoutController(SheetCuttingLayoutTestCase):
 		layout.strip_length_mm = 2500
 
 		layout.insert()
-		register_test_doc("Sheet Cutting Layout", layout.name)
 		layout.reload()
 
 		self.assertEqual(layout.finished_part_code, "FG01SHR")
@@ -168,7 +166,6 @@ class TestSheetCuttingLayoutController(SheetCuttingLayoutTestCase):
 		layout.no_of_strips = 1
 		layout.strip_length_mm = 2500
 		layout.insert()
-		register_test_doc("Sheet Cutting Layout", layout.name)
 
 		layout.parts_per_strip = 7
 		layout.no_of_strips = 11
@@ -195,7 +192,6 @@ class TestSheetCuttingLayoutController(SheetCuttingLayoutTestCase):
 
 		self.assertEqual(layout.status, "Released")
 		self.assertTrue(layout.generated_bom)
-		register_test_doc("BOM", layout.generated_bom)
 
 	def test_unreleased_layout_with_qty_per_sheet_gt_one_is_blocked_until_rows_are_split(
 		self,
