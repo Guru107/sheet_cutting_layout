@@ -1233,6 +1233,10 @@ class TestFrappeBomInsertAndEndPieces(ReleaseServiceIsolatedTestCase):
 				assert self.company == "Test Company"
 				assert self.custom_operation == "Shearing"
 				assert self.sheet_cutting_layout == "SCL-001"
+				assert not hasattr(self, "uom")
+				assert not hasattr(self, "is_active")
+				assert not hasattr(self, "disabled")
+				assert not hasattr(self, "status")
 				self.name = self.name or "BOM-PERSISTED"
 
 			def submit(self) -> None:
@@ -1253,9 +1257,11 @@ class TestFrappeBomInsertAndEndPieces(ReleaseServiceIsolatedTestCase):
 		assert inserted.name == "BOM-PART001SHR"
 		assert inserted.status == "Active"
 
-	def test_frappe_bom_insert_wraps_scrap_rate_resolution_error(self) -> None:
+	def test_frappe_bom_insert_appends_scrap_without_rate_resolution(self) -> None:
 		from sheet_cutting_layout.services import release_service
 		from sheet_cutting_layout.services.bom_service import BomDocument, BomItemRow
+
+		created_boms: list[object] = []
 
 		class FrappeBom:
 			def __init__(self) -> None:
@@ -1268,9 +1274,10 @@ class TestFrappeBomInsertAndEndPieces(ReleaseServiceIsolatedTestCase):
 
 			def insert(self) -> None:
 				self.name = self.name or "BOM-PERSISTED"
+				created_boms.append(self)
 
 			def submit(self) -> None:
-				raise AssertionError("submit should not run after scrap-rate resolution failure")
+				self.docstatus = 1
 
 		class FrappeStub:
 			@staticmethod
@@ -1287,19 +1294,12 @@ class TestFrappeBomInsertAndEndPieces(ReleaseServiceIsolatedTestCase):
 		bom.scrap_items.append(BomItemRow(item_code="SCRAP-ITEM", qty=1.0, row_type="process_scrap"))
 		self.start_patcher(patch.object(release_service, "frappe", FrappeStub))
 
-		def _raise_rate_error(**_kwargs: object) -> float:
-			raise ValueError("Valuation rate is required for scrap item SCRAP-ITEM")
+		release_service._insert_frappe_bom(bom)
 
-		self.start_patcher(patch.object(release_service, "resolve_scrap_item_rate", _raise_rate_error))
-
-		with self.assertRaisesRegex(
-			ValueError,
-			(
-				r"^Failed to resolve valuation rate for scrap item SCRAP-ITEM: "
-				r"Valuation rate is required for scrap item SCRAP-ITEM$"
-			),
-		):
-			release_service._insert_frappe_bom(bom)
+		self.assertEqual(
+			created_boms[0].scrap_items,
+			[{"item_code": "SCRAP-ITEM", "stock_qty": 1.0, "qty": 1.0, "uom": "Kg"}],
+		)
 
 	def test_default_release_creates_reuse_end_piece_byproduct_row(self) -> None:
 		from sheet_cutting_layout.services import release_service
@@ -1360,7 +1360,6 @@ class TestFrappeBomInsertAndEndPieces(ReleaseServiceIsolatedTestCase):
 
 		self.start_patcher(patch.object(release_service, "frappe", FrappeStub))
 		self.start_patcher(patch.object(release_service, "ensure_end_piece_item", fake_ensure))
-		self.start_patcher(patch.object(release_service, "resolve_scrap_item_rate", lambda **_kwargs: 62.0))
 
 		result = release_service.release_layout(
 			layout,
@@ -1377,14 +1376,12 @@ class TestFrappeBomInsertAndEndPieces(ReleaseServiceIsolatedTestCase):
 				"stock_qty": 14.233142,
 				"qty": 14.233142,
 				"uom": "Kg",
-				"rate": 62.0,
 			},
 			{
 				"item_code": "FG002SHR-EP-1.6x1250x179",
 				"stock_qty": 2.81388,
 				"qty": 2.81388,
 				"uom": "Kg",
-				"rate": 62.0,
 			},
 		]
 		assert round(layout.finished_parts[0].scrap_weight_kg, 6) == 17.047022
@@ -1479,7 +1476,6 @@ class TestFrappeBomInsertAndEndPieces(ReleaseServiceIsolatedTestCase):
 
 		self.start_patcher(patch.object(release_service, "frappe", FrappeStub))
 		self.start_patcher(patch.object(release_service, "ensure_end_piece_item", fake_ensure))
-		self.start_patcher(patch.object(release_service, "resolve_scrap_item_rate", lambda **_kwargs: 62.0))
 
 		release_service.release_layout(
 			layout,
@@ -2221,6 +2217,26 @@ class TestReleaseServiceIntegration(SheetCuttingLayoutTestCase):
 		self.assertEqual(len(raw_rows), 1)
 		self.assertFloatAlmostEqual(raw_rows[0].qty, layout.weight_per_sheet_kg)
 		self.assertEqual(raw_rows[0].uom, "Kg")
+
+	def test_generated_bom_lets_controller_compute_uom_and_status(self) -> None:
+		import frappe
+
+		from sheet_cutting_layout.tests.factories import make_release_ready_layout
+
+		layout = make_release_ready_layout()
+		# Direct submit setup mirrors the current D-1 path until D-5 aligns the
+		# user-facing workflow with native submit.
+		layout.status = "Released"
+		layout.submit()
+		if layout.generated_bom:
+			register_test_doc("BOM", layout.generated_bom)
+
+		layout.reload()
+		self.assertEqual(layout.status, "Released")
+		self.assertTrue(layout.generated_bom)
+		bom = frappe.get_doc("BOM", layout.generated_bom)
+		self.assertEqual(bom.is_active, 1)
+		self.assertEqual(bom.uom, frappe.db.get_value("Item", layout.finished_part_code, "stock_uom"))
 
 	def test_native_submit_release_persists_release_artifacts(self) -> None:
 		layout = self._release_ready_layout()

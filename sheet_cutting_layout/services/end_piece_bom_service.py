@@ -5,10 +5,7 @@ from typing import Protocol
 
 from sheet_cutting_layout.overrides.bom import mark_bom_app_controlled
 from sheet_cutting_layout.services import validators
-from sheet_cutting_layout.services.bom_service import (
-	build_weight_split_bom_rows,
-	resolve_scrap_item_rate,
-)
+from sheet_cutting_layout.services.bom_service import build_weight_split_bom_rows
 from sheet_cutting_layout.services.end_piece_item_service import ensure_end_piece_item
 
 import frappe
@@ -77,7 +74,6 @@ def _create_end_piece_bom(layout: LayoutDocument, row: EndPieceRow, item_code: s
 	bom.item = _required_clean(row, "used_for_finished_part")
 	bom.company = _company_for_layout(layout)
 	bom.quantity = getattr(row, "bom_quantity", None)
-	bom.uom = "Kg"
 	bom.custom_operation = "Shearing"
 	bom.sheet_cutting_layout = getattr(layout, "name", None)
 
@@ -95,17 +91,10 @@ def _create_end_piece_bom(layout: LayoutDocument, row: EndPieceRow, item_code: s
 				"item_code": item_row.item_code,
 				"qty": item_row.qty,
 				"uom": item_row.uom,
-				"stock_uom": item_row.uom,
-				"stock_qty": item_row.qty,
-				"conversion_factor": 1,
 			},
 		)
 
 	for scrap_row in weight_rows.scrap_items:
-		try:
-			rate = resolve_scrap_item_rate(item_code=scrap_row.item_code, company=bom.company)
-		except ValueError as error:
-			_throw(_("Row {0}: {1}").format(getattr(row, "idx", 0), str(error)))
 		bom.append(
 			"scrap_items",
 			{
@@ -113,15 +102,10 @@ def _create_end_piece_bom(layout: LayoutDocument, row: EndPieceRow, item_code: s
 				"qty": scrap_row.qty,
 				"stock_qty": scrap_row.qty,
 				"uom": scrap_row.uom,
-				"rate": rate,
 			},
 		)
 
 	mark_bom_app_controlled(bom)
-	bom.is_active = 1
-	bom.disabled = 0
-	if hasattr(bom, "status"):
-		bom.status = "Active"
 	bom.insert(ignore_permissions=True)
 	bom.submit()
 	return bom.name

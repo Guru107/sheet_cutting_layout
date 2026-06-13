@@ -10,7 +10,6 @@ from sheet_cutting_layout.services.bom_service import (
 	ParentFinishedPartRow,
 	build_bom_from_layout_row,
 	parent_finished_part_row,
-	resolve_scrap_item_rate,
 )
 from sheet_cutting_layout.services.end_piece_item_service import ensure_end_piece_item
 from sheet_cutting_layout.services.validators import validate_sheet_cutting_layout
@@ -370,11 +369,6 @@ def _insert_frappe_bom(bom: BomDocument) -> BomDocument:
 	bom_doc.item = bom.item
 	bom_doc.company = _company_for_layout(getattr(bom, "_layout", None))
 	bom_doc.quantity = bom.quantity
-	bom_doc.uom = "Kg"
-	bom_doc.is_active = 1
-	bom_doc.disabled = 0
-	if hasattr(bom_doc, "status"):
-		bom_doc.status = "Active"
 	bom_doc.custom_operation = "Shearing"
 	bom_doc.sheet_cutting_layout = bom.sheet_cutting_layout or getattr(
 		getattr(bom, "_layout", None), "name", None
@@ -390,19 +384,6 @@ def _insert_frappe_bom(bom: BomDocument) -> BomDocument:
 			},
 		)
 	for row in bom.scrap_items:
-		try:
-			rate = resolve_scrap_item_rate(
-				item_code=row.item_code,
-				company=bom_doc.company,
-				existing_rate=getattr(row, "rate", None),
-			)
-		except ValueError as error:
-			frappe.throw(
-				_("Failed to resolve valuation rate for scrap item {0}: {1}").format(
-					row.item_code,
-					str(error),
-				)
-			)
 		bom_doc.append(
 			"scrap_items",
 			{
@@ -410,7 +391,6 @@ def _insert_frappe_bom(bom: BomDocument) -> BomDocument:
 				"stock_qty": row.qty,
 				"qty": row.qty,
 				"uom": row.uom,
-				"rate": rate,
 			},
 		)
 	bom_doc.insert()
