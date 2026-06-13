@@ -91,6 +91,8 @@ class FinishedPartReferenceRow:
 	bom_quantity: float | None
 	scrap_weight_kg: float | None
 	raw_material_weight_kg: float | None
+	generated_bom: str | None = None
+	orientation: str | None = None
 
 
 ReleaseContextProvider = Callable[[ReleaseLayoutDocument], ReleaseContext]
@@ -325,7 +327,8 @@ def _generate_boms(
 			if bom_document_factory is not None
 			else _default_bom_document_factory(layout, finished_part, index, bom_name_factory)
 		)
-		_set_frappe_field_if_supported(layout, "generated_bom", bom.name)
+		if index == 1:
+			_set_frappe_field_if_supported(layout, "generated_bom", bom.name)
 		generated_boms.append(bom)
 
 	return generated_boms
@@ -437,12 +440,17 @@ def _sync_finished_part_reference_rows(
 	generated_boms: Sequence[BomDocument],
 	finished_parts: Sequence[FinishedPartRow],
 ) -> None:
+	if len(generated_boms) != len(finished_parts):
+		raise ValueError("generated_boms and finished_parts length mismatch")
+
 	references = [
 		{
 			"finished_part_item": finished_part.finished_part_item,
 			"bom_quantity": _finished_part_bom_quantity(finished_part),
 			"scrap_weight_kg": _sum_bom_qty(bom.scrap_items),
 			"raw_material_weight_kg": _sum_bom_qty(bom.items),
+			"generated_bom": getattr(bom, "name", None),
+			"orientation": getattr(finished_part, "orientation", None),
 		}
 		for finished_part, bom in zip(finished_parts, generated_boms, strict=False)
 	]

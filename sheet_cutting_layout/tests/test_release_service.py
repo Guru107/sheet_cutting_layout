@@ -452,6 +452,87 @@ class TestReleaseFlow(ReleaseServiceIsolatedTestCase):
 		assert [row.finished_part_item for row in layout.finished_parts] == ["PART001SHR"]
 		assert [row.bom_quantity for row in layout.finished_parts] == [77]
 
+	def test_generated_bom_holds_primary_part_with_multiple_finished_parts(self) -> None:
+		layout = Layout()
+		layout.finished_part_code = "PART001SHR"
+		built: list[str] = []
+
+		def fake_factory(layout_doc, finished_part, index):
+			from sheet_cutting_layout.services.bom_service import BomDocument
+
+			name = f"BOM-{index:03d}-{finished_part.finished_part_item}"
+			built.append(name)
+			return BomDocument(item=finished_part.finished_part_item, name=name)
+
+		from sheet_cutting_layout.services import release_service
+
+		def two_rows(_layout):
+			from sheet_cutting_layout.services.bom_service import ParentFinishedPartRow
+
+			return [
+				ParentFinishedPartRow("PART001SHR", 1, 1.0, 0.0),
+				ParentFinishedPartRow("PART001SHR_TWIN", 1, 1.0, 0.0),
+			]
+
+		with patch.object(release_service, "_parent_finished_part_rows", two_rows):
+			result = release_service.release_layout(
+				layout,
+				layouts=(),
+				boms=[],
+				validators=(),
+				bom_document_factory=fake_factory,
+			)
+
+		self.assertEqual(len(result.generated_boms), 2)
+		self.assertEqual(layout.generated_bom, built[0])
+		self.assertEqual([row.generated_bom for row in layout.finished_parts], built)
+
+	def test_sync_finished_part_reference_rows_rejects_mismatched_lengths(self) -> None:
+		from sheet_cutting_layout.services import release_service
+		from sheet_cutting_layout.services.bom_service import BomDocument
+
+		layout = Layout(finished_parts=[])
+		finished_parts = [
+			FinishedPart("PART001SHR"),
+			FinishedPart("PART001SHR_TWIN"),
+		]
+		generated_boms = [BomDocument(item="PART001SHR", name="BOM-001-PART001SHR")]
+
+		with self.assertRaisesRegex(
+			ValueError,
+			"generated_boms and finished_parts length mismatch",
+		):
+			release_service._sync_finished_part_reference_rows(layout, generated_boms, finished_parts)
+
+	def test_sync_finished_part_reference_rows_maps_generated_bom_and_optional_orientation(self) -> None:
+		from sheet_cutting_layout.services import release_service
+		from sheet_cutting_layout.services.bom_service import BomDocument
+
+		layout = Layout(finished_parts=[])
+		finished_parts = [
+			SimpleNamespace(
+				finished_part_item="PART001LHSHR",
+				parts_per_sheet=2,
+				orientation="LH",
+			),
+			SimpleNamespace(
+				finished_part_item="PART001SHR",
+				parts_per_sheet=1,
+			),
+		]
+		generated_boms = [
+			BomDocument(item="PART001LHSHR", name="BOM-001-PART001LHSHR"),
+			BomDocument(item="PART001SHR", name="BOM-002-PART001SHR"),
+		]
+
+		release_service._sync_finished_part_reference_rows(layout, generated_boms, finished_parts)
+
+		self.assertEqual(
+			[row.generated_bom for row in layout.finished_parts],
+			["BOM-001-PART001LHSHR", "BOM-002-PART001SHR"],
+		)
+		self.assertEqual([row.orientation for row in layout.finished_parts], ["LH", None])
+
 	def test_release_uses_parent_finished_part_contract_without_child_inputs(self) -> None:
 		from sheet_cutting_layout.services.release_service import release_layout
 
