@@ -15,6 +15,24 @@ class TestGeometry(unittest.TestCase):
 			places=6,
 		)
 
+	def test_sheet_weight_precision_rounds_final_result(self) -> None:
+		self.assertEqual(
+			geometry.sheet_weight_kg(thickness_mm=1, width_mm=1234, length_mm=2345, precision=3),
+			22.745,
+		)
+
+	def test_sheet_weight_can_round_density_separately_for_legacy_callers(self) -> None:
+		self.assertEqual(
+			geometry.sheet_weight_kg(
+				thickness_mm=10,
+				width_mm=1000,
+				length_mm=1000,
+				precision=6,
+				density_precision=1,
+			),
+			79.0,
+		)
+
 	def test_sheet_weight_returns_none_for_nonpositive_or_invalid(self) -> None:
 		self.assertIsNone(geometry.sheet_weight_kg(thickness_mm=None, width_mm=1250, length_mm=2500))
 		self.assertIsNone(geometry.sheet_weight_kg(thickness_mm=0, width_mm=1250, length_mm=2500))

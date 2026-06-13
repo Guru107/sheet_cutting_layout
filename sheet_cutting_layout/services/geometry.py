@@ -32,6 +32,7 @@ def sheet_weight_kg(
 	width_mm: float | int | str | None,
 	length_mm: float | int | str | None,
 	precision: int = DEFAULT_PRECISION,
+	density_precision: int | None = None,
 ) -> float | None:
 	"""Steel weight of a rectangular sheet/strip/part in kg.
 
@@ -48,7 +49,10 @@ def sheet_weight_kg(
 		return None
 	if thickness <= 0 or width <= 0 or length <= 0:
 		return None
-	weight = length * width * thickness * STEEL_DENSITY_G_PER_CM3 / 1_000_000
+	density = STEEL_DENSITY_G_PER_CM3
+	if density_precision is not None:
+		density = _round(density, density_precision)
+	weight = length * width * thickness * density / 1_000_000
 	return _round(weight, precision)
 
 

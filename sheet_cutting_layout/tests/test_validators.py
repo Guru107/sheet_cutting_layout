@@ -247,6 +247,51 @@ class TestValidators(SheetCuttingLayoutTestCase):
 			79.0,
 		)
 
+	def test_validators_sheet_weight_delegates_to_geometry(self) -> None:
+		from sheet_cutting_layout.services import validators
+
+		with patch(
+			"sheet_cutting_layout.services.validators.geometry.sheet_weight_kg", return_value=99.0
+		) as spy:
+			result = validators.calculate_sheet_weight_kg(thickness_mm=1, width_mm=2, length_mm=3)
+
+		self.assertEqual(result, 99.0)
+		spy.assert_called_once_with(
+			thickness_mm=1,
+			width_mm=2,
+			length_mm=3,
+			precision=validators._calculation_precision(),
+			density_precision=validators._float_precision(),
+		)
+
+	def test_validators_parent_gross_weight_delegates_to_geometry(self) -> None:
+		from sheet_cutting_layout.services import validators
+
+		with patch(
+			"sheet_cutting_layout.services.validators.geometry.gross_weight_per_part_kg",
+			return_value=12.345,
+		) as spy:
+			result = validators.calculate_parent_gross_weight_per_part_kg(
+				weight_of_strip_kg=10,
+				parts_per_strip=2,
+			)
+
+		self.assertEqual(result, 12.345)
+		spy.assert_called_once_with(
+			weight_of_strip_kg=10,
+			parts_per_strip=2,
+			precision=validators._calculation_precision(),
+		)
+
+	def test_validators_parts_per_sheet_delegates_to_geometry(self) -> None:
+		from sheet_cutting_layout.services import validators
+
+		with patch("sheet_cutting_layout.services.validators.geometry.parts_per_sheet", return_value=42) as spy:
+			result = validators.calculate_parts_per_sheet(parts_per_strip=6, no_of_strips=7)
+
+		self.assertEqual(result, 42)
+		spy.assert_called_once_with(parts_per_strip=6, no_of_strips=7)
+
 	def test_strip_and_parts_formulas_derive_parent_fields_from_parent_inputs(self) -> None:
 		layout = Layout(
 			finished_part_code="AB12SHR",

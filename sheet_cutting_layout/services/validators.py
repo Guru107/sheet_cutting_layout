@@ -4,6 +4,7 @@ import re
 from collections.abc import Sequence
 from typing import Protocol
 
+from sheet_cutting_layout.services import geometry
 from sheet_cutting_layout.services.bom_service import (
 	BomItemRow,
 	build_bom_from_layout,
@@ -60,7 +61,6 @@ class SheetCuttingLayoutDocument(Protocol):
 
 
 ALNUM_RE = re.compile(r"^[A-Za-z0-9]+$")
-STEEL_DENSITY_G_PER_CM3 = 7.86
 DEFAULT_FLOAT_PRECISION = 6
 SHEET_CONSUMPTION_PRECISION = 3
 SHEET_CONSUMPTION_TOLERANCE_KG = 0.005
@@ -152,11 +152,7 @@ def calculate_parts_per_sheet(
 	parts_per_strip: int | None,
 	no_of_strips: int | None,
 ) -> int | None:
-	if parts_per_strip is None or no_of_strips is None:
-		return None
-	if parts_per_strip <= 0 or no_of_strips <= 0:
-		return None
-	return int(parts_per_strip) * int(no_of_strips)
+	return geometry.parts_per_sheet(parts_per_strip=parts_per_strip, no_of_strips=no_of_strips)
 
 
 def calculate_parent_gross_weight_per_part_kg(
@@ -164,9 +160,11 @@ def calculate_parent_gross_weight_per_part_kg(
 	weight_of_strip_kg: float | None,
 	parts_per_strip: int | None,
 ) -> float | None:
-	if weight_of_strip_kg is None or parts_per_strip is None or parts_per_strip <= 0:
-		return None
-	return _flt(weight_of_strip_kg / parts_per_strip)
+	return geometry.gross_weight_per_part_kg(
+		weight_of_strip_kg=weight_of_strip_kg,
+		parts_per_strip=parts_per_strip,
+		precision=_calculation_precision(),
+	)
 
 
 def apply_end_piece_weight_formulas(
@@ -207,17 +205,13 @@ def calculate_sheet_weight_kg(
 	width_mm: float | None,
 	length_mm: float | None,
 ) -> float | None:
-	try:
-		thickness = float(thickness_mm)
-		width = float(width_mm)
-		length = float(length_mm)
-	except (TypeError, ValueError):
-		return None
-	if thickness <= 0 or width <= 0 or length <= 0:
-		return None
-
-	weight = length * width * thickness * _steel_density_g_per_cm3() / 1_000_000
-	return _flt(weight)
+	return geometry.sheet_weight_kg(
+		thickness_mm=thickness_mm,
+		width_mm=width_mm,
+		length_mm=length_mm,
+		precision=_calculation_precision(),
+		density_precision=_float_precision(),
+	)
 
 
 def apply_consumption_tracking(
@@ -610,10 +604,6 @@ def _calculation_precision() -> int:
 	return max(_float_precision(), DEFAULT_FLOAT_PRECISION)
 
 
-def _steel_density_g_per_cm3() -> float:
-	return _system_flt(STEEL_DENSITY_G_PER_CM3)
-
-
 def _sheet_consumption_flt(value: float | int | str | None) -> float:
 	utils = getattr(frappe, "utils", None)
 	flt = getattr(utils, "flt", None)
@@ -637,10 +627,6 @@ def _consumption_status(leftover_weight: float) -> str:
 def _flt(value: float | int | str | None) -> float:
 	precision = _calculation_precision()
 	return _round_value(value, precision)
-
-
-def _system_flt(value: float | int | str | None) -> float:
-	return _round_value(value, _float_precision())
 
 
 def _round_value(value: float | int | str | None, precision: int) -> float:
