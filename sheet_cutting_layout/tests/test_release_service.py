@@ -168,7 +168,7 @@ class ReleaseServiceIsolatedTestCase(SheetCuttingLayoutTestCase):
 
 	def setUp(self) -> None:
 		super().setUp()
-		self.start_patcher(patch.object(release_service, "frappe", new=None))
+		self.start_patcher(patch.object(release_service, "frappe", new=_SavableBomFrappeStub))
 		# frappe.copy_doc may not exist in this runtime; force the deepcopy fallback in _copy_layout.
 		self.start_patcher(patch.object(frappe, "copy_doc", new=None, create=True))
 
@@ -1794,13 +1794,6 @@ class TestFrappeBomInsertAndEndPieces(ReleaseServiceIsolatedTestCase):
 
 
 class TestReleaseContextAndHelpers(ReleaseServiceIsolatedTestCase):
-	def test_get_release_context_requires_frappe_outside_tests(self) -> None:
-		# release_service.frappe is already None via ReleaseServiceIsolatedTestCase.setUp
-		from sheet_cutting_layout.services import release_service
-
-		with self.assertRaisesRegex(RuntimeError, "Frappe is required"):
-			release_service.get_release_context(Layout())
-
 	def test_release_context_discovers_layouts_and_boms(self) -> None:
 		from sheet_cutting_layout.services import release_service
 
@@ -1856,23 +1849,6 @@ class TestReleaseContextAndHelpers(ReleaseServiceIsolatedTestCase):
 
 		assert context.layouts == [layout]
 		assert context.boms == []
-
-	def test_release_helpers_raise_without_frappe(self) -> None:
-		# release_service.frappe is already None via ReleaseServiceIsolatedTestCase.setUp
-		from sheet_cutting_layout.services import release_service
-
-		with self.assertRaisesRegex(RuntimeError, "BOM records"):
-			release_service._get_finished_part_boms(Layout())
-
-	def test_default_bom_factory_requires_frappe_outside_tests(self) -> None:
-		# release_service.frappe is already None via ReleaseServiceIsolatedTestCase.setUp
-		from sheet_cutting_layout.services import release_service
-
-		layout = Layout()
-		finished_part = layout.finished_parts[0]
-
-		with self.assertRaisesRegex(RuntimeError, "persist generated BOM"):
-			release_service._default_bom_document_factory(layout, finished_part, 1, None)
 
 	def test_company_resolution_uses_defaults_and_errors_when_missing(self) -> None:
 		from sheet_cutting_layout.services import release_service

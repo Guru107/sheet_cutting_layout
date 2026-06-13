@@ -1,22 +1,8 @@
 from __future__ import annotations
 
-try:
-	import frappe
-except ImportError:
+import frappe
 
-	class _ValidationError(Exception):
-		pass
-
-	class _FrappeCompat:
-		ValidationError = _ValidationError
-
-		@staticmethod
-		def throw(message: str) -> None:
-			raise _ValidationError(message)
-
-	frappe = _FrappeCompat()
-
-_ = getattr(frappe, "_", lambda message: message)
+_ = frappe._
 
 
 APP_CONTROLLED_BOM_UPDATE_FLAG = "sheet_cutting_layout_allow_bom_update"

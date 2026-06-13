@@ -11,23 +11,9 @@ from sheet_cutting_layout.services.bom_service import (
 )
 from sheet_cutting_layout.services.end_piece_item_service import ensure_end_piece_item
 
-try:
-	import frappe
-except ImportError:
+import frappe
 
-	class _ValidationError(Exception):
-		pass
-
-	class _FrappeCompat:
-		ValidationError = _ValidationError
-
-		@staticmethod
-		def throw(message: str) -> None:
-			raise _ValidationError(message)
-
-	frappe = _FrappeCompat()
-
-_ = getattr(frappe, "_", lambda message: message)
+_ = frappe._
 
 
 class EndPieceRow(Protocol):

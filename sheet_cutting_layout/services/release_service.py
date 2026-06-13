@@ -16,12 +16,9 @@ from sheet_cutting_layout.services.end_piece_item_service import ensure_end_piec
 from sheet_cutting_layout.services.validators import validate_sheet_cutting_layout
 from sheet_cutting_layout.services.versioning import finalize_new_revision_release
 
-try:
-	import frappe
-except ImportError:
-	frappe = None
+import frappe
 
-_ = getattr(frappe, "_", lambda message: message)
+_ = frappe._
 
 LayoutReleaseStatus = Literal["Approved by Purchase", "Released"]
 
@@ -146,7 +143,7 @@ def release_layout(
 
 def deactivate_generated_bom(layout: object) -> object | None:
 	bom_names = _layout_bom_names(layout)
-	if not bom_names or not frappe:
+	if not bom_names:
 		return None
 
 	deactivated_boms = []
@@ -178,7 +175,7 @@ def deactivate_generated_bom(layout: object) -> object | None:
 
 def cancel_generated_bom(layout: object) -> object | None:
 	bom_names = _layout_bom_names(layout)
-	if not bom_names or not frappe:
+	if not bom_names:
 		return None
 
 	cancelled_boms = []
@@ -229,7 +226,7 @@ def _clear_item_default_bom_reference(bom_doc: object) -> None:
 	if not item_code or not bom_name:
 		return
 
-	db = getattr(frappe, "db", None) if frappe else None
+	db = getattr(frappe, "db", None)
 	get_value = getattr(db, "get_value", None)
 	set_value = getattr(db, "set_value", None)
 	if not callable(get_value) or not callable(set_value):
@@ -239,14 +236,14 @@ def _clear_item_default_bom_reference(bom_doc: object) -> None:
 
 
 def _db_savepoint(name: str) -> None:
-	db = getattr(frappe, "db", None) if frappe else None
+	db = getattr(frappe, "db", None)
 	savepoint = getattr(db, "savepoint", None)
 	if callable(savepoint):
 		savepoint(name)
 
 
 def _db_rollback_to_savepoint(name: str) -> None:
-	db = getattr(frappe, "db", None) if frappe else None
+	db = getattr(frappe, "db", None)
 	rollback = getattr(db, "rollback", None)
 	if not callable(rollback):
 		return
@@ -268,7 +265,7 @@ def _layout_bom_names(layout: object) -> list[str]:
 		_append_unique_clean(names, getattr(row, "generated_end_piece_bom", None))
 
 	layout_name = str(getattr(layout, "name", "") or "").strip()
-	db = getattr(frappe, "db", None) if frappe else None
+	db = getattr(frappe, "db", None)
 	get_all = getattr(db, "get_all", None)
 	if layout_name and callable(get_all):
 		for bom_name in get_all("BOM", filters={"sheet_cutting_layout": layout_name}, pluck="name"):
@@ -310,9 +307,6 @@ def _db_set_child_field(row: object, fieldname: str, value: object) -> None:
 
 
 def get_release_context(layout: ReleaseLayoutDocument) -> ReleaseContext:
-	if not frappe:
-		raise RuntimeError("Frappe is required to build Sheet Cutting Layout release context")
-
 	layouts = _get_same_project_layouts(layout)
 	boms = _get_finished_part_boms(layout)
 	return ReleaseContext(layouts=layouts, boms=boms)
@@ -362,9 +356,6 @@ def _default_bom_document_factory(
 	bom._layout = layout
 	bom.sheet_cutting_layout = getattr(layout, "name", None)
 
-	if not frappe:
-		raise RuntimeError("Frappe is required to persist generated BOM documents")
-
 	return _insert_frappe_bom(bom)
 
 
@@ -376,9 +367,6 @@ def _ensure_and_link_end_piece_item(layout: ReleaseLayoutDocument, row: object) 
 
 
 def _insert_frappe_bom(bom: BomDocument) -> BomDocument:
-	if not frappe:
-		raise RuntimeError("Frappe is required to persist generated BOM documents")
-
 	bom_doc = frappe.new_doc("BOM")
 	if bom.name:
 		bom_doc.name = bom.name
@@ -478,9 +466,6 @@ def _activate_boms(boms: Sequence[BomRecord]) -> None:
 
 
 def _get_same_project_layouts(layout: ReleaseLayoutDocument) -> list[object]:
-	if not frappe:
-		raise RuntimeError("Frappe is required to discover same-project layouts")
-
 	project = getattr(layout, "project", None)
 	if not project:
 		return [layout]
@@ -501,9 +486,6 @@ def _get_same_project_layouts(layout: ReleaseLayoutDocument) -> list[object]:
 
 
 def _get_finished_part_boms(layout: ReleaseLayoutDocument) -> list[BomRecord]:
-	if not frappe:
-		raise RuntimeError("Frappe is required to discover BOM records")
-
 	finished_part_items = [
 		row.finished_part_item for row in _parent_finished_part_rows(layout) if row.finished_part_item
 	]
@@ -519,9 +501,6 @@ def _get_finished_part_boms(layout: ReleaseLayoutDocument) -> list[BomRecord]:
 
 
 def _save_bom_records(boms: Sequence[BomRecord]) -> None:
-	if not frappe:
-		return
-
 	for bom in boms:
 		if getattr(bom, "_persisted_with_frappe", False):
 			continue
@@ -534,9 +513,6 @@ def _save_bom_records(boms: Sequence[BomRecord]) -> None:
 
 
 def _save_layout_records(layouts: Sequence[object]) -> None:
-	if not frappe:
-		return
-
 	if getattr(getattr(frappe, "flags", None), SUPPRESS_WORKFLOW_SIDE_EFFECTS_FLAG, False):
 		# The layout controller is mid-save (workflow action cycle): the outer save
 		# persists the released layout, and a nested save of the same document
@@ -579,9 +555,6 @@ def _company_for_layout(layout: object | None) -> str:
 		company = getattr(layout, "company", None)
 		if company:
 			return company
-
-	if not frappe:
-		raise RuntimeError("Frappe is required to resolve BOM company")
 
 	company = frappe.defaults.get_user_default("Company")
 	if company:

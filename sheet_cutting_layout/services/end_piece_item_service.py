@@ -2,33 +2,9 @@ from __future__ import annotations
 
 from typing import Protocol
 
-try:
-	import frappe
-except ImportError:
+import frappe
 
-	class _ValidationError(Exception):
-		pass
-
-	class _FrappeCompat:
-		ValidationError = _ValidationError
-		DuplicateEntryError = _ValidationError
-		_ = staticmethod(lambda message: message)
-
-		@staticmethod
-		def throw(message: str) -> None:
-			raise _ValidationError(message)
-
-		@staticmethod
-		def log_error(message: str | None = None, title: str | None = None) -> None:
-			return None
-
-		@staticmethod
-		def get_traceback() -> str:
-			return ""
-
-	frappe = _FrappeCompat()
-
-_ = getattr(frappe, "_", lambda message: message)
+_ = frappe._
 
 
 class EndPieceRow(Protocol):
