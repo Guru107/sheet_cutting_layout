@@ -1543,47 +1543,34 @@ class TestReleaseContextAndHelpers(ReleaseServiceIsolatedTestCase):
 		assert context.layouts == [layout]
 		assert context.boms == []
 
-	def test_company_resolution_uses_defaults_and_errors_when_missing(self) -> None:
+	def test_company_for_layout_falls_back_to_erpnext_default(self) -> None:
 		from sheet_cutting_layout.services import release_service
 
-		class DefaultsOnly:
-			class defaults:
-				@staticmethod
-				def get_user_default(_key: str) -> str:
-					return "Default Company"
+		layout = Layout()
+		layout.company = None
 
-		class DbDefault:
-			class defaults:
-				@staticmethod
-				def get_user_default(_key: str) -> str:
-					return ""
+		with patch("erpnext.get_default_company", return_value="Default Company") as spy:
+			company = release_service._company_for_layout(layout)
 
-			class db:
-				@staticmethod
-				def get_default(_key: str) -> str:
-					return "DB Company"
+		self.assertEqual(company, "Default Company")
+		spy.assert_called_once()
 
-		class NoCompany:
+	def test_company_for_layout_errors_when_default_company_is_missing(self) -> None:
+		from sheet_cutting_layout.services import release_service
+
+		class FrappeStub:
 			class ValidationError(Exception):
 				pass
 
-			class defaults:
-				@staticmethod
-				def get_user_default(_key: str) -> str:
-					return ""
-
 			@staticmethod
 			def throw(message: str) -> None:
-				raise NoCompany.ValidationError(message)
+				raise FrappeStub.ValidationError(message)
 
-		with patch.object(release_service, "frappe", DefaultsOnly):
-			assert release_service._company_for_layout(None) == "Default Company"
-
-		with patch.object(release_service, "frappe", DbDefault):
-			assert release_service._company_for_layout(None) == "DB Company"
-
-		with patch.object(release_service, "frappe", NoCompany):
-			with self.assertRaisesRegex(NoCompany.ValidationError, "Company is required"):
+		with (
+			patch.object(release_service, "frappe", FrappeStub),
+			patch("erpnext.get_default_company", return_value=None),
+		):
+			with self.assertRaisesRegex(FrappeStub.ValidationError, "Company is required"):
 				release_service._company_for_layout(None)
 
 	def test_set_frappe_field_only_when_supported(self) -> None:

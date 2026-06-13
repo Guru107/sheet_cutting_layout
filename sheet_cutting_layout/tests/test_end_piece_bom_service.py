@@ -354,9 +354,11 @@ class TestEndPieceBomService(SheetCuttingLayoutTestCase):
 		fake_frappe = self._install_fakes(existing_items={existing_code})
 		layout = Layout(company=None, end_pieces=[EndPiece()])
 
-		self.service.generate_end_piece_boms(layout)
+		with patch("erpnext.get_default_company", return_value="ERPNext Default Company") as spy:
+			self.service.generate_end_piece_boms(layout)
 
-		self.assertEqual(fake_frappe.created_docs[0].company, "DB Default Company")
+		self.assertEqual(fake_frappe.created_docs[0].company, "ERPNext Default Company")
+		spy.assert_called_once()
 
 	def test_generation_persists_submitted_links_with_db_set(self) -> None:
 		existing_code = "FG01SHR-EP-2x100x200"

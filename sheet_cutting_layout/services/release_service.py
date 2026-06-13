@@ -428,15 +428,11 @@ def _company_for_layout(layout: object | None) -> str:
 		if company:
 			return company
 
-	company = frappe.defaults.get_user_default("Company")
+	import erpnext
+
+	company = erpnext.get_default_company()
 	if company:
 		return company
-
-	db = getattr(frappe, "db", None)
-	if db is not None and hasattr(db, "get_default"):
-		company = db.get_default("company")
-		if company:
-			return company
 
 	frappe.throw(_("Company is required to create generated BOMs"))
 	raise RuntimeError("Company is required to create generated BOMs")

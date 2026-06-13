@@ -203,19 +203,11 @@ def _company_for_layout(layout: LayoutDocument | None) -> str:
 		if company:
 			return company
 
-	defaults = getattr(frappe, "defaults", None)
-	get_user_default = getattr(defaults, "get_user_default", None)
-	if callable(get_user_default):
-		company = _clean(get_user_default("Company"))
-		if company:
-			return company
+	import erpnext
 
-	db = getattr(frappe, "db", None)
-	get_default = getattr(db, "get_default", None)
-	if callable(get_default):
-		company = _clean(get_default("company"))
-		if company:
-			return company
+	company = _clean(erpnext.get_default_company())
+	if company:
+		return company
 
 	_throw(_("Company is required to create generated BOMs"))
 	raise RuntimeError("Company is required to create generated BOMs")
