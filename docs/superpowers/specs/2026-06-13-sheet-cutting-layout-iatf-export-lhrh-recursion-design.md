@@ -80,6 +80,14 @@ Release and retirement are driven by **native doc events**, not by `validate()` 
   native `apply_workflow` calls `doc.submit()`).
 - **Retirement** is triggered from `on_cancel`; **deletion** from `on_trash`.
 
+This requires a **workflow fixture change** (Phase 0): today `fixtures/workflow.json` makes `Superseded`
+a `doc_status: 1` state reached by a 1→1 `Released --Supersede--> Superseded` transition that fires *no*
+doc event, and the `doc_status: 2` `Cancel` state is unreachable. We set **`Superseded` to
+`doc_status: 2`** so `apply_workflow` executes the Supersede transition (submitted → docstatus 2) as
+`doc.cancel()` → `on_cancel`, and **remove the redundant unreachable `Cancel` state** (and its entries
+in the `status` Select options + the `hooks.py` Workflow State fixture filter). `Superseded` becomes the
+single docstatus-2 retirement state.
+
 ### 4.3 Cascade + BOM retirement (verified against installed source)
 Verified in ERPNext v15.101 / Frappe v15:
 
@@ -139,7 +147,8 @@ Phase 0 ─▶ Phase 1 ─▶ ┌─ Phase 2 (export) ─┐─▶ Integrate
 No behaviour change; characterization tests pin current release/BOM output first.
 
 - Remove dead `qty_per_sheet` (field on `Layout End Piece` + the attr on the three `EndPieceRow`
-  Protocols in `bom_service`, `end_piece_bom_service`, `release_service`).
+  Protocols in `bom_service`, `release_service`, `validators` — `end_piece_bom_service` does not
+  declare it).
 - Delete `layout_impact_resolution` residue (stale `.pyc` / empty dir; zero active refs).
 - Drop the 5 migration patches (`patches.txt` + modules) per the dev-only hard-reset policy. This also
   resolves conformance findings 19–22 for free.
@@ -184,9 +193,10 @@ the native direction:
    MR roles cannot read/write the doc the workflow moves them through; `Item.insert(ignore_permissions=
    True)` is unjustified. → Add role perm blocks (read/write, submit/cancel where doc_status changes);
    justify or drop the elevation. (Findings 12, 30.)
-7. **Workflow/audit overlap (low).** Unreachable `Cancel` workflow state (no transition);
-   `approval_snapshot` partially duplicates native workflow audit. → Drive cancellation via
-   `doc.cancel()`; **keep `approval_snapshot`** for the IATF signature trail (justified), note the
+7. **Workflow/audit overlap (low).** The `Cancel` workflow state is unreachable and `Superseded` is a
+   docstatus-1 dead-end (see §4.2); `approval_snapshot` partially duplicates native workflow audit.
+   → Make `Superseded` `doc_status: 2` so Supersede drives `doc.cancel()`, remove the unreachable
+   `Cancel` state, and **keep `approval_snapshot`** for the IATF signature trail (justified), noting the
    overlap. (Findings 17, 35.)
 8. **frappe-less test mode + pytest emulation (low, pervasive).** `try: import frappe` shims in
    production services/controllers; `unittest_adapter.py` reimplements pytest
@@ -352,7 +362,7 @@ cross-checked against the installed Frappe v15 / ERPNext v15.101 source.
 | 14 | med | release_service.py:153-161,544-560 (submitted `db_set`) | `allow_on_submit`/`on_update_after_submit` + `doc.save()`; native BOM cancel/save |
 | 15 | med | tests/factories.py:45-85 (cleanup sweep) | `FrappeTestCase` rollback (`addClassCleanup`/`_rollback_db`) |
 | 16 | med | tests/unittest_adapter.py:1-254 (pytest emulation) | `unittest`/`FrappeTestCase` primitives (`assertRaises`, `assertAlmostEqual`, `subTest`) |
-| 17 | low | fixtures/workflow.json:45-100 (unreachable `Cancel`) | Cancel via `doc.cancel()`/docstatus |
+| 17 | low | fixtures/workflow.json (Superseded docstatus-1 dead-end; `Cancel` unreachable) | Set `Superseded` doc_status 2 (Supersede → `doc.cancel()`); remove `Cancel` state + its status-option/fixture entries |
 | 18 | low | overrides/bom.py:3-19 (import guard) | Remove shim; bench-native tests |
 | 19 | low | patches/v1_0_backfill_mr_approval_snapshots.py:6-16 | Unconditional `import frappe` (moot — patch dropped) |
 | 20 | low | patches/v1_0_mark_cancelled_layouts_and_unlink_boms.py:3-11 | Unconditional `import frappe` (moot — patch dropped) |
