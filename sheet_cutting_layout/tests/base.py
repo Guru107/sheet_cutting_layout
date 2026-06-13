@@ -1,22 +1,26 @@
 from __future__ import annotations
 
-from unittest import TestCase
-
 try:
-	from frappe.tests.utils import FrappeTestCase as _FrappeTestCase
-except ImportError:
-	_FrappeTestCase = TestCase
+	# Frappe v16's canonical base class; probe it first because v16 still ships
+	# frappe.tests.utils.FrappeTestCase as a deprecated shim slated for removal.
+	from frappe.tests import IntegrationTestCase as FrappeTestCase
+except ImportError:  # Frappe v15 ships FrappeTestCase instead.
+	from frappe.tests.utils import FrappeTestCase
 
 
-class SheetCuttingLayoutTestCase(_FrappeTestCase):
+class SheetCuttingLayoutTestCase(FrappeTestCase):
 	@classmethod
 	def setUpClass(cls) -> None:
 		super().setUpClass()
-		try:
-			from sheet_cutting_layout.tests.factories import cleanup_test_records
-		except Exception:
-			return
+		from sheet_cutting_layout.tests.factories import cleanup_test_records
+
 		cls.addClassCleanup(cleanup_test_records)
+
+	def start_patcher(self, patcher: object) -> object:
+		"""Start a mock patcher and guarantee teardown, returning what start() returns."""
+		started = patcher.start()
+		self.addCleanup(patcher.stop)
+		return started
 
 	def assertFloatAlmostEqual(self, actual: float | int, expected: float | int, places: int = 6) -> None:
 		self.assertAlmostEqual(float(actual), float(expected), places=places)

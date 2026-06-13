@@ -29,6 +29,7 @@ from sheet_cutting_layout.services.end_piece_bom_service import (
 	generate_end_piece_boms,
 )
 from sheet_cutting_layout.services.release_service import (
+	SUPPRESS_WORKFLOW_SIDE_EFFECTS_FLAG,
 	cancel_generated_bom,
 	deactivate_generated_bom,
 	release_layout,
@@ -172,18 +173,18 @@ class _suppress_workflow_side_effects:
 			self.had_previous_value = False
 			return
 
-		self.previous_value = getattr(self.flags, "sheet_cutting_layout_suppress_workflow_side_effects", None)
-		self.had_previous_value = hasattr(self.flags, "sheet_cutting_layout_suppress_workflow_side_effects")
-		self.flags.sheet_cutting_layout_suppress_workflow_side_effects = True
+		self.previous_value = getattr(self.flags, SUPPRESS_WORKFLOW_SIDE_EFFECTS_FLAG, None)
+		self.had_previous_value = hasattr(self.flags, SUPPRESS_WORKFLOW_SIDE_EFFECTS_FLAG)
+		setattr(self.flags, SUPPRESS_WORKFLOW_SIDE_EFFECTS_FLAG, True)
 
 	def __exit__(self, exc_type: object, exc_value: object, traceback: object) -> None:
 		if self.flags is None:
 			return
 
 		if self.had_previous_value:
-			self.flags.sheet_cutting_layout_suppress_workflow_side_effects = self.previous_value
+			setattr(self.flags, SUPPRESS_WORKFLOW_SIDE_EFFECTS_FLAG, self.previous_value)
 		else:
-			delattr(self.flags, "sheet_cutting_layout_suppress_workflow_side_effects")
+			delattr(self.flags, SUPPRESS_WORKFLOW_SIDE_EFFECTS_FLAG)
 
 
 def _workflow_side_effects_are_suppressed() -> bool:
@@ -191,7 +192,7 @@ def _workflow_side_effects_are_suppressed() -> bool:
 		return False
 
 	flags = getattr(frappe, "flags", None)
-	return bool(getattr(flags, "sheet_cutting_layout_suppress_workflow_side_effects", False))
+	return bool(getattr(flags, SUPPRESS_WORKFLOW_SIDE_EFFECTS_FLAG, False))
 
 
 @whitelist()
