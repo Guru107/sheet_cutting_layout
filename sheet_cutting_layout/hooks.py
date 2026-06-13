@@ -29,7 +29,7 @@ fixtures = [
 		"dt": "Role",
 		"filters": [["name", "in", ["Project Manager", "MR Coordinator"]]],
 	},
-	{"dt": "Custom Field", "filters": [["dt", "in", ["BOM", "Work Order", "Production Plan"]]]},
+	{"dt": "Custom Field", "filters": [["dt", "=", "BOM"]]},
 ]
 
 doc_events = {

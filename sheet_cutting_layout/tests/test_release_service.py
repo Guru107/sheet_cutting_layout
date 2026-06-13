@@ -199,7 +199,7 @@ class TestReleaseContracts(SheetCuttingLayoutTestCase):
 			},
 			{
 				"dt": "Custom Field",
-				"filters": [["dt", "in", ["BOM", "Work Order", "Production Plan"]]],
+				"filters": [["dt", "=", "BOM"]],
 			},
 		]
 
