@@ -145,7 +145,8 @@ No behaviour change; characterization tests pin current release/BOM output first
   resolves conformance findings 19–22 for free.
 - Fix the multi-BOM latent bug: `_generate_boms` overwrites `layout.generated_bom` every iteration —
   make it the **primary** part's BOM and rely on the `finished_parts` reference rows for the rest
-  (groundwork for LH/RH).
+  (groundwork for LH/RH). Also add the `generated_bom` (Link → BOM) column to `Layout Finished Part`
+  that `_layout_bom_names` already reads but the doctype is missing.
 - Extract the steel-weight geometry (`× 0.786 / 100000`, strip/sheet/part weights, `parts_per_sheet`)
   into one frappe-free `services/geometry.py` shared by the controller, validators, and exporter.
 
@@ -206,30 +207,48 @@ each behind a characterization or new test.
 ## 8. Phase 1 — LH/RH symmetric parts (A2)
 
 ### 8.1 Data model
-Keep `finished_part_code` as the **primary** finished part (drives strip calc + net weight). Add an
-optional child table **`twin_finished_parts`** (doctype `Layout Twin Part`): rows of additional,
-structurally-identical item codes (the RH twin, occasionally more). The read-only output mirror stays
-`finished_parts` (post-release BOM reference); the distinct names avoid confusion.
+Keep `finished_part_code` as the primary finished part (drives strip calc + net weight). Add three
+**parent fields** — no new child table:
 
-All twins inherit the parent's weights and quantities — the layout is identical, only the item code
-differs.
+- `is_lh_rh` (Check) — "Symmetric LH/RH part?".
+- `orientation` (Select: `LH` / `RH`; `depends_on: is_lh_rh`; mandatory when checked) — the orientation
+  of the **primary** `finished_part_code`. The twin is the opposite orientation (derived).
+- `twin_finished_part` (Link → Item; `depends_on: is_lh_rh`; mandatory when checked) — the symmetric
+  twin item code.
+
+The twin is structurally identical to the primary — same weights, parts/sheet, and end pieces —
+differing only in item code and orientation. The pair is exactly two items.
+
+The existing read-only mirror `finished_parts` (doctype `Layout Finished Part`) is **reused** to display
+both produced items and their BOMs after release. Add a `generated_bom` (Link → BOM) column to that
+child doctype — `release_service::_layout_bom_names` already reads `row.generated_bom`, but the doctype
+has no such field, a latent mismatch this closes — plus an `orientation` column for clarity.
 
 ### 8.2 Release
-`_parent_finished_part_rows` returns primary + each twin → the existing `_generate_boms` loop emits one
-structurally-identical Shearing BOM per item code; `finished_parts` records all of them. With the
-Phase-0 fix, `generated_bom` holds the primary's BOM and the reference table holds the rest.
+`_parent_finished_part_rows` returns `[primary]`, or `[primary, twin]` when `is_lh_rh` → the existing
+`_generate_boms` loop emits one structurally-identical Shearing BOM per item code. **Both BOMs set
+`sheet_cutting_layout = this layout`** (already done in `_insert_frappe_bom`), so both reference the same
+Sheet Cutting Layout. `_sync_finished_part_reference_rows` fills the `finished_parts` mirror with both
+rows (item, orientation, generated BOM, quantities). With the Phase-0 fix, the parent `generated_bom`
+holds the primary's BOM; the mirror holds both.
 
 ### 8.3 Validation
-Each twin code: alphanumeric + ends `SHR`, distinct, ≠ primary, ≠ raw material. Net weight is shared.
+When `is_lh_rh`: `orientation` and `twin_finished_part` are required; the twin code is alphanumeric +
+ends `SHR`, distinct from the primary and from the raw material. Net/gross/scrap are shared across the
+pair.
 
 ### 8.4 Export interaction
-The exported part-number cell joins all item codes (e.g. `0102AAG06400_6410N`).
+The part-number cell joins the pair (e.g. `0102AAG06400_6410N`); the part-name/label uses the
+orientations (e.g. "… LH & RH").
 
 ### 8.5 Tests
-- Unit: twin expansion (primary + twins → finished-part rows); validation rules.
-- Integration: two-twin layout → two identical BOMs; supersede/cancel/revision retire **all** twin
-  BOMs (`_layout_bom_names` already gathers twin + end-piece BOMs — assert it).
-- E2E: add an RH twin in the UI → release → both BOMs present.
+- Unit: pair expansion (`is_lh_rh` → `[primary, twin]`; unchecked → `[primary]`); orientation/twin
+  validation; joined part-number + LH/RH labeling.
+- Integration: an LH/RH layout → two identical BOMs **both linked to the same layout**; the
+  `finished_parts` mirror shows both with orientation + BOM; supersede/cancel retire **both** BOMs
+  (`_layout_bom_names` gathers them — assert it).
+- E2E: check "LH/RH", pick twin + orientation, release → both items/BOMs shown in the mirror, both
+  referencing the layout.
 
 ## 9. Phase 3 — Hybrid recursive end-piece layouts (A3)
 
@@ -358,4 +377,3 @@ cross-checked against the installed Frappe v15 / ERPNext v15.101 source.
 
 - Curated `FRM/PRD/15` blank template confirmed as the audit-approved page (Phase 2 gate).
 - During Phase 3: whether `end_piece_bom_service` complex-reuse path is superseded by child layouts.
-- `twin_finished_parts` vs renaming the output mirror — naming confirmed at implementation.
