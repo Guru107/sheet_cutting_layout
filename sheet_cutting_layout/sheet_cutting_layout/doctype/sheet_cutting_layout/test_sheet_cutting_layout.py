@@ -250,3 +250,30 @@ class TestSheetCuttingLayoutController(SheetCuttingLayoutTestCase):
 
 		self.assertEqual(frappe.db.get_value("BOM", bom_name, "is_active"), 0)
 		self.assertEqual(frappe.db.get_value("Sheet Cutting Layout", layout.name, "docstatus"), 2)
+
+	def test_supersede_action_cancels_layout_and_retires_bom(self) -> None:
+		import frappe
+		from frappe.model.workflow import apply_workflow
+
+		layout = make_release_ready_layout()
+		layout.status = "Released"
+		layout.submit()
+		bom_name = layout.generated_bom
+		self.assertTrue(bom_name)
+		self.assertEqual(frappe.db.get_value("BOM", bom_name, "is_active"), 1)
+
+		apply_workflow(layout, "Supersede")
+
+		layout.reload()
+		self.assertEqual(layout.status, "Superseded")
+		self.assertEqual(frappe.db.get_value("Sheet Cutting Layout", layout.name, "docstatus"), 2)
+		self.assertEqual(frappe.db.get_value("BOM", bom_name, "is_active"), 0)
+
+	def test_cancel_is_not_a_workflow_state(self) -> None:
+		import frappe
+
+		workflow = frappe.get_doc("Workflow", "Sheet Cutting Layout Approval Workflow")
+		state_names = {state.state for state in workflow.states}
+		self.assertNotIn("Cancel", state_names)
+		superseded = next(state for state in workflow.states if state.state == "Superseded")
+		self.assertEqual(int(superseded.doc_status), 2)

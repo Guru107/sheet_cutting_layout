@@ -39,13 +39,8 @@
    },
    {
     "allow_edit": "System Manager",
-    "doc_status": "1",
-    "state": "Superseded"
-   },
-   {
-    "allow_edit": "System Manager",
     "doc_status": "2",
-    "state": "Cancel"
+    "state": "Superseded"
    }
   ],
   "transitions": [

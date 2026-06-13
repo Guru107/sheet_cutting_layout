@@ -187,7 +187,6 @@ class TestReleaseContracts(SheetCuttingLayoutTestCase):
 							"Released",
 							"Rejected",
 							"Superseded",
-							"Cancel",
 						],
 					]
 				],
@@ -255,7 +254,7 @@ class TestReleaseContracts(SheetCuttingLayoutTestCase):
 		assert fields["finished_part_code"]["fieldtype"] == "Link"
 		assert fields["finished_part_code"]["options"] == "Item"
 
-	def test_status_options_include_cancel_state(self) -> None:
+	def test_status_options_use_superseded_as_cancel_state(self) -> None:
 		doctype_path = (
 			Path(__file__).resolve().parents[1]
 			/ "sheet_cutting_layout"
@@ -277,8 +276,11 @@ class TestReleaseContracts(SheetCuttingLayoutTestCase):
 			)[0]["states"]
 		}
 
-		assert "Cancel" in fields["status"]["options"].splitlines()
-		assert workflow_states["Cancel"]["doc_status"] == "2"
+		status_options = fields["status"]["options"].splitlines()
+		assert "Cancel" not in status_options
+		assert "Superseded" in status_options
+		assert workflow_states["Superseded"]["doc_status"] == "2"
+		assert "Cancel" not in workflow_states
 
 	def test_generated_release_artifact_fields_are_not_copied(self) -> None:
 		doctype_path = (
