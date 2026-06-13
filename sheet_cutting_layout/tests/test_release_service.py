@@ -3,7 +3,6 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from types import SimpleNamespace
-from typing import ClassVar
 from unittest.mock import patch
 
 import frappe
@@ -1751,443 +1750,120 @@ class TestRevisioning(ReleaseServiceIsolatedTestCase):
 		assert all(bom.status == "Active" for bom in result.generated_boms)
 
 
-class _SavepointFrappeStub:
-	"""Frappe stub whose db honours savepoint/rollback over recorded set_value calls."""
-
-	def __init__(self, bom_docs: dict[str, object]) -> None:
-		class db:
-			set_value_calls: ClassVar[list[tuple[str, str, object, object, bool]]] = []
-			savepoint_names: ClassVar[list[str]] = []
-			rollback_savepoints: ClassVar[list[str]] = []
-			_savepoint_marks: ClassVar[dict[str, int]] = {}
-
-			@classmethod
-			def savepoint(cls, name: str) -> None:
-				cls.savepoint_names.append(name)
-				cls._savepoint_marks[name] = len(cls.set_value_calls)
-
-			@classmethod
-			def rollback(cls, *, save_point: str) -> None:
-				cls.rollback_savepoints.append(save_point)
-				del cls.set_value_calls[cls._savepoint_marks[save_point] :]
-
-			@classmethod
-			def set_value(
-				cls,
-				doctype: str,
-				name: str,
-				fieldname: object,
-				value: object = None,
-				update_modified: bool = True,
-			) -> None:
-				cls.set_value_calls.append((doctype, name, fieldname, value, update_modified))
-
-		self.db = db
-		self._bom_docs = bom_docs
-
-	def get_doc(self, doctype: str, name: str) -> object:
-		assert doctype == "BOM"
-		return self._bom_docs[name]
-
-
 class TestBomLifecycle(ReleaseServiceIsolatedTestCase):
-	def test_deactivate_generated_bom_marks_linked_bom_superseded(self) -> None:
+	def test_retire_layout_cancels_unused_bom(self) -> None:
 		from sheet_cutting_layout.services import release_service
-		from sheet_cutting_layout.services.release_service import deactivate_generated_bom
-
-		class BomDoc:
-			def __init__(self) -> None:
-				self.name = "BOM-PART001SHR-001"
-				self.item = "PART001SHR"
-				self.flags = type("Flags", (), {})()
-				self.is_active = 1
-				self.disabled = 0
-				self.is_default = 1
-				self.status = "Active"
-				self.save_calls: list[dict[str, object]] = []
-
-			def save(self, **kwargs: object) -> None:
-				self.save_calls.append(kwargs)
-
-		bom_doc = BomDoc()
-
-		class FrappeStub:
-			class db:
-				set_value_calls: ClassVar[list[tuple[object, ...]]] = []
-
-				@staticmethod
-				def get_value(doctype: str, name: str, fieldname: str) -> str:
-					assert (doctype, name, fieldname) == ("Item", "PART001SHR", "default_bom")
-					return "BOM-OTHER-001"
-
-				@classmethod
-				def set_value(cls, *args: object, **kwargs: object) -> None:
-					cls.set_value_calls.append(args)
-
-			@staticmethod
-			def get_doc(doctype: str, name: str) -> BomDoc:
-				assert (doctype, name) == ("BOM", "BOM-PART001SHR-001")
-				return bom_doc
-
-		self.start_patcher(patch.object(release_service, "frappe", FrappeStub))
-
-		result = deactivate_generated_bom(type("Layout", (), {"generated_bom": "BOM-PART001SHR-001"})())
-
-		assert result is bom_doc
-		assert bom_doc.is_active == 0
-		assert bom_doc.disabled == 1
-		assert bom_doc.is_default == 0
-		assert bom_doc.status == "Superseded"
-		assert getattr(bom_doc.flags, "sheet_cutting_layout_allow_bom_update", False) is True
-		assert bom_doc.save_calls == [{"ignore_permissions": True}]
-		# Item.default_bom points at another BOM, so it must be left untouched.
-		assert FrappeStub.db.set_value_calls == []
-
-	def test_deactivate_generated_bom_uses_db_set_for_submitted_bom(self) -> None:
-		from sheet_cutting_layout.services import release_service
-		from sheet_cutting_layout.services.release_service import deactivate_generated_bom
-
-		class BomDoc:
-			docstatus = 1
-
-			def __init__(self) -> None:
-				self.name = "BOM-PART001SHR-001"
-				self.is_active = 1
-				self.disabled = 0
-				self.status = "Active"
-				self.db_set_calls: list[tuple[dict[str, object], bool, bool]] = []
-				self.save_calls: list[dict[str, object]] = []
-
-			def db_set(
-				self,
-				values: dict[str, object],
-				update_modified: bool = True,
-				notify: bool = False,
-			) -> None:
-				self.db_set_calls.append((values, update_modified, notify))
-
-			def save(self, **kwargs: object) -> None:
-				self.save_calls.append(kwargs)
-
-		bom_doc = BomDoc()
-
-		class FrappeStub:
-			@staticmethod
-			def get_doc(doctype: str, name: str) -> BomDoc:
-				assert (doctype, name) == ("BOM", "BOM-PART001SHR-001")
-				return bom_doc
-
-		self.start_patcher(patch.object(release_service, "frappe", FrappeStub))
-
-		result = deactivate_generated_bom(type("Layout", (), {"generated_bom": "BOM-PART001SHR-001"})())
-
-		assert result is bom_doc
-		assert bom_doc.is_active == 0
-		assert bom_doc.disabled == 1
-		assert bom_doc.status == "Superseded"
-		# The stub has no is_default attribute (and no meta), so the guarded db_set
-		# must exclude it — unsupported columns would crash on a real database.
-		assert bom_doc.db_set_calls == [
-			({"is_active": 0, "disabled": 1, "status": "Superseded"}, True, False)
-		]
-		assert bom_doc.save_calls == []
-
-	def test_deactivate_generated_bom_deactivates_every_bom_linked_to_layout(self) -> None:
-		from sheet_cutting_layout.services import release_service
-		from sheet_cutting_layout.services.release_service import deactivate_generated_bom
-
-		class BomDoc:
-			docstatus = 1
-
-			def __init__(self, name: str, item: str) -> None:
-				self.name = name
-				self.item = item
-				self.is_active = 1
-				self.disabled = 0
-				self.is_default = 1
-				self.status = "Active"
-				self.db_set_calls: list[tuple[dict[str, object], bool, bool]] = []
-
-			def db_set(
-				self,
-				values: dict[str, object],
-				update_modified: bool = True,
-				notify: bool = False,
-			) -> None:
-				self.db_set_calls.append((values, update_modified, notify))
-
-		bom_docs = {
-			"BOM-MAIN-001": BomDoc("BOM-MAIN-001", "PART001SHR"),
-			"BOM-ENDPIECE-001": BomDoc("BOM-ENDPIECE-001", "EPITEM001"),
-		}
-		item_default_boms = {"PART001SHR": "BOM-MAIN-001", "EPITEM001": "BOM-ENDPIECE-001"}
-
-		class FrappeStub:
-			class db:
-				@staticmethod
-				def get_all(doctype: str, filters: dict[str, object], pluck: str) -> list[str]:
-					assert doctype == "BOM"
-					assert filters == {"sheet_cutting_layout": "SCL-001"}
-					assert pluck == "name"
-					return ["BOM-MAIN-001", "BOM-ENDPIECE-001"]
-
-				@staticmethod
-				def get_value(doctype: str, name: str, fieldname: str) -> str | None:
-					assert (doctype, fieldname) == ("Item", "default_bom")
-					return item_default_boms.get(name)
-
-				@staticmethod
-				def set_value(
-					doctype: str,
-					name: str,
-					fieldname: str,
-					value: object = None,
-					update_modified: bool = True,
-				) -> None:
-					assert (doctype, fieldname, value, update_modified) == (
-						"Item",
-						"default_bom",
-						None,
-						False,
-					)
-					item_default_boms[name] = value
-
-			@staticmethod
-			def get_doc(doctype: str, name: str) -> BomDoc:
-				assert doctype == "BOM"
-				return bom_docs[name]
-
-		self.start_patcher(patch.object(release_service, "frappe", FrappeStub))
-
-		layout = type(
-			"Layout",
-			(),
-			{"doctype": "Sheet Cutting Layout", "name": "SCL-001", "generated_bom": "BOM-MAIN-001"},
-		)()
-
-		result = deactivate_generated_bom(layout)
-
-		assert result is bom_docs["BOM-MAIN-001"]
-		assert bom_docs["BOM-MAIN-001"].db_set_calls == [
-			({"is_active": 0, "disabled": 1, "is_default": 0, "status": "Superseded"}, True, False)
-		]
-		assert bom_docs["BOM-ENDPIECE-001"].db_set_calls == [
-			({"is_active": 0, "disabled": 1, "is_default": 0, "status": "Superseded"}, True, False)
-		]
-		assert item_default_boms == {"PART001SHR": None, "EPITEM001": None}
-
-	def test_cancel_generated_bom_cancels_submitted_bom_with_app_control_flag(self) -> None:
 		from sheet_cutting_layout.overrides.bom import APP_CONTROLLED_BOM_UPDATE_FLAG
-		from sheet_cutting_layout.services import release_service
-		from sheet_cutting_layout.services.release_service import cancel_generated_bom
+
+		cancelled: list[str] = []
+		app_controlled_before_cancel: list[bool] = []
 
 		class BomDoc:
-			docstatus = 1
-			custom_operation = "Shearing"
-			sheet_cutting_layout = "SCL-001"
-
-			def __init__(self) -> None:
-				self.name = "BOM-PART001SHR-001"
-				self.flags = type("Flags", (), {})()
-				self.is_active = 1
-				self.disabled = 0
-				self.status = "Superseded"
-				self.cancel_calls = 0
-
-			def cancel(self) -> None:
-				assert getattr(self.flags, APP_CONTROLLED_BOM_UPDATE_FLAG, False) is True
-				assert getattr(self.flags, "ignore_links", False) is False
-				self.cancel_calls += 1
-				self.docstatus = 2
-
-		bom_doc = BomDoc()
-
-		class FrappeStub:
-			class db:
-				set_value_calls: ClassVar[list[tuple[str, str, object, object, bool]]] = []
-
-				@classmethod
-				def set_value(
-					cls,
-					doctype: str,
-					name: str,
-					fieldname: object,
-					value: object = None,
-					update_modified: bool = True,
-				) -> None:
-					cls.set_value_calls.append((doctype, name, fieldname, value, update_modified))
-
-			@staticmethod
-			def get_doc(doctype: str, name: str) -> BomDoc:
-				assert (doctype, name) == ("BOM", "BOM-PART001SHR-001")
-				return bom_doc
-
-		self.start_patcher(patch.object(release_service, "frappe", FrappeStub))
-
-		layout = type(
-			"Layout",
-			(),
-			{"doctype": "Sheet Cutting Layout", "name": "SCL-001", "generated_bom": "BOM-PART001SHR-001"},
-		)()
-
-		result = cancel_generated_bom(layout)
-
-		assert result is bom_doc
-		assert layout.generated_bom is None
-		assert bom_doc.is_active == 0
-		assert bom_doc.disabled == 1
-		assert bom_doc.sheet_cutting_layout is None
-		assert bom_doc.cancel_calls == 1
-		assert bom_doc.docstatus == 2
-		assert FrappeStub.db.set_value_calls == [
-			("Sheet Cutting Layout", "SCL-001", "generated_bom", None, False),
-			("BOM", "BOM-PART001SHR-001", "sheet_cutting_layout", None, False),
-		]
-
-	def test_cancel_generated_bom_cancels_every_bom_linked_to_layout(self) -> None:
-		from sheet_cutting_layout.overrides.bom import APP_CONTROLLED_BOM_UPDATE_FLAG
-		from sheet_cutting_layout.services import release_service
-		from sheet_cutting_layout.services.release_service import cancel_generated_bom
-
-		class BomDoc:
-			docstatus = 1
-			custom_operation = "Shearing"
-			sheet_cutting_layout = "SCL-001"
-
 			def __init__(self, name: str) -> None:
 				self.name = name
-				self.flags = type("Flags", (), {})()
+				self.docstatus = 1
 				self.is_active = 1
-				self.disabled = 0
-				self.cancel_calls = 0
+				self.flags = type("Flags", (), {})()
 
 			def cancel(self) -> None:
-				assert getattr(self.flags, APP_CONTROLLED_BOM_UPDATE_FLAG, False) is True
-				assert getattr(self.flags, "ignore_links", False) is False
-				self.cancel_calls += 1
+				app_controlled_before_cancel.append(
+					bool(getattr(self.flags, APP_CONTROLLED_BOM_UPDATE_FLAG, False))
+				)
+				cancelled.append(self.name)
 				self.docstatus = 2
+				self.is_active = 0
 
-		bom_docs = {
-			"BOM-MAIN-001": BomDoc("BOM-MAIN-001"),
-			"BOM-ENDPIECE-001": BomDoc("BOM-ENDPIECE-001"),
-		}
+		fake_boms = {"BOM-X": BomDoc("BOM-X")}
 
 		class FrappeStub:
 			class db:
-				set_value_calls: ClassVar[list[tuple[str, str, object, object, bool]]] = []
+				@staticmethod
+				def get_all(doctype, filters=None, pluck=None):
+					return []
 
 				@staticmethod
-				def get_all(doctype: str, filters: dict[str, object], pluck: str) -> list[str]:
-					assert doctype == "BOM"
-					assert filters == {"sheet_cutting_layout": "SCL-001"}
-					assert pluck == "name"
-					return ["BOM-MAIN-001", "BOM-ENDPIECE-001"]
+				def savepoint(save_point):
+					pass
 
-				@classmethod
-				def set_value(
-					cls,
-					doctype: str,
-					name: str,
-					fieldname: object,
-					value: object = None,
-					update_modified: bool = True,
-				) -> None:
-					cls.set_value_calls.append((doctype, name, fieldname, value, update_modified))
+				@staticmethod
+				def rollback(save_point=None):
+					pass
 
 			@staticmethod
-			def get_doc(doctype: str, name: str) -> BomDoc:
-				assert doctype == "BOM"
-				return bom_docs[name]
+			def get_doc(doctype, name):
+				return fake_boms[name]
 
-		self.start_patcher(patch.object(release_service, "frappe", FrappeStub))
+			class LinkExistsError(Exception):
+				pass
 
-		layout = type(
-			"Layout",
-			(),
-			{"doctype": "Sheet Cutting Layout", "name": "SCL-001", "generated_bom": "BOM-MAIN-001"},
-		)()
+		layout = Layout()
+		layout.generated_bom = "BOM-X"
 
-		result = cancel_generated_bom(layout)
+		with patch.object(release_service, "frappe", FrappeStub):
+			release_service.retire_layout(layout)
 
-		assert result is bom_docs["BOM-MAIN-001"]
-		assert layout.generated_bom is None
-		assert bom_docs["BOM-MAIN-001"].cancel_calls == 1
-		assert bom_docs["BOM-ENDPIECE-001"].cancel_calls == 1
-		assert bom_docs["BOM-MAIN-001"].sheet_cutting_layout is None
-		assert bom_docs["BOM-ENDPIECE-001"].sheet_cutting_layout is None
-		assert FrappeStub.db.set_value_calls == [
-			("Sheet Cutting Layout", "SCL-001", "generated_bom", None, False),
-			("BOM", "BOM-MAIN-001", "sheet_cutting_layout", None, False),
-			("BOM", "BOM-ENDPIECE-001", "sheet_cutting_layout", None, False),
-		]
+		self.assertEqual(cancelled, ["BOM-X"])
+		self.assertEqual(app_controlled_before_cancel, [True])
+		self.assertEqual(fake_boms["BOM-X"].docstatus, 2)
+		self.assertEqual(fake_boms["BOM-X"].is_active, 0)
 
-	def test_cancel_generated_bom_rolls_back_savepoint_when_submitted_cancel_fails(self) -> None:
+		self.assertTrue(getattr(fake_boms["BOM-X"].flags, APP_CONTROLLED_BOM_UPDATE_FLAG))
+
+	def test_retire_layout_deactivates_when_cancel_blocked(self) -> None:
 		from sheet_cutting_layout.services import release_service
-		from sheet_cutting_layout.services.release_service import cancel_generated_bom
+
+		saved_active: list[int] = []
+		rollbacks: list[str] = []
+
+		class FrappeStub:
+			class db:
+				@staticmethod
+				def get_all(doctype, filters=None, pluck=None):
+					return []
+
+				@staticmethod
+				def savepoint(save_point):
+					pass
+
+				@staticmethod
+				def rollback(save_point=None):
+					rollbacks.append(save_point)
+
+			class LinkExistsError(Exception):
+				pass
+
+			@staticmethod
+			def get_doc(doctype, name):
+				return fresh_bom if rollbacks else mutating_bom
 
 		class BomDoc:
-			docstatus = 1
-			custom_operation = "Shearing"
-			sheet_cutting_layout = "SCL-001"
-
 			def __init__(self) -> None:
-				self.name = "BOM-PART001SHR-001"
-				self.flags = type("Flags", (), {})()
+				self.name = "BOM-USED"
+				self.docstatus = 1
 				self.is_active = 1
-				self.disabled = 0
+				self.flags = type("Flags", (), {})()
 
 			def cancel(self) -> None:
-				raise RuntimeError("BOM is linked with Work Order")
-
-		frappe_stub = _SavepointFrappeStub({"BOM-PART001SHR-001": BomDoc()})
-		self.start_patcher(patch.object(release_service, "frappe", frappe_stub))
-
-		layout = type(
-			"Layout",
-			(),
-			{"doctype": "Sheet Cutting Layout", "name": "SCL-001", "generated_bom": "BOM-PART001SHR-001"},
-		)()
-
-		with self.assertRaisesRegex(RuntimeError, "Work Order"):
-			cancel_generated_bom(layout)
-
-		assert len(frappe_stub.db.savepoint_names) == 1
-		assert frappe_stub.db.rollback_savepoints == frappe_stub.db.savepoint_names
-		assert frappe_stub.db.set_value_calls == []
-
-	def test_cancel_generated_bom_rolls_back_savepoint_when_draft_save_fails(self) -> None:
-		from sheet_cutting_layout.services import release_service
-		from sheet_cutting_layout.services.release_service import cancel_generated_bom
-
-		class BomDoc:
-			docstatus = 0
-			custom_operation = "Shearing"
-			sheet_cutting_layout = "SCL-001"
-
-			def __init__(self) -> None:
-				self.name = "BOM-PART001SHR-001"
-				self.flags = type("Flags", (), {})()
-				self.is_active = 1
-				self.disabled = 0
+				self.docstatus = 2
+				self.is_active = 0
+				raise FrappeStub.LinkExistsError("used by Work Order")
 
 			def save(self, ignore_permissions: bool = False) -> None:
-				raise RuntimeError("draft BOM save failed")
+				saved_active.append(self.is_active)
 
-		frappe_stub = _SavepointFrappeStub({"BOM-PART001SHR-001": BomDoc()})
-		self.start_patcher(patch.object(release_service, "frappe", frappe_stub))
+		mutating_bom = BomDoc()
+		fresh_bom = BomDoc()
+		layout = Layout()
+		layout.generated_bom = "BOM-USED"
 
-		layout = type(
-			"Layout",
-			(),
-			{"doctype": "Sheet Cutting Layout", "name": "SCL-001", "generated_bom": "BOM-PART001SHR-001"},
-		)()
+		with patch.object(release_service, "frappe", FrappeStub):
+			release_service.retire_layout(layout)
 
-		with self.assertRaisesRegex(RuntimeError, "draft BOM save failed"):
-			cancel_generated_bom(layout)
-
-		assert len(frappe_stub.db.savepoint_names) == 1
-		assert frappe_stub.db.rollback_savepoints == frappe_stub.db.savepoint_names
-		assert frappe_stub.db.set_value_calls == []
+		self.assertEqual(rollbacks, ["scl_retire_bom_1"])
+		self.assertEqual(mutating_bom.docstatus, 2)
+		self.assertEqual(fresh_bom.docstatus, 1)
+		self.assertEqual(fresh_bom.is_active, 0)
+		self.assertEqual(saved_active, [0])
 
 
 class TestReleaseServiceIntegration(SheetCuttingLayoutTestCase):
@@ -2272,35 +1948,6 @@ class TestReleaseServiceIntegration(SheetCuttingLayoutTestCase):
 			frappe.db.get_value("Sheet Cutting Layout", layout.name, "generated_bom"),
 			layout.generated_bom,
 		)
-
-	def test_deactivate_generated_bom_supersedes_real_bom(self) -> None:
-		from sheet_cutting_layout.services.release_service import deactivate_generated_bom
-
-		layout = self._release_ready_layout()
-		self._release(layout)
-
-		deactivate_generated_bom(layout)
-
-		bom = frappe.get_doc("BOM", layout.generated_bom)
-		self.assertEqual(bom.is_active, 0)
-		self.assertEqual(bom.is_default, 0)
-
-	def test_cancel_generated_bom_cancels_real_bom(self) -> None:
-		from sheet_cutting_layout.services.release_service import cancel_generated_bom
-
-		layout = self._release_ready_layout()
-		self._release(layout)
-		bom_before = frappe.get_doc("BOM", layout.generated_bom)
-		# release_layout always submits the generated BOM, so cancel must take the
-		# submitted branch (docstatus 1 -> 2).
-		self.assertEqual(bom_before.docstatus, 1)
-
-		cancel_generated_bom(layout)
-
-		# cancel_generated_bom intentionally unlinks layout.generated_bom (it becomes
-		# None), so the cancelled BOM must be re-read by the name captured beforehand.
-		bom = frappe.get_doc("BOM", bom_before.name)
-		self.assertEqual(bom.docstatus, 2)
 
 	def test_controller_revision_clones_real_released_layout(self) -> None:
 		from sheet_cutting_layout.sheet_cutting_layout.doctype.sheet_cutting_layout.sheet_cutting_layout import (

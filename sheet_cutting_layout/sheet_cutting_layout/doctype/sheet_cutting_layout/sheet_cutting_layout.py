@@ -12,8 +12,8 @@ from sheet_cutting_layout.services.end_piece_bom_service import (
 	generate_end_piece_boms,
 )
 from sheet_cutting_layout.services.release_service import (
-	cancel_generated_bom as retire_layout,
 	release_layout,
+	retire_layout,
 )
 from sheet_cutting_layout.services.validators import apply_end_piece_bom_status, validate_sheet_cutting_layout
 from sheet_cutting_layout.services.versioning import create_revision
