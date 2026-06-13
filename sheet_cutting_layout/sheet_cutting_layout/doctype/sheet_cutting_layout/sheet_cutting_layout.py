@@ -29,6 +29,13 @@ class SheetCuttingLayout(Document):
 	def validate(self) -> None:
 		validate_sheet_cutting_layout(self)
 
+	def before_submit(self) -> None:
+		if getattr(self, "status", None) != "Released":
+			frappe.throw(_("Sheet Cutting Layout can be submitted only through MR Release"))
+		if _previous_status(self) != "Approved by Purchase":
+			frappe.throw(_("MR Release requires Approved by Purchase status"))
+		_validate_workflow_approval_access(self, action=MR_RELEASE_ACTION)
+
 	def on_submit(self) -> None:
 		if getattr(self, "status", None) != "Released":
 			return
@@ -37,6 +44,9 @@ class SheetCuttingLayout(Document):
 		release_layout(self)
 
 	def before_cancel(self) -> None:
+		if getattr(self, "status", None) != "Superseded":
+			frappe.throw(_("Sheet Cutting Layout can be cancelled only through Supersede"))
+		_validate_workflow_approval_access(self, action=SUPERSEDE_ACTION)
 		_record_workflow_snapshot(self, action=SUPERSEDE_ACTION)
 
 	def on_cancel(self) -> None:
@@ -75,6 +85,45 @@ def _record_workflow_snapshot(doc: object, *, action: str) -> None:
 		approver=_get_session_user(),
 		decision_time=_get_now_datetime(),
 	)
+
+
+def _previous_status(doc: object) -> object:
+	previous = getattr(doc, "_doc_before_save", None)
+	get = getattr(previous, "get", None)
+	if callable(get):
+		return get("status")
+	return None
+
+
+def _validate_workflow_approval_access(doc: object, *, action: str) -> None:
+	user = _get_session_user()
+	owner = _doc_get(doc, "owner")
+	if not user or user == "Administrator" or user != owner:
+		return
+	if _workflow_action_allows_self_approval(doc, action=action):
+		return
+	frappe.throw(_("Document owners cannot approve their own Sheet Cutting Layout workflow action"))
+
+
+def _workflow_action_allows_self_approval(doc: object, *, action: str) -> bool:
+	workflow = _get_workflow(doc)
+	for transition in getattr(workflow, "transitions", []) or []:
+		if getattr(transition, "action", None) == action:
+			return bool(getattr(transition, "allow_self_approval", False))
+	return False
+
+
+def _get_workflow(doc: object) -> object:
+	from frappe.model.workflow import get_workflow
+
+	return get_workflow(_doc_get(doc, "doctype") or "Sheet Cutting Layout")
+
+
+def _doc_get(doc: object, fieldname: str) -> object:
+	get = getattr(doc, "get", None)
+	if callable(get):
+		return get(fieldname)
+	return getattr(doc, fieldname, None)
 
 
 def _clear_rejected_workflow_actions(doc: object) -> None:

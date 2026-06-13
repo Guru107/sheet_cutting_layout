@@ -28,6 +28,14 @@ class _FakeLayoutDoc:
 		self.inserted = True
 
 
+@dataclass
+class _PreviousDoc:
+	status: str
+
+	def get(self, fieldname: str) -> object:
+		return getattr(self, fieldname, None)
+
+
 class TestSheetCuttingLayoutController(SheetCuttingLayoutTestCase):
 	def test_validate_only_runs_validator_no_workflow_side_effects(self) -> None:
 		doc = object.__new__(controller.SheetCuttingLayout)
@@ -75,9 +83,50 @@ class TestSheetCuttingLayoutController(SheetCuttingLayoutTestCase):
 		release.assert_not_called()
 		snapshot.assert_not_called()
 
+	def test_before_submit_allows_mr_release_only_after_purchase_approval(self) -> None:
+		doc = object.__new__(controller.SheetCuttingLayout)
+		doc.doctype = "Sheet Cutting Layout"
+		doc.status = "Released"
+		doc._doc_before_save = _PreviousDoc(status="Approved by Purchase")
+
+		with patch.object(controller.frappe, "throw") as throw:
+			doc.before_submit()
+
+		throw.assert_not_called()
+
+	def test_before_submit_rejects_owner_self_approval_on_native_submit(self) -> None:
+		doc = object.__new__(controller.SheetCuttingLayout)
+		doc.doctype = "Sheet Cutting Layout"
+		doc.owner = "mr@example.com"
+		doc.status = "Released"
+		doc._doc_before_save = _PreviousDoc(status="Approved by Purchase")
+
+		with (
+			patch.object(controller, "_get_session_user", return_value="mr@example.com"),
+			patch.object(controller, "_workflow_action_allows_self_approval", return_value=False) as allows_self,
+			patch.object(controller.frappe, "throw", side_effect=Exception("self approval blocked")),
+			self.assertRaisesRegex(Exception, "self approval blocked"),
+		):
+			doc.before_submit()
+
+		allows_self.assert_called_once_with(doc, action="MR Release")
+
+	def test_before_submit_rejects_direct_release_without_purchase_approval(self) -> None:
+		doc = object.__new__(controller.SheetCuttingLayout)
+		doc.doctype = "Sheet Cutting Layout"
+		doc.status = "Released"
+		doc._doc_before_save = _PreviousDoc(status="Draft")
+
+		with (
+			patch.object(controller.frappe, "throw", side_effect=Exception("MR Release requires approval")),
+			self.assertRaisesRegex(Exception, "MR Release requires approval"),
+		):
+			doc.before_submit()
+
 	def test_before_cancel_snapshots_supersede(self) -> None:
 		doc = object.__new__(controller.SheetCuttingLayout)
 		doc.doctype = "Sheet Cutting Layout"
+		doc.status = "Superseded"
 
 		with (
 			patch.object(controller, "record_approval_snapshot") as snapshot,
@@ -92,6 +141,35 @@ class TestSheetCuttingLayoutController(SheetCuttingLayoutTestCase):
 			approver="Administrator",
 			decision_time="2026-06-13T12:00:00",
 		)
+
+	def test_before_cancel_rejects_owner_self_approval_on_native_cancel(self) -> None:
+		doc = object.__new__(controller.SheetCuttingLayout)
+		doc.doctype = "Sheet Cutting Layout"
+		doc.owner = "mr@example.com"
+		doc.status = "Superseded"
+
+		with (
+			patch.object(controller, "_get_session_user", return_value="mr@example.com"),
+			patch.object(controller, "_workflow_action_allows_self_approval", return_value=False) as allows_self,
+			patch.object(controller, "record_approval_snapshot") as snapshot,
+			patch.object(controller.frappe, "throw", side_effect=Exception("self approval blocked")),
+			self.assertRaisesRegex(Exception, "self approval blocked"),
+		):
+			doc.before_cancel()
+
+		allows_self.assert_called_once_with(doc, action="Supersede")
+		snapshot.assert_not_called()
+
+	def test_before_cancel_rejects_direct_cancel_without_supersede_state(self) -> None:
+		doc = object.__new__(controller.SheetCuttingLayout)
+		doc.doctype = "Sheet Cutting Layout"
+		doc.status = "Released"
+
+		with (
+			patch.object(controller.frappe, "throw", side_effect=Exception("Supersede required")),
+			self.assertRaisesRegex(Exception, "Supersede required"),
+		):
+			doc.before_cancel()
 
 	def test_on_cancel_retires_layout_without_snapshot(self) -> None:
 		doc = object.__new__(controller.SheetCuttingLayout)
@@ -231,6 +309,7 @@ class TestSheetCuttingLayoutController(SheetCuttingLayoutTestCase):
 		layout.status = "Released"
 		layout.submit()
 
+		layout.status = "Superseded"
 		layout.cancel()
 		layout.reload()
 
@@ -246,6 +325,7 @@ class TestSheetCuttingLayoutController(SheetCuttingLayoutTestCase):
 		bom_name = layout.generated_bom
 		self.assertEqual(frappe.db.get_value("BOM", bom_name, "is_active"), 1)
 
+		layout.status = "Superseded"
 		layout.cancel()
 
 		self.assertEqual(frappe.db.get_value("BOM", bom_name, "is_active"), 0)

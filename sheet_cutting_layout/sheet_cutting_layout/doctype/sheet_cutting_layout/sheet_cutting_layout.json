@@ -326,6 +326,7 @@
  "owner": "Administrator",
  "permissions": [
   {
+   "cancel": 1,
    "create": 1,
    "delete": 1,
    "email": 1,
@@ -335,6 +336,24 @@
    "report": 1,
    "role": "System Manager",
    "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "read": 1,
+   "role": "Project Manager",
+   "write": 1
+  },
+  {
+   "read": 1,
+   "role": "Purchase Manager",
+   "write": 1
+  },
+  {
+   "cancel": 1,
+   "read": 1,
+   "role": "MR Coordinator",
+   "submit": 1,
    "write": 1
   }
  ],

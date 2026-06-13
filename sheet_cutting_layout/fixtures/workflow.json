@@ -88,6 +88,12 @@
    },
    {
     "action": "Supersede",
+    "allowed": "MR Coordinator",
+    "next_state": "Superseded",
+    "state": "Released"
+   },
+   {
+    "action": "Supersede",
     "allowed": "System Manager",
     "next_state": "Superseded",
     "state": "Released"

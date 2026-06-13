@@ -1012,6 +1012,7 @@ class TestControllerWorkflow(ReleaseServiceIsolatedTestCase):
 		)
 
 		doc = _new_sheet_cutting_layout_doc(sheet_cutting_layout)
+		doc.status = "Superseded"
 		doc.generated_bom = "BOM-PART001SHR-001"
 		doc.before_cancel()
 
