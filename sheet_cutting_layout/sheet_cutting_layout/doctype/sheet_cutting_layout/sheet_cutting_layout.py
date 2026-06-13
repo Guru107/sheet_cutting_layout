@@ -3,27 +3,11 @@ from __future__ import annotations
 from datetime import datetime
 from importlib import import_module
 
-try:
-	import frappe
-	from frappe.model.document import Document
+import frappe
+from frappe.model.document import Document
 
-	whitelist = frappe.whitelist
-except ImportError:
-	frappe = None
-
-	def whitelist():
-		def decorator(function):
-			function.whitelisted = True
-			return function
-
-		return decorator
-
-	class Document:
-		pass
-
-
-_ = getattr(frappe, "_", lambda message: message)
-
+whitelist = frappe.whitelist
+_ = frappe._
 
 from sheet_cutting_layout.services.end_piece_bom_service import (
 	generate_end_piece_boms,
@@ -57,7 +41,7 @@ class SheetCuttingLayout(Document):
 		self.status = "Cancel"
 
 	def on_trash(self) -> None:
-		if getattr(self, "status", None) != "Rejected" or not frappe:
+		if getattr(self, "status", None) != "Rejected":
 			return
 
 		doctype = getattr(self, "doctype", "Sheet Cutting Layout")
@@ -123,9 +107,6 @@ def _clear_copied_release_artifacts(doc: object) -> None:
 
 
 def _get_selected_workflow_action() -> str | None:
-	if not frappe:
-		return None
-
 	flags = getattr(frappe, "flags", None)
 	action = getattr(flags, "selected_workflow_action", None)
 	if isinstance(action, str):
@@ -143,31 +124,27 @@ def _get_selected_workflow_action() -> str | None:
 
 
 def _get_session_user() -> str | None:
-	if not frappe:
-		return None
-
 	session = getattr(frappe, "session", None)
 	user = getattr(session, "user", None)
 	return user if isinstance(user, str) else None
 
 
 def _get_now_datetime() -> datetime:
-	if frappe:
-		now_datetime = getattr(frappe, "now_datetime", None)
-		if callable(now_datetime):
-			return now_datetime()
+	now_datetime = getattr(frappe, "now_datetime", None)
+	if callable(now_datetime):
+		return now_datetime()
 
-		utils = getattr(frappe, "utils", None)
-		now_datetime = getattr(utils, "now_datetime", None)
-		if callable(now_datetime):
-			return now_datetime()
+	utils = getattr(frappe, "utils", None)
+	now_datetime = getattr(utils, "now_datetime", None)
+	if callable(now_datetime):
+		return now_datetime()
 
 	return datetime.now()
 
 
 class _suppress_workflow_side_effects:
 	def __enter__(self) -> None:
-		self.flags = getattr(frappe, "flags", None) if frappe else None
+		self.flags = getattr(frappe, "flags", None)
 		if self.flags is None:
 			self.previous_value = None
 			self.had_previous_value = False
@@ -188,18 +165,12 @@ class _suppress_workflow_side_effects:
 
 
 def _workflow_side_effects_are_suppressed() -> bool:
-	if not frappe:
-		return False
-
 	flags = getattr(frappe, "flags", None)
 	return bool(getattr(flags, SUPPRESS_WORKFLOW_SIDE_EFFECTS_FLAG, False))
 
 
 @whitelist()
 def apply_sheet_cutting_layout_workflow(doc: object, action: str) -> object:
-	if not frappe:
-		raise RuntimeError("Frappe is required to apply Sheet Cutting Layout workflow")
-
 	frappe_workflow = import_module("frappe.model.workflow")
 	apply_workflow = frappe_workflow.apply_workflow
 	parsed_doc = frappe.parse_json(doc)
@@ -224,9 +195,6 @@ def apply_sheet_cutting_layout_workflow(doc: object, action: str) -> object:
 
 @whitelist()
 def create_sheet_cutting_layout_revision(name: str) -> str:
-	if not frappe:
-		raise RuntimeError("Frappe is required to create Sheet Cutting Layout revisions")
-
 	old_doc = frappe.get_doc("Sheet Cutting Layout", name)
 	new_doc = create_revision(old_doc)
 	new_doc.insert()
@@ -235,9 +203,6 @@ def create_sheet_cutting_layout_revision(name: str) -> str:
 
 @whitelist()
 def generate_sheet_cutting_layout_end_piece_boms(name: str) -> dict[str, list[str]]:
-	if not frappe:
-		raise RuntimeError("Frappe is required to generate End Piece BOMs")
-
 	doc = frappe.get_doc("Sheet Cutting Layout", name)
 	check_permission = getattr(doc, "check_permission", None)
 	if callable(check_permission):
