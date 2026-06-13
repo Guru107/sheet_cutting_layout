@@ -20,6 +20,7 @@ PURCHASE_APPROVAL_ACTION = "Purchase Approves"
 MR_RELEASE_ACTION = "MR Release"
 SUBMIT_FOR_CHECK_ACTION = "Submit for Check"
 REJECT_ACTION = "Reject"
+SUPERSEDE_ACTION = "Supersede"
 
 APPROVAL_SNAPSHOT_ACTIONS: dict[str, str] = {
 	SUBMIT_FOR_CHECK_ACTION: "Submit for Check",
@@ -27,6 +28,7 @@ APPROVAL_SNAPSHOT_ACTIONS: dict[str, str] = {
 	PURCHASE_APPROVAL_ACTION: "Purchase Approval",
 	MR_RELEASE_ACTION: "MR Approval",
 	REJECT_ACTION: "Rejection",
+	SUPERSEDE_ACTION: "Supersession",
 }
 
 

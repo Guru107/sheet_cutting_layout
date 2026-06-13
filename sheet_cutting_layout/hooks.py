@@ -33,13 +33,6 @@ fixtures = [
 	{"dt": "Custom Field", "filters": [["dt", "in", ["BOM", "Work Order", "Production Plan"]]]},
 ]
 
-override_whitelisted_methods = {
-	"frappe.model.workflow.apply_workflow": (
-		"sheet_cutting_layout.sheet_cutting_layout.doctype.sheet_cutting_layout."
-		"sheet_cutting_layout.apply_sheet_cutting_layout_workflow"
-	)
-}
-
 doc_events = {
 	"BOM": {
 		"before_insert": "sheet_cutting_layout.overrides.bom.validate_shearing_bom_source",

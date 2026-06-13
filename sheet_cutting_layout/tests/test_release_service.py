@@ -1,5 +1,4 @@
 import json
-import sys
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -209,12 +208,7 @@ class TestReleaseContracts(SheetCuttingLayoutTestCase):
 		]
 
 		assert hooks.fixtures == expected_fixtures
-		assert hooks.override_whitelisted_methods == {
-			"frappe.model.workflow.apply_workflow": (
-				"sheet_cutting_layout.sheet_cutting_layout.doctype.sheet_cutting_layout."
-				"sheet_cutting_layout.apply_sheet_cutting_layout_workflow"
-			)
-		}
+		assert not hasattr(hooks, "override_whitelisted_methods")
 		assert hooks.doc_events == {
 			"BOM": {
 				"before_insert": "sheet_cutting_layout.overrides.bom.validate_shearing_bom_source",
@@ -324,10 +318,8 @@ class TestReleaseContracts(SheetCuttingLayoutTestCase):
 			assert fields[fieldname]["no_copy"] == 1
 		assert end_piece_fields["end_piece_item_code"]["no_copy"] == 1
 
-	def test_workflow_wrapper_is_whitelisted(self) -> None:
-		assert hooks.override_whitelisted_methods.get("frappe.model.workflow.apply_workflow", "").endswith(
-			"sheet_cutting_layout.apply_sheet_cutting_layout_workflow"
-		)
+	def test_workflow_wrapper_override_is_removed(self) -> None:
+		assert not hasattr(hooks, "override_whitelisted_methods")
 
 	def test_readme_mentions_release_gate_and_bom_qty_parts_per_sheet(self) -> None:
 		content = Path(__file__).resolve().parents[2].joinpath("README.md").read_text(encoding="utf-8")
@@ -853,168 +845,82 @@ class TestControllerWorkflow(ReleaseServiceIsolatedTestCase):
 			return type("ReleaseResult", (), {"status": "Released"})()
 
 		self.start_patcher(
-			patch.object(sheet_cutting_layout, "_get_selected_workflow_action", lambda: "MR Release")
+			patch.object(sheet_cutting_layout, "release_layout", fake_release_layout)
 		)
-		self.start_patcher(patch.object(sheet_cutting_layout, "release_layout", fake_release_layout))
+		snapshot = self.start_patcher(patch.object(sheet_cutting_layout, "record_approval_snapshot"))
+		self.start_patcher(
+			patch.object(sheet_cutting_layout, "_get_session_user", lambda: "mr@example.com")
+		)
+		self.start_patcher(
+			patch.object(
+				sheet_cutting_layout,
+				"_get_now_datetime",
+				lambda: datetime(2026, 5, 15, 12, 30, 0),
+			)
+		)
 
 		doc = _new_sheet_cutting_layout_doc(sheet_cutting_layout)
-		doc.before_workflow_action()
+		doc.status = "Released"
+		doc.on_submit()
 
 		assert calls == [(doc, {})]
+		snapshot.assert_called_once_with(
+			doc,
+			action="MR Release",
+			approver="mr@example.com",
+			decision_time=datetime(2026, 5, 15, 12, 30, 0),
+		)
 
-	def test_controller_mr_release_suppresses_side_effects_during_internal_layout_saves(self) -> None:
+	def test_controller_on_submit_ignores_non_released_status(self) -> None:
 		from sheet_cutting_layout.sheet_cutting_layout.doctype.sheet_cutting_layout import (
 			sheet_cutting_layout,
 		)
-
-		class Flags:
-			selected_workflow_action = "MR Release"
-
-		class FrappeStub:
-			flags = Flags()
-
-			class _Session:
-				user = "mr@example.com"
-
-			session = _Session()
-
-			@staticmethod
-			def now_datetime() -> datetime:
-				return datetime(2026, 5, 15, 12, 30, 0)
 
 		calls: list[object] = []
 
-		def fake_release_layout(layout: object, **kwargs: object) -> object:
-			calls.append((layout, kwargs))
-			if len(calls) == 1:
-				related_layout = _new_sheet_cutting_layout_doc(sheet_cutting_layout)
-				related_layout.approval_snapshot = []
-				related_layout.validate()
-			return type("ReleaseResult", (), {"status": "Released"})()
-
-		self.start_patcher(patch.object(sheet_cutting_layout, "frappe", FrappeStub))
-		self.start_patcher(patch.object(sheet_cutting_layout, "release_layout", fake_release_layout))
 		self.start_patcher(
-			patch.object(sheet_cutting_layout, "validate_sheet_cutting_layout", lambda _doc: None)
+			patch.object(sheet_cutting_layout, "release_layout", lambda layout: calls.append(layout))
 		)
+		snapshot = self.start_patcher(patch.object(sheet_cutting_layout, "record_approval_snapshot"))
 
 		doc = _new_sheet_cutting_layout_doc(sheet_cutting_layout)
-		doc.approval_snapshot = []
+		doc.status = "Approved by Purchase"
 
-		doc.before_workflow_action()
+		doc.on_submit()
 
-		assert calls == [(doc, {})]
+		assert calls == []
+		snapshot.assert_not_called()
 
-	def test_controller_validate_applies_workflow_side_effects_and_records_snapshot(self) -> None:
+	def test_controller_validate_only_runs_validator(self) -> None:
 		from sheet_cutting_layout.sheet_cutting_layout.doctype.sheet_cutting_layout import (
 			sheet_cutting_layout,
 		)
 
-		class FrappeStub:
-			class _Session:
-				user = "projects@example.com"
-
-			session = _Session()
-
-			@staticmethod
-			def now_datetime() -> datetime:
-				return datetime(2026, 5, 15, 9, 30, 0)
-
-		self.start_patcher(
-			patch.object(
-				sheet_cutting_layout,
-				"_get_selected_workflow_action",
-				lambda: "Project Manager Approves",
-			)
-		)
-		self.start_patcher(patch.object(sheet_cutting_layout, "frappe", FrappeStub))
-		self.start_patcher(
-			patch.object(sheet_cutting_layout, "validate_sheet_cutting_layout", lambda _doc: None)
-		)
+		validate = self.start_patcher(patch.object(sheet_cutting_layout, "validate_sheet_cutting_layout"))
+		snapshot = self.start_patcher(patch.object(sheet_cutting_layout, "record_approval_snapshot"))
 
 		doc = _new_sheet_cutting_layout_doc(sheet_cutting_layout)
-		doc.approval_snapshot = []
 
 		doc.validate()
 
-		assert len(doc.approval_snapshot) == 1
-		assert doc.approval_snapshot[0]["step_name"] == "Project Manager Approval"
-		assert doc.approval_snapshot[0]["approver"] == "projects@example.com"
-		assert doc.approval_snapshot[0]["decision"] == "Approved"
-		assert doc.approval_snapshot[0]["decision_time"] == datetime(2026, 5, 15, 9, 30, 0)
+		validate.assert_called_once_with(doc)
+		snapshot.assert_not_called()
 
-	def test_controller_validate_records_submit_for_check_snapshot(self) -> None:
+	def test_controller_no_longer_exposes_workflow_side_effect_hooks(self) -> None:
 		from sheet_cutting_layout.sheet_cutting_layout.doctype.sheet_cutting_layout import (
 			sheet_cutting_layout,
 		)
 
-		class FrappeStub:
-			class _Session:
-				user = "system@example.com"
+		assert not hasattr(sheet_cutting_layout.SheetCuttingLayout, "before_workflow_action")
+		assert not hasattr(sheet_cutting_layout, "_get_selected_workflow_action")
+		assert not hasattr(sheet_cutting_layout, "apply_sheet_cutting_layout_workflow")
 
-			session = _Session()
-
-			@staticmethod
-			def now_datetime() -> datetime:
-				return datetime(2026, 5, 15, 10, 0, 0)
-
-		self.start_patcher(
-			patch.object(
-				sheet_cutting_layout,
-				"_get_selected_workflow_action",
-				lambda: "Submit for Check",
-			)
-		)
-		self.start_patcher(patch.object(sheet_cutting_layout, "frappe", FrappeStub))
-		self.start_patcher(
-			patch.object(sheet_cutting_layout, "validate_sheet_cutting_layout", lambda _doc: None)
-		)
-
-		doc = _new_sheet_cutting_layout_doc(sheet_cutting_layout)
-		doc.approval_snapshot = []
-
-		doc.validate()
-
-		assert len(doc.approval_snapshot) == 1
-		assert doc.approval_snapshot[0]["step_name"] == "Submit for Check"
-		assert doc.approval_snapshot[0]["approver"] == "system@example.com"
-		assert doc.approval_snapshot[0]["decision"] == "Submitted"
-		assert doc.approval_snapshot[0]["decision_time"] == datetime(2026, 5, 15, 10, 0, 0)
-
-	def test_workflow_wrapper_sets_selected_action_for_sheet_cutting_layout(self) -> None:
+	def test_workflow_wrapper_function_is_removed(self) -> None:
 		from sheet_cutting_layout.sheet_cutting_layout.doctype.sheet_cutting_layout import (
 			sheet_cutting_layout,
 		)
 
-		calls: list[tuple[object, str, object]] = []
-
-		class Flags:
-			selected_workflow_action = "old-action"
-
-		class FrappeStub:
-			flags = Flags()
-
-			@staticmethod
-			def parse_json(doc: object) -> dict[str, str]:
-				return doc  # type: ignore[return-value]
-
-		class FrappeWorkflowStub:
-			@staticmethod
-			def apply_workflow(doc: object, action: str) -> str:
-				calls.append((doc, action, FrappeStub.flags.selected_workflow_action))
-				return "applied"
-
-		self.start_patcher(patch.object(sheet_cutting_layout, "frappe", FrappeStub))
-		self.start_patcher(patch.dict(sys.modules, {"frappe.model.workflow": FrappeWorkflowStub}))
-
-		result = sheet_cutting_layout.apply_sheet_cutting_layout_workflow(
-			{"doctype": "Sheet Cutting Layout"},
-			"MR Release",
-		)
-
-		assert result == "applied"
-		assert calls == [({"doctype": "Sheet Cutting Layout"}, "MR Release", "MR Release")]
-		assert FrappeStub.flags.selected_workflow_action == "old-action"
+		assert not hasattr(sheet_cutting_layout, "apply_sheet_cutting_layout_workflow")
 
 	def test_rejected_layout_on_trash_removes_workflow_action_links(self) -> None:
 		from sheet_cutting_layout.sheet_cutting_layout.doctype.sheet_cutting_layout import (
@@ -1091,51 +997,71 @@ class TestControllerWorkflow(ReleaseServiceIsolatedTestCase):
 
 		assert deletions == []
 
-	def test_controller_supersede_action_deactivates_generated_bom(self) -> None:
+	def test_controller_before_cancel_records_supersede_snapshot(self) -> None:
 		from sheet_cutting_layout.sheet_cutting_layout.doctype.sheet_cutting_layout import (
 			sheet_cutting_layout,
 		)
 
-		calls: list[object] = []
-
+		snapshot = self.start_patcher(patch.object(sheet_cutting_layout, "record_approval_snapshot"))
 		self.start_patcher(
-			patch.object(sheet_cutting_layout, "_get_selected_workflow_action", lambda: "Supersede")
+			patch.object(sheet_cutting_layout, "_get_session_user", lambda: "mr@example.com")
 		)
 		self.start_patcher(
 			patch.object(
 				sheet_cutting_layout,
-				"deactivate_generated_bom",
-				lambda layout: calls.append(layout),
+				"_get_now_datetime",
+				lambda: datetime(2026, 5, 15, 12, 30, 0),
 			)
 		)
 
 		doc = _new_sheet_cutting_layout_doc(sheet_cutting_layout)
 		doc.generated_bom = "BOM-PART001SHR-001"
-		doc.before_workflow_action()
+		doc.before_cancel()
+
+		snapshot.assert_called_once_with(
+			doc,
+			action="Supersede",
+			approver="mr@example.com",
+			decision_time=datetime(2026, 5, 15, 12, 30, 0),
+		)
+
+	def test_controller_on_cancel_retires_layout(self) -> None:
+		from sheet_cutting_layout.sheet_cutting_layout.doctype.sheet_cutting_layout import (
+			sheet_cutting_layout,
+		)
+
+		calls: list[object] = []
+
+		self.start_patcher(
+			patch.object(sheet_cutting_layout, "retire_layout", lambda layout: calls.append(layout))
+		)
+		snapshot = self.start_patcher(patch.object(sheet_cutting_layout, "record_approval_snapshot"))
+
+		doc = _new_sheet_cutting_layout_doc(sheet_cutting_layout)
+		doc.generated_bom = "BOM-PART001SHR-001"
+		doc.on_cancel()
 
 		assert calls == [doc]
+		snapshot.assert_not_called()
 
-	def test_controller_before_cancel_cancels_generated_bom(self) -> None:
+	def test_controller_on_cancel_does_not_force_cancel_status(self) -> None:
 		from sheet_cutting_layout.sheet_cutting_layout.doctype.sheet_cutting_layout import (
 			sheet_cutting_layout,
 		)
 
 		calls: list[object] = []
 		self.start_patcher(
-			patch.object(
-				sheet_cutting_layout,
-				"cancel_generated_bom",
-				lambda layout: calls.append(layout),
-			)
+			patch.object(sheet_cutting_layout, "retire_layout", lambda layout: calls.append(layout))
 		)
+		self.start_patcher(patch.object(sheet_cutting_layout, "record_approval_snapshot"))
 
 		doc = _new_sheet_cutting_layout_doc(sheet_cutting_layout)
 		doc.status = "Superseded"
 		doc.generated_bom = "BOM-PART001SHR-001"
-		doc.before_cancel()
+		doc.on_cancel()
 
 		assert calls == [doc]
-		assert doc.status == "Cancel"
+		assert doc.status == "Superseded"
 
 	def test_form_cancel_lets_layout_controller_cancel_linked_bom(self) -> None:
 		content = (
@@ -1153,6 +1079,7 @@ class TestControllerWorkflow(ReleaseServiceIsolatedTestCase):
 
 		assert "ignoreBomInGenericCancelAll(frm);" in content
 		assert 'frm.ignore_doctypes_on_cancel_all || []), "BOM"' in content
+
 
 def _new_sheet_cutting_layout_doc(sheet_cutting_layout_module: object):
 	doc = object.__new__(sheet_cutting_layout_module.SheetCuttingLayout)
@@ -2295,22 +2222,26 @@ class TestReleaseServiceIntegration(SheetCuttingLayoutTestCase):
 		self.assertFloatAlmostEqual(raw_rows[0].qty, layout.weight_per_sheet_kg)
 		self.assertEqual(raw_rows[0].uom, "Kg")
 
-	def test_mr_release_save_cycle_persists_released_status(self) -> None:
+	def test_native_submit_release_persists_release_artifacts(self) -> None:
 		layout = self._release_ready_layout()
 
-		# Drive the real controller save cycle: the production "MR Release" action flag
-		# makes validate() call release_layout(), and the outer save persists the mutation.
-		frappe.flags.selected_workflow_action = "MR Release"
-		self.addCleanup(lambda: setattr(frappe.flags, "selected_workflow_action", None))
-		layout.save(ignore_permissions=True)
+		layout.status = "Released"
+		layout.submit()
 		if layout.generated_bom:
 			register_test_doc("BOM", layout.generated_bom)
+		generated_bom = layout.generated_bom
+
+		layout.reload()
 
 		self.assertEqual(
 			frappe.db.get_value("Sheet Cutting Layout", layout.name, "status"),
 			"Released",
 		)
-		self.assertTrue(frappe.db.get_value("Sheet Cutting Layout", layout.name, "generated_bom"))
+		self.assertEqual(layout.generated_bom, generated_bom)
+		self.assertEqual(len(layout.finished_parts), 1)
+		self.assertEqual(layout.finished_parts[0].generated_bom, generated_bom)
+		self.assertEqual(len(layout.approval_snapshot), 1)
+		self.assertEqual(layout.approval_snapshot[0].step_name, "MR Approval")
 
 	def test_release_layout_persists_released_status_and_bom_link(self) -> None:
 		layout = self._release_ready_layout()

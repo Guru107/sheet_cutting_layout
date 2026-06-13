@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from types import SimpleNamespace
 from unittest.mock import patch
 
 from sheet_cutting_layout.tests.base import SheetCuttingLayoutTestCase
@@ -30,35 +29,82 @@ class _FakeLayoutDoc:
 
 
 class TestSheetCuttingLayoutController(SheetCuttingLayoutTestCase):
-	def test_validate_delegates_to_validator(self) -> None:
+	def test_validate_only_runs_validator_no_workflow_side_effects(self) -> None:
 		doc = object.__new__(controller.SheetCuttingLayout)
 		doc.doctype = "Sheet Cutting Layout"
 
-		with (
-			patch.object(controller, "_get_selected_workflow_action", return_value=None),
-			patch.object(controller, "validate_sheet_cutting_layout") as validate_sheet_cutting_layout,
-		):
+		with patch.object(controller, "validate_sheet_cutting_layout") as validate:
 			doc.validate()
 
-		validate_sheet_cutting_layout.assert_called_once_with(doc)
+		validate.assert_called_once_with(doc)
+		self.assertFalse(hasattr(controller.SheetCuttingLayout, "before_workflow_action"))
+		self.assertFalse(hasattr(controller, "apply_sheet_cutting_layout_workflow"))
 
-	def test_validate_mr_release_records_snapshot_and_release_once(self) -> None:
+	def test_on_submit_releases_and_snapshots_when_status_released(self) -> None:
 		doc = object.__new__(controller.SheetCuttingLayout)
 		doc.doctype = "Sheet Cutting Layout"
+		doc.status = "Released"
 
 		with (
-			patch.object(controller, "_get_selected_workflow_action", return_value="MR Release"),
-			patch.object(controller, "record_approval_snapshot") as record_approval_snapshot,
-			patch.object(controller, "release_layout") as release_layout,
-			patch.object(controller, "validate_sheet_cutting_layout") as validate_sheet_cutting_layout,
+			patch.object(controller, "release_layout") as release,
+			patch.object(controller, "record_approval_snapshot") as snapshot,
 			patch.object(controller, "_get_session_user", return_value="Administrator"),
-			patch.object(controller, "_get_now_datetime", return_value="2026-05-28T12:00:00"),
+			patch.object(controller, "_get_now_datetime", return_value="2026-06-13T12:00:00"),
 		):
-			doc.validate()
+			doc.on_submit()
 
-		record_approval_snapshot.assert_called_once()
-		release_layout.assert_called_once_with(doc)
-		validate_sheet_cutting_layout.assert_called_once_with(doc)
+		release.assert_called_once_with(doc)
+		snapshot.assert_called_once_with(
+			doc,
+			action="MR Release",
+			approver="Administrator",
+			decision_time="2026-06-13T12:00:00",
+		)
+
+	def test_on_submit_does_not_snapshot_or_release_when_not_released(self) -> None:
+		doc = object.__new__(controller.SheetCuttingLayout)
+		doc.doctype = "Sheet Cutting Layout"
+		doc.status = "Approved by Purchase"
+
+		with (
+			patch.object(controller, "release_layout") as release,
+			patch.object(controller, "record_approval_snapshot") as snapshot,
+		):
+			doc.on_submit()
+
+		release.assert_not_called()
+		snapshot.assert_not_called()
+
+	def test_before_cancel_snapshots_supersede(self) -> None:
+		doc = object.__new__(controller.SheetCuttingLayout)
+		doc.doctype = "Sheet Cutting Layout"
+
+		with (
+			patch.object(controller, "record_approval_snapshot") as snapshot,
+			patch.object(controller, "_get_session_user", return_value="Administrator"),
+			patch.object(controller, "_get_now_datetime", return_value="2026-06-13T12:00:00"),
+		):
+			doc.before_cancel()
+
+		snapshot.assert_called_once_with(
+			doc,
+			action="Supersede",
+			approver="Administrator",
+			decision_time="2026-06-13T12:00:00",
+		)
+
+	def test_on_cancel_retires_layout_without_snapshot(self) -> None:
+		doc = object.__new__(controller.SheetCuttingLayout)
+		doc.doctype = "Sheet Cutting Layout"
+
+		with (
+			patch.object(controller, "retire_layout") as retire,
+			patch.object(controller, "record_approval_snapshot") as snapshot,
+		):
+			doc.on_cancel()
+
+		retire.assert_called_once_with(doc)
+		snapshot.assert_not_called()
 
 	def test_generate_end_piece_boms_checks_write_permission_and_calls_service(self) -> None:
 		doc = _FakeLayoutDoc(name="SCL-TEST-002")
@@ -106,36 +152,6 @@ class TestSheetCuttingLayoutController(SheetCuttingLayoutTestCase):
 		self.assertTrue(new_doc.inserted)
 		self.assertEqual(revision_name, "SCL-TEST-003-R1")
 		create_revision.assert_called_once_with(old_doc)
-
-	def test_apply_workflow_sets_selected_action_only_for_sheet_cutting_layout(self) -> None:
-		flags = SimpleNamespace()
-		parsed_doc = {"doctype": "Sheet Cutting Layout", "name": "SCL-TEST-004"}
-		apply_workflow_calls: list[tuple[object, str, str | None]] = []
-
-		def _fake_apply_workflow(doc: object, action: str) -> str:
-			apply_workflow_calls.append((doc, action, getattr(flags, "selected_workflow_action", None)))
-			return "ok"
-
-		fake_frappe = SimpleNamespace(
-			flags=flags,
-			parse_json=lambda _doc: parsed_doc,
-		)
-
-		with (
-			patch.object(controller, "frappe", fake_frappe),
-			patch.object(
-				controller, "import_module", return_value=SimpleNamespace(apply_workflow=_fake_apply_workflow)
-			),
-		):
-			result = controller.apply_sheet_cutting_layout_workflow(
-				{"doctype": "Sheet Cutting Layout"}, "MR Release"
-			)
-
-		self.assertEqual(result, "ok")
-		self.assertEqual(
-			apply_workflow_calls, [({"doctype": "Sheet Cutting Layout"}, "MR Release", "MR Release")]
-		)
-		self.assertFalse(hasattr(flags, "selected_workflow_action"))
 
 	def test_parent_finished_part_inputs_persist_without_child_rows(self) -> None:
 		layout = make_layout(
@@ -185,8 +201,38 @@ class TestSheetCuttingLayoutController(SheetCuttingLayoutTestCase):
 	def test_mr_release_generates_native_bom_with_test_uom_items(self) -> None:
 		layout = make_release_ready_layout()
 
-		with patch.object(controller, "_get_selected_workflow_action", return_value="MR Release"):
-			layout.validate()
+		layout.status = "Released"
+		layout.on_submit()
 
 		self.assertEqual(layout.status, "Released")
 		self.assertTrue(layout.generated_bom)
+
+	def test_native_submit_persists_release_artifacts_after_reload(self) -> None:
+		layout = make_release_ready_layout()
+
+		# D-1 moves side effects to native on_submit, while D-5 will align the
+		# workflow fixture so user-facing MR Release reaches this status naturally.
+		layout.status = "Released"
+		layout.submit()
+		generated_bom = layout.generated_bom
+
+		layout.reload()
+
+		self.assertEqual(layout.status, "Released")
+		self.assertEqual(layout.generated_bom, generated_bom)
+		self.assertEqual(len(layout.finished_parts), 1)
+		self.assertEqual(layout.finished_parts[0].generated_bom, generated_bom)
+		self.assertEqual(len(layout.approval_snapshot), 1)
+		self.assertEqual(layout.approval_snapshot[0].step_name, "MR Approval")
+		self.assertEqual(layout.approval_snapshot[0].decision, "Approved")
+
+	def test_native_cancel_persists_supersession_snapshot_after_reload(self) -> None:
+		layout = make_release_ready_layout()
+		layout.status = "Released"
+		layout.submit()
+
+		layout.cancel()
+		layout.reload()
+
+		snapshot_steps = [row.step_name for row in layout.approval_snapshot]
+		self.assertIn("Supersession", snapshot_steps)

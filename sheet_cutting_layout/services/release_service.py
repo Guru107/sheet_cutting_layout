@@ -22,11 +22,6 @@ _ = frappe._
 
 LayoutReleaseStatus = Literal["Approved by Purchase", "Released"]
 
-# Set on frappe.flags by the layout controller while its own save cycle runs
-# release_layout; _save_layout_records skips the nested save when it is active.
-SUPPRESS_WORKFLOW_SIDE_EFFECTS_FLAG = "sheet_cutting_layout_suppress_workflow_side_effects"
-
-
 class EndPieceRow(Protocol):
 	weight_kg: float
 	disposition: str
@@ -520,25 +515,45 @@ def _save_bom_records(boms: Sequence[BomRecord]) -> None:
 
 
 def _save_layout_records(layouts: Sequence[object]) -> None:
-	if getattr(getattr(frappe, "flags", None), SUPPRESS_WORKFLOW_SIDE_EFFECTS_FLAG, False):
-		# The layout controller is mid-save (workflow action cycle): the outer save
-		# persists the released layout, and a nested save of the same document
-		# would trip Frappe's timestamp conflict check.
-		return
-
 	for layout in layouts:
-		if _is_submitted_document(layout) and hasattr(layout, "db_set"):
-			state_values = _supported_field_values(
-				layout,
-				{
-					"status": getattr(layout, "status", None),
-					"is_active": getattr(layout, "is_active", None),
-				},
-			)
-			if state_values:
-				layout.db_set(state_values, update_modified=True, notify=False)
+		if _is_submitted_document(layout):
+			_save_submitted_layout_record(layout)
 		elif hasattr(layout, "save"):
 			layout.save(ignore_permissions=True)
+
+
+def _save_submitted_layout_record(layout: object) -> None:
+	save = getattr(layout, "save", None)
+	if callable(save):
+		flags = getattr(layout, "flags", None)
+		previous_value = getattr(flags, "ignore_validate_update_after_submit", None)
+		had_previous_value = hasattr(flags, "ignore_validate_update_after_submit")
+		if flags is not None:
+			flags.ignore_validate_update_after_submit = True
+		try:
+			save(ignore_permissions=True)
+		finally:
+			if flags is not None:
+				if had_previous_value:
+					flags.ignore_validate_update_after_submit = previous_value
+				else:
+					delattr(flags, "ignore_validate_update_after_submit")
+		return
+
+	db_set = getattr(layout, "db_set", None)
+	if not callable(db_set):
+		return
+
+	state_values = _supported_field_values(
+		layout,
+		{
+			"status": getattr(layout, "status", None),
+			"is_active": getattr(layout, "is_active", None),
+			"generated_bom": getattr(layout, "generated_bom", None),
+		},
+	)
+	if state_values:
+		db_set(state_values, update_modified=True, notify=False)
 
 
 def _is_submitted_document(doc: object) -> bool:

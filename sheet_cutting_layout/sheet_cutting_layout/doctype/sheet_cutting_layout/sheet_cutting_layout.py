@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from datetime import datetime
-from importlib import import_module
 
 import frappe
 from frappe.model.document import Document
@@ -13,75 +12,38 @@ from sheet_cutting_layout.services.end_piece_bom_service import (
 	generate_end_piece_boms,
 )
 from sheet_cutting_layout.services.release_service import (
-	SUPPRESS_WORKFLOW_SIDE_EFFECTS_FLAG,
-	cancel_generated_bom,
-	deactivate_generated_bom,
+	cancel_generated_bom as retire_layout,
 	release_layout,
 )
 from sheet_cutting_layout.services.validators import apply_end_piece_bom_status, validate_sheet_cutting_layout
 from sheet_cutting_layout.services.versioning import create_revision
-from sheet_cutting_layout.services.workflow import record_approval_snapshot
+from sheet_cutting_layout.services.workflow import MR_RELEASE_ACTION, SUPERSEDE_ACTION, record_approval_snapshot
 
 
 class SheetCuttingLayout(Document):
+	ignore_linked_doctypes = ["BOM"]
+
 	def before_insert(self) -> None:
 		_clear_copied_release_artifacts(self)
 
-	def before_workflow_action(self) -> None:
-		action = _get_selected_workflow_action()
-		self._apply_workflow_action_effects(action)
-
 	def validate(self) -> None:
-		action = _get_selected_workflow_action()
-		self._apply_workflow_action_effects(action)
 		validate_sheet_cutting_layout(self)
 
+	def on_submit(self) -> None:
+		if getattr(self, "status", None) != "Released":
+			return
+
+		_record_workflow_snapshot(self, action=MR_RELEASE_ACTION)
+		release_layout(self)
+
 	def before_cancel(self) -> None:
-		cancel_generated_bom(self)
-		self.status = "Cancel"
+		_record_workflow_snapshot(self, action=SUPERSEDE_ACTION)
+
+	def on_cancel(self) -> None:
+		retire_layout(self)
 
 	def on_trash(self) -> None:
-		if getattr(self, "status", None) != "Rejected":
-			return
-
-		doctype = getattr(self, "doctype", "Sheet Cutting Layout")
-		workflow_action_names = frappe.db.get_all(
-			"Workflow Action",
-			filters={"reference_doctype": doctype, "reference_name": self.name},
-			pluck="name",
-		)
-		if not workflow_action_names:
-			return
-
-		frappe.db.delete(
-			"Workflow Action Permitted Role",
-			{"parenttype": "Workflow Action", "parent": ["in", workflow_action_names]},
-		)
-		frappe.db.delete(
-			"Workflow Action",
-			{"reference_doctype": doctype, "reference_name": self.name},
-		)
-
-	def _apply_workflow_action_effects(self, action: str | None) -> None:
-		if (
-			action is None
-			or _workflow_side_effects_are_suppressed()
-			or getattr(self, "_sheet_cutting_layout_applied_workflow_action", None) == action
-		):
-			return
-
-		self._sheet_cutting_layout_applied_workflow_action = action
-		record_approval_snapshot(
-			self,
-			action=action,
-			approver=_get_session_user(),
-			decision_time=_get_now_datetime(),
-		)
-		if action == "MR Release":
-			with _suppress_workflow_side_effects():
-				release_layout(self)
-		if action == "Supersede":
-			deactivate_generated_bom(self)
+		_clear_rejected_workflow_actions(self)
 
 
 def _clear_copied_release_artifacts(doc: object) -> None:
@@ -106,21 +68,36 @@ def _clear_copied_release_artifacts(doc: object) -> None:
 		apply_end_piece_bom_status(doc, end_pieces)
 
 
-def _get_selected_workflow_action() -> str | None:
-	flags = getattr(frappe, "flags", None)
-	action = getattr(flags, "selected_workflow_action", None)
-	if isinstance(action, str):
-		return action
+def _record_workflow_snapshot(doc: object, *, action: str) -> None:
+	record_approval_snapshot(
+		doc,
+		action=action,
+		approver=_get_session_user(),
+		decision_time=_get_now_datetime(),
+	)
 
-	form_dict = getattr(getattr(frappe, "local", None), "form_dict", None)
-	action = getattr(form_dict, "workflow_action", None)
-	if isinstance(action, str):
-		return action
-	action = getattr(form_dict, "action", None)
-	if isinstance(action, str):
-		return action
 
-	return None
+def _clear_rejected_workflow_actions(doc: object) -> None:
+	if getattr(doc, "status", None) != "Rejected":
+		return
+
+	doctype = getattr(doc, "doctype", "Sheet Cutting Layout")
+	workflow_action_names = frappe.db.get_all(
+		"Workflow Action",
+		filters={"reference_doctype": doctype, "reference_name": doc.name},
+		pluck="name",
+	)
+	if not workflow_action_names:
+		return
+
+	frappe.db.delete(
+		"Workflow Action Permitted Role",
+		{"parenttype": "Workflow Action", "parent": ["in", workflow_action_names]},
+	)
+	frappe.db.delete(
+		"Workflow Action",
+		{"reference_doctype": doctype, "reference_name": doc.name},
+	)
 
 
 def _get_session_user() -> str | None:
@@ -140,57 +117,6 @@ def _get_now_datetime() -> datetime:
 		return now_datetime()
 
 	return datetime.now()
-
-
-class _suppress_workflow_side_effects:
-	def __enter__(self) -> None:
-		self.flags = getattr(frappe, "flags", None)
-		if self.flags is None:
-			self.previous_value = None
-			self.had_previous_value = False
-			return
-
-		self.previous_value = getattr(self.flags, SUPPRESS_WORKFLOW_SIDE_EFFECTS_FLAG, None)
-		self.had_previous_value = hasattr(self.flags, SUPPRESS_WORKFLOW_SIDE_EFFECTS_FLAG)
-		setattr(self.flags, SUPPRESS_WORKFLOW_SIDE_EFFECTS_FLAG, True)
-
-	def __exit__(self, exc_type: object, exc_value: object, traceback: object) -> None:
-		if self.flags is None:
-			return
-
-		if self.had_previous_value:
-			setattr(self.flags, SUPPRESS_WORKFLOW_SIDE_EFFECTS_FLAG, self.previous_value)
-		else:
-			delattr(self.flags, SUPPRESS_WORKFLOW_SIDE_EFFECTS_FLAG)
-
-
-def _workflow_side_effects_are_suppressed() -> bool:
-	flags = getattr(frappe, "flags", None)
-	return bool(getattr(flags, SUPPRESS_WORKFLOW_SIDE_EFFECTS_FLAG, False))
-
-
-@whitelist()
-def apply_sheet_cutting_layout_workflow(doc: object, action: str) -> object:
-	frappe_workflow = import_module("frappe.model.workflow")
-	apply_workflow = frappe_workflow.apply_workflow
-	parsed_doc = frappe.parse_json(doc)
-	doctype = (
-		parsed_doc.get("doctype") if isinstance(parsed_doc, dict) else getattr(parsed_doc, "doctype", None)
-	)
-	if doctype != "Sheet Cutting Layout":
-		return apply_workflow(doc, action)
-
-	flags = getattr(frappe, "flags", None)
-	previous_action = getattr(flags, "selected_workflow_action", None)
-	had_previous_action = hasattr(flags, "selected_workflow_action")
-	flags.selected_workflow_action = action
-	try:
-		return apply_workflow(doc, action)
-	finally:
-		if had_previous_action:
-			flags.selected_workflow_action = previous_action
-		else:
-			delattr(flags, "selected_workflow_action")
 
 
 @whitelist()
