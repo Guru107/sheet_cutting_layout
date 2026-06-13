@@ -41,6 +41,12 @@ class Layout:
 
 
 class TestBomService(SheetCuttingLayoutTestCase):
+	def test_bom_document_has_no_status_or_disabled_fields(self) -> None:
+		bom = bom_service.BomDocument(item="FINISHED-SHR")
+
+		self.assertFalse(hasattr(bom, "status"))
+		self.assertFalse(hasattr(bom, "disabled"))
+
 	def test_generated_bom_uses_parts_per_sheet_quantity_and_sheet_weight_raw_qty(self) -> None:
 		bom = bom_service.build_bom_from_layout_row(
 			Layout(no_of_strips=11, parts_per_sheet=77),

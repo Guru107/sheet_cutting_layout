@@ -63,8 +63,6 @@ class BomRecord(Protocol):
 	custom_operation: str | None
 	sheet_cutting_layout: str | None
 	is_active: bool
-	disabled: bool
-	status: str
 
 
 @dataclass
@@ -276,8 +274,6 @@ def _insert_frappe_bom(bom: BomDocument) -> BomDocument:
 
 	bom.name = bom_doc.name
 	bom.is_active = bool(getattr(bom_doc, "is_active", True))
-	bom.disabled = bool(getattr(bom_doc, "disabled", False))
-	bom.status = str(getattr(bom_doc, "status", "Active") or "Active")
 	bom._persisted_with_frappe = True
 	return bom
 
@@ -321,8 +317,6 @@ def _finished_part_bom_quantity(finished_part: FinishedPartRow) -> int:
 def _activate_boms(boms: Sequence[BomRecord]) -> None:
 	for bom in boms:
 		bom.is_active = True
-		bom.disabled = False
-		bom.status = "Active"
 
 
 def _get_same_project_layouts(layout: ReleaseLayoutDocument) -> list[object]:
@@ -366,8 +360,6 @@ def _save_bom_records(boms: Sequence[BomRecord]) -> None:
 			continue
 		bom_doc = bom if hasattr(bom, "save") else frappe.get_doc("BOM", bom.name)
 		_set_frappe_field_if_supported(bom_doc, "is_active", 1 if bom.is_active else 0)
-		_set_frappe_field_if_supported(bom_doc, "disabled", 1 if bom.disabled else 0)
-		_set_frappe_field_if_supported(bom_doc, "status", bom.status)
 		mark_bom_app_controlled(bom_doc)
 		bom_doc.save(ignore_permissions=True)
 

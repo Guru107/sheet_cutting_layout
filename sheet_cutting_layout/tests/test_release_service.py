@@ -117,8 +117,6 @@ class Bom:
 	custom_operation: str | None = "Shearing"
 	sheet_cutting_layout: str | None = None
 	is_active: bool = True
-	disabled: bool = False
-	status: str = "Active"
 
 
 class SavableRevisionLayout(RevisionLayout):
@@ -664,8 +662,6 @@ class TestReleaseFlow(ReleaseServiceIsolatedTestCase):
 
 		assert result.status == "Released"
 		assert new_bom.is_active is True
-		assert new_bom.disabled is False
-		assert new_bom.status == "Active"
 
 	def test_release_persists_only_new_revision_layout_when_frappe_is_available(self) -> None:
 		from sheet_cutting_layout.services import release_service
@@ -1256,7 +1252,6 @@ class TestFrappeBomInsertAndEndPieces(ReleaseServiceIsolatedTestCase):
 		inserted = release_service._insert_frappe_bom(bom)
 
 		assert inserted.name == "BOM-PART001SHR"
-		assert inserted.status == "Active"
 
 	def test_frappe_bom_insert_appends_scrap_without_rate_resolution(self) -> None:
 		from sheet_cutting_layout.services import release_service
@@ -1745,11 +1740,7 @@ class TestRevisioning(ReleaseServiceIsolatedTestCase):
 		assert old_layout.status == "Released"
 		assert old_layout.is_active is True
 		assert old_bom.is_active is True
-		assert old_bom.disabled is False
-		assert old_bom.status == "Active"
 		assert all(bom.is_active is True for bom in result.generated_boms)
-		assert all(bom.disabled is False for bom in result.generated_boms)
-		assert all(bom.status == "Active" for bom in result.generated_boms)
 
 
 class TestBomLifecycle(ReleaseServiceIsolatedTestCase):

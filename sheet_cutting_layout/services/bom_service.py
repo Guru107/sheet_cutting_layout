@@ -61,8 +61,6 @@ class BomDocument:
 	quantity: int = 1
 	sheet_cutting_layout: str | None = None
 	is_active: bool = True
-	disabled: bool = False
-	status: str = "Active"
 	items: list[BomItemRow] = field(default_factory=list)
 	scrap_items: list[BomItemRow] = field(default_factory=list)
 
