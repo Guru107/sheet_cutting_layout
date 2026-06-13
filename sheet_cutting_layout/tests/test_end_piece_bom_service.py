@@ -5,8 +5,11 @@ from dataclasses import dataclass, field
 from types import SimpleNamespace
 from unittest.mock import patch
 
+import frappe
+
 from sheet_cutting_layout.overrides.bom import validate_shearing_bom_source
 from sheet_cutting_layout.tests.base import SheetCuttingLayoutTestCase
+from sheet_cutting_layout.tests.factories import ensure_item
 
 
 @dataclass
@@ -77,6 +80,10 @@ class FakeDoc:
 	def insert(self, ignore_permissions: bool = False) -> FakeDoc:
 		self.insert_calls += 1
 		self.ignore_permissions = ignore_permissions
+		if self.doctype == "Item" and not any(
+			row.get("uom") == self.stock_uom for row in self.uoms
+		):
+			self.uoms.insert(0, {"uom": self.stock_uom, "conversion_factor": 1})
 		if self.doctype == "BOM":
 			validate_shearing_bom_source(self, "before_insert")
 		if self.doctype == "BOM" and not getattr(self, "company", None):
@@ -346,6 +353,24 @@ class TestEndPieceBomService(SheetCuttingLayoutTestCase):
 			],
 		)
 		self.assertEqual(fake_frappe.created_docs[1].submit_calls, 1)
+
+	def test_created_end_piece_item_has_single_stock_and_alternate_uom_rows(self) -> None:
+		from sheet_cutting_layout.services.end_piece_item_service import ensure_end_piece_item
+
+		suffix = frappe.generate_hash(length=8).upper()
+		raw_item = ensure_item(f"SCLTESTRM{suffix}", stock_uom="Kg", valuation_rate=82.75)
+		finished_item = ensure_item(f"SCLTESTFG{suffix}SHR", stock_uom="Nos")
+		layout = Layout(raw_material_item=raw_item, sheet_thickness_mm=2)
+		row = EndPiece(used_for_finished_part=finished_item, width_mm=100, length_mm=200, weight_kg=2.5)
+
+		item_code = ensure_end_piece_item(layout, row)
+
+		item = frappe.get_doc("Item", item_code)
+		uom_rows = [(row.uom, row.conversion_factor) for row in item.uoms]
+		self.assertEqual([uom for uom, _factor in uom_rows].count("Kg"), 1)
+		self.assertEqual([uom for uom, _factor in uom_rows].count("Nos"), 1)
+		self.assertIn(("Kg", 1.0), uom_rows)
+		self.assertIn(("Nos", 2.5), uom_rows)
 
 	def test_existing_generated_item_with_zero_valuation_is_repaired_from_raw_material(self) -> None:
 		existing_code = "FG01SHR-EP-2x100x200"

@@ -107,6 +107,7 @@ def ensure_end_piece_item(layout: LayoutDocument, row: EndPieceRow) -> str:
 	item.disabled = 0
 	_append_app_created_item_uoms(item, stock_uom=item.stock_uom, weight_kg=weight_kg)
 	try:
+		# System-generated Item downstream of a write-permission-checked layout action.
 		item.insert(ignore_permissions=True)
 	except (frappe.ValidationError, frappe.DuplicateEntryError) as error:
 		frappe.log_error(
@@ -140,11 +141,9 @@ def _coerce_positive_number(
 
 def _append_app_created_item_uoms(item: object, *, stock_uom: str, weight_kg: float) -> None:
 	if stock_uom == "Kg":
-		item.append("uoms", {"uom": "Kg", "conversion_factor": 1})
 		item.append("uoms", {"uom": "Nos", "conversion_factor": weight_kg})
 		return
 	if stock_uom == "Nos":
-		item.append("uoms", {"uom": "Nos", "conversion_factor": 1})
 		item.append("uoms", {"uom": "Kg", "conversion_factor": 1 / weight_kg})
 		return
 	_throw(_("Unsupported stock UOM for app-created Item: {0}").format(stock_uom))
