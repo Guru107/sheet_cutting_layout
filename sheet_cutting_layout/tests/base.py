@@ -9,13 +9,6 @@ except ImportError:  # Frappe v15 ships FrappeTestCase instead.
 
 
 class SheetCuttingLayoutTestCase(FrappeTestCase):
-	@classmethod
-	def setUpClass(cls) -> None:
-		super().setUpClass()
-		from sheet_cutting_layout.tests.factories import cleanup_test_records
-
-		cls.addClassCleanup(cleanup_test_records)
-
 	def start_patcher(self, patcher: object) -> object:
 		"""Start a mock patcher and guarantee teardown, returning what start() returns."""
 		started = patcher.start()
