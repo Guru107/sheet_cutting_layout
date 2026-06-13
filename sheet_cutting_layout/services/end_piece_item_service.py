@@ -162,10 +162,9 @@ def _ensure_existing_item_valuation_rate(item_code: str, layout: LayoutDocument)
 	if not _is_positive_number(raw_material_valuation_rate):
 		return
 
-	db = getattr(frappe, "db", None)
-	set_value = getattr(db, "set_value", None)
-	if callable(set_value):
-		set_value("Item", item_code, "valuation_rate", raw_material_valuation_rate, update_modified=True)
+	item = frappe.get_doc("Item", item_code)
+	item.valuation_rate = raw_material_valuation_rate
+	item.save(ignore_permissions=True)
 
 
 def _build_item_description(layout: LayoutDocument, row: EndPieceRow) -> str:
@@ -195,14 +194,9 @@ def _item_exists(item_code: str) -> bool:
 
 
 def _get_value(doctype: str, name: str | None, fieldname: str) -> object:
-	db = getattr(frappe, "db", None)
-	get_value = getattr(db, "get_value", None)
-	if callable(get_value):
-		return get_value(doctype, name, fieldname)
-	get_value = getattr(frappe, "get_value", None)
-	if callable(get_value):
-		return get_value(doctype, name, fieldname)
-	return None
+	if name is None or (isinstance(name, str) and not name.strip()):
+		return None
+	return frappe.get_cached_value(doctype, name, fieldname)
 
 
 def _clean(value: object) -> str | None:

@@ -140,21 +140,18 @@ def _apply_end_piece_bom_status(layout: LayoutDocument) -> None:
 def _persist_generated_links(layout: LayoutDocument, rows: Sequence[EndPieceRow]) -> None:
 	if _is_submitted_document(layout):
 		for row in rows:
-			_db_set(
-				row,
+			row.db_set(
 				"end_piece_item_code",
 				getattr(row, "end_piece_item_code", None),
 				update_modified=False,
 			)
 			if hasattr(row, "generated_end_piece_bom"):
-				_db_set(
-					row,
+				row.db_set(
 					"generated_end_piece_bom",
 					getattr(row, "generated_end_piece_bom", None),
 					update_modified=False,
 				)
-		_db_set(
-			layout,
+		layout.db_set(
 			"end_piece_bom_status",
 			getattr(layout, "end_piece_bom_status", None),
 			update_modified=True,
@@ -164,29 +161,6 @@ def _persist_generated_links(layout: LayoutDocument, rows: Sequence[EndPieceRow]
 	save = getattr(layout, "save", None)
 	if callable(save):
 		save(ignore_permissions=True)
-
-
-def _db_set(
-	doc: object,
-	fieldname: object,
-	value: object = None,
-	*,
-	update_modified: bool,
-) -> None:
-	db_set = getattr(doc, "db_set", None)
-	if callable(db_set):
-		db_set(fieldname, value, update_modified=update_modified, notify=False)
-		return
-
-	db = getattr(frappe, "db", None)
-	set_value = getattr(db, "set_value", None)
-	doctype = getattr(doc, "doctype", None)
-	name = getattr(doc, "name", None)
-	if callable(set_value) and doctype and name:
-		set_value(doctype, name, fieldname, value, update_modified=update_modified)
-		return
-
-	_throw(_("Generated end-piece item links could not be persisted safely on a submitted layout"))
 
 
 def _is_submitted_document(doc: object) -> bool:
