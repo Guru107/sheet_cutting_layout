@@ -36,16 +36,24 @@ This plan **lands after Phase 0** and assumes Phase 0 has merged. Specifically i
 
 > **Line numbers are post-Phase-0 — locate by symbol, not by absolute line.** Every `lines N-M`
 > reference in the Files blocks and task bodies below is given against the tree **after Phase 0 has
-> merged to `develop`**. Phase 0 removes the `try: import frappe` / `_FrappeCompat` shims, the
-> `apply_workflow` override + `before_workflow_action`, the `unittest_adapter`/`factories` cleanup
-> code, and the migration patches, and it adds the `generated_bom` column to `Layout Finished Part` —
-> all of which shift line numbers. The executor MUST find each edit point by **symbol name** (e.g.
-> `ParentFinishedPartRow`, `_parent_finished_part_rows`, `_validate_parent_finished_part_fields`),
-> treating the line numbers only as a hint. Before starting Task 1, **confirm Phase 0 is merged to
-> `develop`**: the current `develop` is *pre*-Phase-0 (verified — `layout_finished_part.json` has no
-> `generated_bom` field, the frappe-less shims are still present, the workflow's `Superseded` state is
-> still `doc_status: 1` with an unreachable `Cancel` state at `doc_status: 2`). The Verification gate
-> under **Dependencies** is the hard stop for this.
+> merged to `develop`**. The frappe-less TEST-mode cleanup is **already done** — it landed via the
+> develop merge (commit `2e964da`): `tests/unittest_adapter.py` is deleted, `tests/base.py` is now a
+> bench-native dual-probe (`IntegrationTestCase`/`FrappeTestCase`) exposing
+> `SheetCuttingLayoutTestCase`, and the shared factories live in `sheet_cutting_layout/tests/factories.py`
+> (`make_layout`, `make_release_ready_layout`, `register_test_doc`, `ensure_item`, `ensure_project`,
+> `ensure_item_group`). New test files in this plan therefore use a bare `import frappe` and no
+> `@skipUnless` guard. What Phase 0 **still** removes (and is genuinely pending): the production-side
+> `try: import frappe` / `_FrappeCompat` import shims (validators.py, overrides/bom.py,
+> end_piece_item_service.py, end_piece_bom_service.py, release_service.py, controller), the
+> `apply_workflow` override + validate()-driven release, and the migration patches; and it adds the
+> `generated_bom` column to `Layout Finished Part` — all of which shift line numbers. The executor MUST
+> find each edit point by **symbol name** (e.g. `ParentFinishedPartRow`, `_parent_finished_part_rows`,
+> `_validate_parent_finished_part_fields`), treating the line numbers only as a hint. Before starting
+> Task 1, **confirm Phase 0 is merged to `develop`**: the current `develop` is *pre*-Phase-0 for the
+> production shims and schema (verified — `layout_finished_part.json` has no `generated_bom` field, the
+> production frappe-less shims are still present, the workflow's `Superseded` state is still
+> `doc_status: 1` with an unreachable `Cancel` state at `doc_status: 2`). The Verification gate under
+> **Dependencies** is the hard stop for this.
 
 ---
 
@@ -599,17 +607,11 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 ```python
 from __future__ import annotations
 
-from unittest import skipUnless
-
-try:
-	import frappe
-except ImportError:
-	frappe = None
+import frappe
 
 from sheet_cutting_layout.tests.base import SheetCuttingLayoutTestCase
 
 
-@skipUnless(frappe is not None, "Frappe bench runtime required")
 class TestLhRhSchema(SheetCuttingLayoutTestCase):
 	def test_layout_has_lh_rh_fields(self) -> None:
 		meta = frappe.get_meta("Sheet Cutting Layout")
@@ -793,10 +795,7 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-try:
-	import frappe
-except ImportError:
-	frappe = None
+import frappe
 
 from sheet_cutting_layout.services.validators import _validate_lh_rh_fields
 from sheet_cutting_layout.tests.base import SheetCuttingLayoutTestCase
@@ -1052,9 +1051,11 @@ the `finished_parts` mirror showing both items with orientation + BOM, and a nat
 **Files:**
 - Modify: `sheet_cutting_layout/sheet_cutting_layout/doctype/sheet_cutting_layout/test_lh_rh_release.py` (append an integration test class; add the helper imports at the top of the file)
 
-> The integration helpers reuse the same dependency-seeding pattern as `make_layout` in
-> `test_sheet_cutting_layout.py` (the `_ensure_item` / `_ensure_layout_dependencies` flow). This test
-> file defines a local `_make_lh_rh_layout` to avoid coupling to that module's private helpers.
+> The integration helpers reuse the same dependency-seeding pattern as `make_layout`
+> (`sheet_cutting_layout/tests/factories.py:183`) and its `ensure_item` / `ensure_project` /
+> `ensure_item_group` helpers. This test file defines a local `_make_lh_rh_layout` to keep the
+> LH/RH-specific seeding (twin Item + `is_lh_rh`/`orientation`/`twin_finished_part`) self-contained,
+> while reusing the shared `register_test_doc` factory for cleanup registration.
 
 - [ ] Append the integration test class to `sheet_cutting_layout/sheet_cutting_layout/doctype/sheet_cutting_layout/test_lh_rh_release.py`. First add these imports at the very top of the file (after the existing `from __future__ import annotations`):
 ```python
@@ -1063,7 +1064,6 @@ from sheet_cutting_layout.tests.factories import register_test_doc
 Then append:
 ```python
 def _ensure_item(item_code: str, *, item_group: str, stock_uom: str) -> str:
-	assert frappe is not None
 	if frappe.db.exists("Item", item_code):
 		return item_code
 	doc = {
@@ -1089,7 +1089,6 @@ def _ensure_item(item_code: str, *, item_group: str, stock_uom: str) -> str:
 
 
 def _ensure_dependencies() -> tuple[str, str]:
-	assert frappe is not None
 	if not frappe.db.exists("Item Group", "SCL-TEST-ITEM-GROUP"):
 		frappe.get_doc(
 			{
@@ -1110,7 +1109,6 @@ def _ensure_dependencies() -> tuple[str, str]:
 
 
 def _make_lh_rh_layout() -> object:
-	assert frappe is not None
 	suffix = frappe.generate_hash(length=6).upper()
 	item_group, project = _ensure_dependencies()
 	raw_material_item = _ensure_item("SCLTESTRM001", item_group=item_group, stock_uom="Kg")
@@ -1154,7 +1152,6 @@ def _make_lh_rh_layout() -> object:
 
 def _release(layout: object) -> object:
 	"""Drive native release: advance to Approved by Purchase, then MR Release."""
-	assert frappe is not None
 	from frappe.model.workflow import apply_workflow
 
 	layout.db_set("status", "Approved by Purchase", update_modified=False)
@@ -1164,7 +1161,6 @@ def _release(layout: object) -> object:
 	return layout
 
 
-@skipUnless(frappe is not None, "Frappe bench runtime required")
 class TestLhRhRelease(SheetCuttingLayoutTestCase):
 	def test_lh_rh_release_creates_two_boms_both_linked_to_layout(self) -> None:
 		layout = _release(_make_lh_rh_layout())

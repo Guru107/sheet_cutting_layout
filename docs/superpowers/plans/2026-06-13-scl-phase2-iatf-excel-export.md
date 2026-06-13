@@ -26,7 +26,7 @@
 | `sheet_cutting_layout/sheet_cutting_layout/doctype/sheet_cutting_layout/test_sheet_cutting_layout_export.py` | Create | Integration test: persist a layout → call the entry point → reopen produced workbook → assert key cells. |
 | `cypress/integration/sheet_cutting_layout_export.js` | Create | E2E: form button triggers a non-empty `.xlsx` download. |
 
-All test modules subclass `sheet_cutting_layout.tests.base.SheetCuttingLayoutTestCase` (which extends `frappe.tests.utils.FrappeTestCase`). Run **every** Python command from `/Users/gurudattkulkarni/Workspace/bench15`.
+All test modules subclass `sheet_cutting_layout.tests.base.SheetCuttingLayoutTestCase` (which resolves `FrappeTestCase` via the v16/v15 probe in `tests/base.py` — `frappe.tests.IntegrationTestCase` first, falling back to `frappe.tests.utils.FrappeTestCase`). Run **every** Python command from `/Users/gurudattkulkarni/Workspace/bench15`.
 
 ### Cell map contract (spec §10.3, codified here)
 

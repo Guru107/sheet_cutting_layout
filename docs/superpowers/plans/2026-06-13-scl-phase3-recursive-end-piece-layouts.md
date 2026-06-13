@@ -37,9 +37,11 @@ integration PR (out of scope here) teaches the exporter to render the recursive 
 
 The frappe-less test mode and the in-app pytest emulation
 (`sheet_cutting_layout/tests/unittest_adapter.py`, `MonkeyPatch`, `add_pytest_style_tests`, `raises`,
-`fixture`) are removed in Phase 0. **All tests in this plan use plain `unittest`/`FrappeTestCase`
-primitives via `SheetCuttingLayoutTestCase` (`sheet_cutting_layout/tests/base.py`).** Do not import
-from `unittest_adapter`.
+`fixture`) are **already removed** (deleted by the `develop` merge; `tests/base.py` now does a
+v16-first dual-probe of `frappe.tests.IntegrationTestCase`/`frappe.tests.utils.FrappeTestCase`).
+**All tests in this plan use plain `unittest`/`FrappeTestCase` primitives via
+`SheetCuttingLayoutTestCase` (`sheet_cutting_layout/tests/base.py`).** Do not import from
+`unittest_adapter` (the module no longer exists).
 
 ## File structure
 

@@ -120,7 +120,9 @@ The no-cycle guard on `child_layout` (§9.3) guarantees the cascade terminates.
 
 ### 4.4 Three-layer bench-native tests, gating every feature
 The app runs **full bench-native** tests — frappe-less test mode and the in-app pytest emulation are
-removed (§7, theme 8). Every feature ships, and does not merge without, all three layers green:
+removed (§7, theme 8; the test-mode/adapter removal and the bench-native `tests/base.py` v15/v16 probe
+**landed via develop merge 2026-06-13**). Every feature ships, and does not merge without, all three
+layers green:
 
 - **Unit** — pure-domain logic in frappe-free modules (geometry, export cell-mapping, cascade-graph
   traversal, twin expansion, cycle detection), exercised under `FrappeTestCase` via the bench runner.
@@ -203,7 +205,11 @@ the native direction:
    (`approx/raises/parametrize/fixtures`); `factories.py` hand-rolls cleanup vs `FrappeTestCase`
    rollback. → **Full bench-native** (decision approved): remove all shims and the emulation layer;
    pure-domain logic lives in frappe-free modules but is run under `FrappeTestCase` + the bench runner.
-   (Findings 11, 15, 16, 18, 31, 34, 36.)
+   The **test-infra half landed via develop merge 2026-06-13** — `unittest_adapter.py` deleted,
+   `tests/base.py` now a 26-line bench-native v16-first/v15-fallback `FrappeTestCase` probe, and the
+   frappe-less TEST mode + `@skipUnless` guards removed (Findings 16, 36 done; factories cleanup
+   reworked, Finding 15). The **production `_FrappeCompat`/`try: import frappe` shims STILL remain in
+   scope** (Findings 11, 18, 31, 34). (Findings 11, 15, 16, 18, 31, 34, 36.)
 9. **Patch conventions (low) — mostly moot.** Import guards, missing `reload_doc`, hand-rolled
    `has_column`. Resolved by dropping the patches in §6. (Findings 19, 20, 21, 22.)
 10. **Fixtures / versioning (low).** Custom Field fixture filter exports Work Order / Production Plan
@@ -342,26 +348,28 @@ multi-sheet structure). Built in the final integration PR once Phase 3 lands.
 ## 12. Appendix — confirmed framework-conformance findings
 
 36 confirmed (3 high / 13 medium / 20 low); 6 false positives pruned by the adversarial pass. Each was
-cross-checked against the installed Frappe v15 / ERPNext v15.101 source.
+cross-checked against the installed Frappe v15 / ERPNext v15.101 source. Findings 16 and 36 (test-infra)
+**landed via the develop merge 2026-06-13** and are struck through below; all production-side findings
+(including the `_FrappeCompat` shims 11/18/31/34 and the native-lifecycle cluster) remain open.
 
 | # | Sev | File:lines (symbol) | Native fix |
 |---|-----|---------------------|-----------|
-| 1 | high | release_service.py:215-228 (`_clear_item_default_bom_reference`) | Let `BOM.on_cancel`/`manage_default_bom` manage `Item.default_bom`; delete helper |
-| 2 | high | release_service.py:140-166 (`deactivate_generated_bom`) | Retire via `doc.cancel()` / `is_active` through `on_update_after_submit`; stop raw `db_set` of is_active/status |
-| 3 | high | sheet_cutting_layout.py:45-141,197-222 (`before_workflow_action`/`apply_*`) | Drop `apply_workflow` override + flags; release from `on_submit`, retire from `on_cancel` |
+| 1 | high | release_service.py:225-239 (`_clear_item_default_bom_reference`) | Let `BOM.on_cancel`/`manage_default_bom` manage `Item.default_bom`; delete helper |
+| 2 | high | release_service.py:147-176 (`deactivate_generated_bom`; raw `db_set` status="Superseded" at 159/168) | Retire via `doc.cancel()` / `is_active` through `on_update_after_submit`; stop raw `db_set` of is_active/status |
+| 3 | high | sheet_cutting_layout.py:50-101,198-222 (`before_workflow_action`/`_apply_workflow_action_effects`/`apply_*`) | Drop `apply_workflow` override + flags; release from `on_submit`, retire from `on_cancel` |
 | 4 | med | hooks.py:33 (Custom Field fixture) | Scope fixture filter to BOM (WO/Production Plan have no fields) |
 | 5 | med | patches/v1_0_submit_released_layouts.py:13-19 | Use `doc.submit()` not raw `set_value` of docstatus (moot — patch dropped) |
 | 6 | med | bom_service.py:91-121,294-299 (scrap rate) | Append scrap rows without `rate`; let BOM compute via `get_rm_rate` |
 | 7 | med | bom_service.py:58-69 (`BomDocument` status/disabled) | Use only `is_active`/`is_default` + submit/cancel; drop non-schema fields |
 | 8 | med | end_piece_item_service.py:177-192 (valuation backfill) | `doc.save()` so Item hooks run |
-| 9 | med | release_service.py:169-212 (`cancel_generated_bom`) | `on_cancel` + `ignore_linked_doctypes` + `frappe.database.savepoint` |
-| 10 | med | release_service.py:100-137 + controller:49-97 (`release_layout` from validate) | Drive release from `on_submit`, not `validate()` |
+| 9 | med | release_service.py:179-222 (`cancel_generated_bom`) | `on_cancel` + `ignore_linked_doctypes` + `frappe.database.savepoint` |
+| 10 | med | release_service.py:104-144 + controller:50-101 (`release_layout` from validate) | Drive release from `on_submit`, not `validate()` |
 | 11 | med | validators.py:16-30 (`_FrappeCompat` shim) | Remove shim; unconditional `import frappe`; pure logic in frappe-free modules |
 | 12 | med | sheet_cutting_layout.json:327-340 (permissions) | Add PM/Purchase/MR perm blocks (read/write, submit/cancel) |
-| 13 | med | release_service.py:140-228 (BOM retire/default) | Native cancel/save lifecycle for retirement + default mgmt |
-| 14 | med | release_service.py:153-161,544-560 (submitted `db_set`) | `allow_on_submit`/`on_update_after_submit` + `doc.save()`; native BOM cancel/save |
-| 15 | med | tests/factories.py:45-85 (cleanup sweep) | `FrappeTestCase` rollback (`addClassCleanup`/`_rollback_db`) |
-| 16 | med | tests/unittest_adapter.py:1-254 (pytest emulation) | `unittest`/`FrappeTestCase` primitives (`assertRaises`, `assertAlmostEqual`, `subTest`) |
+| 13 | med | release_service.py:147-239 (BOM retire/default) | Native cancel/save lifecycle for retirement + default mgmt |
+| 14 | med | release_service.py:160-171,546-558 (submitted `db_set`) | `allow_on_submit`/`on_update_after_submit` + `doc.save()`; native BOM cancel/save |
+| 15 | med | tests/factories.py:98 (`cleanup_test_records` sweep) | `FrappeTestCase` rollback (`addClassCleanup`/`_rollback_db`) |
+| 16 | med | ~~tests/unittest_adapter.py (pytest emulation)~~ — **DONE (develop merge 2026-06-13)**: adapter file deleted; suites use `unittest`/`FrappeTestCase` primitives | — |
 | 17 | low | fixtures/workflow.json (Superseded docstatus-1 dead-end; `Cancel` unreachable) | Set `Superseded` doc_status 2 (Supersede → `doc.cancel()`); remove `Cancel` state + its status-option/fixture entries |
 | 18 | low | overrides/bom.py:3-19 (import guard) | Remove shim; bench-native tests |
 | 19 | low | patches/v1_0_backfill_mr_approval_snapshots.py:6-16 | Unconditional `import frappe` (moot — patch dropped) |
@@ -377,11 +385,11 @@ cross-checked against the installed Frappe v15 / ERPNext v15.101 source.
 | 29 | low | end_piece_item_service.py:132,165-174 (UOM rows) | Append only non-stock UOM; controller adds stock UOM |
 | 30 | low | end_piece_item_service.py:134 (`ignore_permissions`) | Drop elevation or justify with explicit perm check |
 | 31 | low | end_piece_item_service.py:5-31 (`_FrappeCompat`) | Remove shim; bench-native tests |
-| 32 | low | release_service.py:368-429 (`_insert_frappe_bom`) | Set only input fields; let `validate()` compute rate/status |
+| 32 | low | release_service.py:378-439 (`_insert_frappe_bom`) | Set only input fields; let `validate()` compute rate/status |
 | 33 | low | versioning.py:73-89 (`_reset_child_row`) | Let `copy_doc` localize children; clear only app fields |
 | 34 | low | controllers (`try: import frappe` + stub Document) | Bench-native tests; remove stub Document/whitelist |
 | 35 | low | workflow.py:33-64 (`record_approval_snapshot`) | Keep for IATF trail; note overlap with native workflow audit |
-| 36 | low | tests/base.py:5-19 (FrappeTestCase fallback) | Unconditionally extend `FrappeTestCase` under bench |
+| 36 | low | ~~tests/base.py (FrappeTestCase fallback)~~ — **DONE (develop merge 2026-06-13)**: `base.py` now a 26-line bench-native v16-first/v15-fallback `FrappeTestCase` probe (`SheetCuttingLayoutTestCase`) | — |
 
 ## 13. Open items
 

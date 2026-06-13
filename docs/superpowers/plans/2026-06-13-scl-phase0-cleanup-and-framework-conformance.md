@@ -9,7 +9,7 @@
 
 - **Lands first.** Phase 0 has no upstream phase dependencies. It is the foundation for Phase 1 (LH/RH), Phase 2 (export), and Phase 3 (recursion).
 - Implement the task groups **in order A → B → C → D → E**. Within a group, tasks are ordered; later tasks reference symbols introduced earlier.
-  - **Group A (bench-native test migration)** must land first: every later group's tests are written as plain `unittest`/`FrappeTestCase` methods, which requires the shims and the `unittest_adapter` to be gone.
+  - **Group A (bench-native test migration)** must land first: every later group's tests are written as plain `FrappeTestCase` methods, which requires the production import shims to be gone. (The `unittest_adapter` removal and the suite migration already landed in the develop merge — Group A's remaining work is the production shims plus the test-base/factories cleanup-sweep removal.)
   - **Group D (native lifecycle spine)** depends on **Group C** (`services/geometry.py` exists) only insofar as both touch the controller; keep C before D to avoid merge churn.
 - Spec sections implemented: §4 (cross-cutting principles), §6 (dead-code/residue + geometry extraction + multi-BOM fix), §7 (10 conformance themes), §12 (36-finding appendix).
 
@@ -66,11 +66,11 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
 | `sheet_cutting_layout/fixtures/workflow.json` | Set `Superseded` doc_status 1→2; delete unreachable `Cancel` state | **Modify** (D-5) |
 | `sheet_cutting_layout/sheet_cutting_layout/doctype/layout_*/*.py` | Child controllers (drop `try: import` Document stub) | **Modify** (A) |
 | `sheet_cutting_layout/hooks.py` | Drop `apply_workflow` override (D-1); remove `Cancel` from Workflow State fixture filter (D-5); scope Custom Field fixture to BOM (E-5) | **Modify** (D-1, D-5, E-5) |
-| `sheet_cutting_layout/tests/base.py` | `SheetCuttingLayoutTestCase` unconditionally extends `FrappeTestCase` | **Modify** (A-1) |
-| `sheet_cutting_layout/tests/factories.py` | Cleanup via `FrappeTestCase` rollback | **Modify** (A-2) |
-| `sheet_cutting_layout/tests/unittest_adapter.py` | pytest emulation | **Delete** (A-5) |
-| `sheet_cutting_layout/tests/test_unittest_adapter.py` | tests for the adapter | **Delete** (A-5) |
-| `sheet_cutting_layout/tests/test_*.py` | migrate off the adapter to plain `unittest` | **Modify** (A-3, A-4) |
+| `sheet_cutting_layout/tests/base.py` | `SheetCuttingLayoutTestCase` extends `FrappeTestCase` (already a 26-line v15/v16 dual-probe after the merge) | **Modify** (A-1) |
+| `sheet_cutting_layout/tests/factories.py` | **Retained + trimmed.** Keeps the `make_layout`/`make_release_ready_layout`/`ensure_item`/`ensure_item_group`/`ensure_project`/`ensure_hsn_code`/`insert_if_missing` factories the whole suite imports; only the home-grown cleanup sweep (atexit, `_created_docs`, `cleanup_test_records`, …) is removed in favour of `FrappeTestCase` rollback | **Modify** (A-2) |
+| `sheet_cutting_layout/tests/unittest_adapter.py` | pytest emulation — **deleted by the develop merge** | ~~Delete (A-5)~~ **DONE** |
+| `sheet_cutting_layout/tests/test_unittest_adapter.py` | tests for the adapter — **deleted by the develop merge** | ~~Delete (A-5)~~ **DONE** |
+| `sheet_cutting_layout/tests/test_*.py` | adapter migration already done by the merge; only `register_test_doc` de-registration remains | **Modify** (A-4) |
 | `sheet_cutting_layout/patches/*.py` + `patches.txt` | 5 dev-only patches | **Delete** (B-3) |
 | `.../doctype/layout_impact_resolution/` | stale residue dir (only `__pycache__`) | **Delete** (B-3) |
 
@@ -78,16 +78,51 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
 
 ## Task group A — Bench-native test migration
 
-Resolves findings 11, 15, 16, 18, 31, 34, 36. **Pure refactor** throughout: behaviour is unchanged; we are removing the frappe-less import shims, the `unittest_adapter` pytest emulation, and the hand-rolled cleanup sweep. The bench runner already imports `frappe`, so the `except ImportError` branches are dead under it.
+Resolves findings 11, 15, 16, 18, 31, 34, 36. **Pure refactor** throughout: behaviour is unchanged; we are removing the frappe-less import shims and the hand-rolled cleanup sweep. The bench runner already imports `frappe`, so the `except ImportError` branches are dead under it.
 
-Order matters: A-1 (base) → A-2 (factories) → A-3/A-4 (migrate consumers off the adapter) → A-5 (delete adapter) → A-6/A-7 (remove production shims, now that nothing exercises them frappe-less).
+> **Mostly landed in the develop merge.** The merge already deleted `unittest_adapter.py`/`test_unittest_adapter.py`, migrated all four suites to plain `FrappeTestCase` methods, and moved the test factories into `tests/factories.py`. **A-3 and A-5 are therefore no-ops (skip).** The live remaining work is: A-1 (drop `base.py`'s `setUpClass` sweep), A-2 (drop `factories.py`'s home-grown cleanup sweep, keep the factories), A-4 (de-register the no-op `register_test_doc` call sites), and A-6/A-7 (remove the production import shims that survived the merge).
 
-### Task A-1: base.py unconditionally extends FrappeTestCase
+Order matters: A-1 (base) → A-2 (factories) → A-4 (de-register `register_test_doc`) → A-6/A-7 (remove production shims, now that nothing exercises them frappe-less). [A-3, A-5 already done by the merge.]
 
-Pure refactor. Removes the `except ImportError: _FrappeTestCase = TestCase` fallback (finding 36) and the no-op `addClassCleanup(cleanup_test_records)` (cleanup moves to rollback in A-2).
+### Task A-1: base.py drops the class-cleanup sweep (rollback handles teardown)
+
+Pure refactor. **The develop merge already rewrote `base.py`** to the 26-line v15/v16 dual-probe shown below — the old `except ImportError: _FrappeTestCase = TestCase` fallback (finding 36) is **gone**. The *only* remaining change here is removing the `setUpClass` + `cls.addClassCleanup(cleanup_test_records)` block so per-test `FrappeTestCase` rollback handles teardown (this pairs with A-2 dropping the sweep). **Keep** the v15/v16 dual probe, `start_patcher`, and `assertFloatAlmostEqual`.
+
+**Current `base.py` (after the merge — 26 lines):**
+
+```python
+from __future__ import annotations
+
+try:
+	# Frappe v16's canonical base class; probe it first because v16 still ships
+	# frappe.tests.utils.FrappeTestCase as a deprecated shim slated for removal.
+	from frappe.tests import IntegrationTestCase as FrappeTestCase
+except ImportError:  # Frappe v15 ships FrappeTestCase instead.
+	from frappe.tests.utils import FrappeTestCase
+
+
+class SheetCuttingLayoutTestCase(FrappeTestCase):
+	@classmethod
+	def setUpClass(cls) -> None:
+		super().setUpClass()
+		from sheet_cutting_layout.tests.factories import cleanup_test_records
+
+		cls.addClassCleanup(cleanup_test_records)
+
+	def start_patcher(self, patcher: object) -> object:
+		"""Start a mock patcher and guarantee teardown, returning what start() returns."""
+		started = patcher.start()
+		self.addCleanup(patcher.stop)
+		return started
+
+	def assertFloatAlmostEqual(self, actual: float | int, expected: float | int, places: int = 6) -> None:
+		self.assertAlmostEqual(float(actual), float(expected), places=places)
+```
+
+> **Note:** this dual `except ImportError` probe is the v15/v16 base-class selector, **not** a frappe-less shim — keep it. Only the `setUpClass`/`addClassCleanup(cleanup_test_records)` block is removed here.
 
 **Files:**
-- Modify: `sheet_cutting_layout/tests/base.py` (full rewrite, currently lines 1-22)
+- Modify: `sheet_cutting_layout/tests/base.py` (remove the `setUpClass` block only; currently lines 12-17)
 - Test: `sheet_cutting_layout/tests/test_base.py` (Create)
 
 - [ ] Write the failing test `sheet_cutting_layout/tests/test_base.py`:
@@ -120,15 +155,26 @@ class TestSheetCuttingLayoutTestCase(FrappeTestCase):
   - Command (from `/Users/gurudattkulkarni/Workspace/bench15`): `bench --site development.localhost run-tests --app sheet_cutting_layout --module sheet_cutting_layout.tests.test_base`
   - Expected failure: `test_base_does_not_register_class_cleanup_sweep` fails with `AssertionError: 'cleanup_test_records' unexpectedly found in ...` because the current `setUpClass` still calls `cls.addClassCleanup(cleanup_test_records)`. `SheetCuttingLayoutTestCase()` instantiation also fails because the no-arg constructor requires a `methodName` — that is fine; the assertion failure is the expected signal.
 
-- [ ] Minimal implementation — overwrite `sheet_cutting_layout/tests/base.py` with:
+- [ ] Minimal implementation — delete only the `setUpClass` block (lines 12-17), keeping the v15/v16 dual probe, `start_patcher`, and `assertFloatAlmostEqual`. The result is:
 
 ```python
 from __future__ import annotations
 
-from frappe.tests.utils import FrappeTestCase
+try:
+	# Frappe v16's canonical base class; probe it first because v16 still ships
+	# frappe.tests.utils.FrappeTestCase as a deprecated shim slated for removal.
+	from frappe.tests import IntegrationTestCase as FrappeTestCase
+except ImportError:  # Frappe v15 ships FrappeTestCase instead.
+	from frappe.tests.utils import FrappeTestCase
 
 
 class SheetCuttingLayoutTestCase(FrappeTestCase):
+	def start_patcher(self, patcher: object) -> object:
+		"""Start a mock patcher and guarantee teardown, returning what start() returns."""
+		started = patcher.start()
+		self.addCleanup(patcher.stop)
+		return started
+
 	def assertFloatAlmostEqual(self, actual: float | int, expected: float | int, places: int = 6) -> None:
 		self.assertAlmostEqual(float(actual), float(expected), places=places)
 ```
@@ -137,14 +183,22 @@ class SheetCuttingLayoutTestCase(FrappeTestCase):
 - [ ] Run lint: from app root `python -m ruff check sheet_cutting_layout/tests/base.py sheet_cutting_layout/tests/test_base.py && python -m ruff format --check sheet_cutting_layout/tests/base.py sheet_cutting_layout/tests/test_base.py`
 - [ ] Commit: `test: extend FrappeTestCase unconditionally in test base`
 
-### Task A-2: factories.py uses FrappeTestCase rollback, not an atexit sweep
+### Task A-2: factories.py drops the home-grown cleanup sweep (rollback replaces it) — keep all factories
 
-Pure refactor. Removes the `try: import frappe / except ImportError: frappe = None` shim, the `atexit` cleanup registration, and the `_created_docs` global sweep (finding 15). `FrappeTestCase` rolls back the DB after every test, so explicit deletion is unnecessary. `register_test_doc` becomes a no-op kept only so existing integration-test call sites keep compiling; they are de-registered in A-4.
+Pure refactor. **Scope: remove ONLY the home-grown cleanup machinery** that `FrappeTestCase` per-test rollback replaces (finding 15). The merge already moved the test factories here, and the whole suite imports them from this module — they **stay**. Concretely, delete:
+- the `import atexit` and `from collections import defaultdict` imports;
+- the `_created_docs` dict and `_cleanup_registered` flag globals;
+- `register_cleanup()` and its module-level call;
+- the sweep functions `cleanup_test_records`, `get_prefixed_records`, `get_generated_test_boms`, `delete_if_exists`, `_cancel_submitted_bom`, `cleanup_order`, `_ensure_connection`, and the `TEST_PREFIX`/`ITEM_CODE_PREFIX` constants only where they become unused.
 
-> **`make_layout` location (pinned).** The integration factory `make_layout` lives in the doctype test module `sheet_cutting_layout/sheet_cutting_layout/doctype/sheet_cutting_layout/test_sheet_cutting_layout.py` (defined at line 105) and **stays there** — this task does NOT move it into `tests/factories.py` (which is reduced to the `register_test_doc` no-op). Later bench-gated tests that need it (D-2, D-4, D-5) import the module and call `make_layout(...)`, e.g. `from sheet_cutting_layout.sheet_cutting_layout.doctype.sheet_cutting_layout import test_sheet_cutting_layout as helpers` then `helpers.make_layout(...)`, or — when the test class lives in that same module — call `make_layout(...)` directly.
+**Keep** every `make_*`/`ensure_*` factory: `make_layout` (line 183), `make_release_ready_layout` (line 222), `ensure_item` (line 166), `ensure_item_group` (line 140), `ensure_project` (line 152), `ensure_hsn_code` (line 160), and `insert_if_missing` (line 124). `register_test_doc` (line 16) becomes a no-op kept only so existing call sites keep compiling — `make_release_ready_layout`/`insert_if_missing` still call it internally, which is fine once it's a no-op; it is de-registered at the external call sites in A-4.
+
+> **Note:** `ITEM_CODE_PREFIX` is still read by `make_release_ready_layout` (`f"{ITEM_CODE_PREFIX}FG…"`), so keep it; only `TEST_PREFIX` and the sweep-only helpers go. Confirm with `grep -n "ITEM_CODE_PREFIX\|TEST_PREFIX" sheet_cutting_layout/tests/factories.py` before deleting either constant.
+
+> **`make_layout` location (pinned, post-merge).** The integration factory `make_layout` now lives in **`sheet_cutting_layout/tests/factories.py` (line 183)** alongside `make_release_ready_layout` (line 222) — the develop merge moved it here out of the doctype test module, and every suite imports it via `from sheet_cutting_layout.tests.factories import make_layout, make_release_ready_layout, register_test_doc`. Bench-gated tests that need it (D-2, D-4, D-5) import it from `tests.factories`; do **not** reach for a `helpers.make_layout`/local definition.
 
 **Files:**
-- Modify: `sheet_cutting_layout/tests/factories.py` (full rewrite, currently lines 1-86)
+- Modify: `sheet_cutting_layout/tests/factories.py` (remove the cleanup-sweep block — `atexit` import + `_created_docs`/`_cleanup_registered` + `register_cleanup`/`cleanup_test_records`/`get_prefixed_records`/`get_generated_test_boms`/`delete_if_exists`/`_cancel_submitted_bom`/`cleanup_order`/`_ensure_connection`, currently lines 3-4, 12-13, 41-121; keep the factories)
 - Test: `sheet_cutting_layout/tests/test_factories.py` (Create)
 
 - [ ] Write the failing test `sheet_cutting_layout/tests/test_factories.py`:
@@ -169,17 +223,28 @@ class TestFactories(FrappeTestCase):
 		source = inspect.getsource(factories)
 		self.assertNotIn("atexit", source)
 		self.assertNotIn("cleanup_test_records", source)
+
+	def test_factories_are_still_exported(self) -> None:
+		# The merge moved the factories here; they must remain importable.
+		for name in (
+			"make_layout",
+			"make_release_ready_layout",
+			"ensure_item",
+			"insert_if_missing",
+		):
+			self.assertTrue(hasattr(factories, name))
 ```
 
 - [ ] Run it and see it FAIL: `bench --site development.localhost run-tests --app sheet_cutting_layout --module sheet_cutting_layout.tests.test_factories`
   - Expected failure: `test_no_atexit_cleanup_is_registered` fails with `AssertionError: 'atexit' unexpectedly found in ...` and `test_register_test_doc_is_a_noop_under_rollback` fails because `factories._created_docs` still exists.
 
-- [ ] Minimal implementation — overwrite `sheet_cutting_layout/tests/factories.py` with:
+- [ ] Minimal implementation — in `sheet_cutting_layout/tests/factories.py`:
+  - Delete the `import atexit` and `from collections import defaultdict` lines.
+  - Delete the `_created_docs`/`_cleanup_registered` globals.
+  - Delete `cleanup_order`, `_ensure_connection`, `_cancel_submitted_bom`, `delete_if_exists`, `get_prefixed_records`, `get_generated_test_boms`, `cleanup_test_records`, `register_cleanup`, and the bare `register_cleanup()` call.
+  - Reduce `register_test_doc` to a no-op:
 
 ```python
-from __future__ import annotations
-
-
 def register_test_doc(doctype: str, name: str | None) -> None:
 	"""No-op kept for call-site compatibility.
 
@@ -189,105 +254,37 @@ def register_test_doc(doctype: str, name: str | None) -> None:
 	return None
 ```
 
+  - **Leave the rest of the module intact**: `insert_if_missing`, `ensure_item_group`, `ensure_project`, `ensure_hsn_code`, `ensure_item`, `make_layout`, `make_release_ready_layout`, and the `ITEM_CODE_PREFIX` constant they rely on.
+
 - [ ] Run tests and see PASS: `bench --site development.localhost run-tests --app sheet_cutting_layout --module sheet_cutting_layout.tests.test_factories`
 - [ ] Run lint: `python -m ruff check sheet_cutting_layout/tests/factories.py sheet_cutting_layout/tests/test_factories.py && python -m ruff format --check sheet_cutting_layout/tests/factories.py sheet_cutting_layout/tests/test_factories.py`
-- [ ] Commit: `test: replace factories cleanup sweep with FrappeTestCase rollback`
+- [ ] Commit: `test: drop factories cleanup sweep in favour of FrappeTestCase rollback`
 
-### Task A-3: migrate test_bom_service.py off the pytest-emulation adapter
+### Task A-3: migrate test_bom_service.py off the pytest-emulation adapter — ALREADY DONE BY THE develop MERGE — skip
 
-Pure refactor. `test_bom_service.py` imports `add_pytest_style_tests, approx, fail, raises` from `unittest_adapter` and ends with `add_pytest_style_tests(globals(), TestBomService)`. Convert the module-level `test_*` functions into real `TestBomService` methods using `unittest`/`FrappeTestCase` primitives. There are no `monkeypatch`/`fixture`/`parametrize` usages in this module (verified), so the conversion is mechanical.
+**ALREADY DONE BY THE develop MERGE — skip.** The merge deleted `tests/unittest_adapter.py` (and `test_unittest_adapter.py`) and migrated every consumer to plain `FrappeTestCase` methods. `test_bom_service.py` no longer imports `unittest_adapter` or calls `add_pytest_style_tests` — verify with `grep -rn "unittest_adapter\|add_pytest_style_tests" sheet_cutting_layout/tests/test_bom_service.py` (zero hits). Nothing to do.
 
-**Files:**
-- Modify: `sheet_cutting_layout/tests/test_bom_service.py` (imports line 9; module-level `test_*` functions; trailing `add_pytest_style_tests(globals(), TestBomService)` at line 466)
+### Task A-4: de-register `register_test_doc` call sites (adapter migration already done by the merge)
 
-- [ ] Read the full current file first: `sheet_cutting_layout/tests/test_bom_service.py`. Note every module-level `def test_*` function, whether it takes a `self`-less signature, and each `approx(...)`, `raises(...)`, `fail(...)` use.
+**Adapter migration: ALREADY DONE BY THE develop MERGE — skip.** `test_release_service.py`, `test_model_workflow_state_machine.py`, and `test_validators.py` no longer import `unittest_adapter`/`MonkeyPatch`/`add_pytest_style_tests` (the merge converted them to plain `FrappeTestCase` methods and deleted the adapter). Confirm with `grep -rn "unittest_adapter\|add_pytest_style_tests" sheet_cutting_layout/tests` (zero hits).
 
-- [ ] Edit the import line 9. Replace:
-
-```python
-from sheet_cutting_layout.tests.unittest_adapter import add_pytest_style_tests, approx, fail, raises
-```
-
-  with (the module already imports `SheetCuttingLayoutTestCase` on line 8):
-
-```python
-# pytest-emulation adapter removed; tests are plain TestCase methods.
-```
-
-- [ ] Convert each module-level `def test_xxx(...)` into a method on `class TestBomService(SheetCuttingLayoutTestCase)`. Mechanical rules:
-  - Move the function body under the class, indented as a method, with `self` as the first parameter.
-  - Replace `assert a == approx(b)` → `self.assertAlmostEqual(a, b, places=12)` (the adapter's `approx` default `abs=1e-12`).
-  - Replace `with raises(SomeError, match="msg"):` → `with self.assertRaisesRegex(SomeError, "msg"):`; `with raises(SomeError):` → `with self.assertRaises(SomeError):`.
-  - Replace bare `assert cond` → `self.assertTrue(cond)`; `assert a == b` → `self.assertEqual(a, b)`; `fail("msg")` → `self.fail("msg")`.
-  - Each `with raises(...) as exc:` followed by `assert "x" in str(exc.value)` → `with self.assertRaises(SomeError) as ctx:` … `self.assertIn("x", str(ctx.exception))`.
-
-- [ ] Delete the trailing line `add_pytest_style_tests(globals(), TestBomService)`.
-
-- [ ] Run tests and see PASS (same count as before, now as methods): `bench --site development.localhost run-tests --app sheet_cutting_layout --module sheet_cutting_layout.tests.test_bom_service`
-  - Expected: all previously-passing assertions pass as `TestBomService` methods; no `ImportError` for `unittest_adapter` symbols.
-
-- [ ] Run lint: `python -m ruff check sheet_cutting_layout/tests/test_bom_service.py && python -m ruff format --check sheet_cutting_layout/tests/test_bom_service.py`
-- [ ] Commit: `test: migrate test_bom_service off pytest emulation`
-
-### Task A-4: migrate the adapter's remaining consumers (release / validators / workflow-state / controller integration)
-
-Pure refactor. Three more test modules import the adapter:
-- `tests/test_release_service.py` (imports `MonkeyPatch, add_pytest_style_tests, fixture, raises`; trailing `add_pytest_style_tests(globals(), TestReleaseService)`).
-- `tests/test_model_workflow_state_machine.py` (imports `MonkeyPatch, add_pytest_style_tests, fixture, raises`; uses an `@fixture(autouse=True)` that monkeypatches `frappe.copy_doc`; trailing call at line 274).
-- `tests/test_validators.py` — confirm via `grep -n unittest_adapter sheet_cutting_layout/tests/test_validators.py`; migrate identically if present.
-
-Also de-register `register_test_doc` call sites in `sheet_cutting_layout/sheet_cutting_layout/doctype/sheet_cutting_layout/test_sheet_cutting_layout.py` (now a no-op; leave the calls or remove — removing is cleaner).
+**Remaining scope (gated on the corrected A-2):** once `register_test_doc` is a no-op (A-2), de-register its external call sites. After the merge, `register_test_doc` is imported and called from the doctype controller test module — `sheet_cutting_layout/sheet_cutting_layout/doctype/sheet_cutting_layout/test_sheet_cutting_layout.py` imports it (in the factory import at lines 11-15) and calls it at lines 154, 171, 198 (paired with `make_layout`/`make_release_ready_layout` at lines 144, 154, 162, 171, 191, 194, 203). Removing those calls is cleaner now that it's a no-op.
 
 **Files:**
-- Modify: `sheet_cutting_layout/tests/test_release_service.py`
-- Modify: `sheet_cutting_layout/tests/test_model_workflow_state_machine.py`
-- Modify: `sheet_cutting_layout/tests/test_validators.py` (only if it imports the adapter)
-- Modify: `sheet_cutting_layout/sheet_cutting_layout/doctype/sheet_cutting_layout/test_sheet_cutting_layout.py` (drop the `register_test_doc` import + calls)
+- Modify: `sheet_cutting_layout/sheet_cutting_layout/doctype/sheet_cutting_layout/test_sheet_cutting_layout.py` (drop the `register_test_doc` import member + its calls)
 
-- [ ] Read each file in full. Apply the same mechanical conversion rules as A-3 for `approx`/`raises`/`fail`/bare `assert`.
+- [ ] In `test_sheet_cutting_layout.py`, drop `register_test_doc` from the factory import block (lines 11-15) so it reads `from sheet_cutting_layout.tests.factories import make_layout, make_release_ready_layout`, and delete every `register_test_doc(...)` call (lines 154, 171, 198 — no-op under FrappeTestCase rollback).
 
-- [ ] For `MonkeyPatch` usages: replace the adapter's `MonkeyPatch` with `unittest.mock.patch` context managers (already imported as `from unittest.mock import patch` in several files) **or** `self.addCleanup(...)` to restore. Concretely, for the autouse fixture in `test_model_workflow_state_machine.py` that sets `frappe.copy_doc = None`, replace it with a `setUp` override on the state-machine test class:
-
-```python
-	def setUp(self) -> None:
-		super().setUp()
-		import frappe
-
-		self._original_copy_doc = getattr(frappe, "copy_doc", None)
-		frappe.copy_doc = None
-		self.addCleanup(setattr, frappe, "copy_doc", self._original_copy_doc)
-```
-
-  (The frappe-less `except ImportError: return` guard is dropped — bench always has frappe.)
-
-- [ ] For `@fixture`-provided test parameters in `test_release_service.py`: inline each fixture's return value into the method, or convert the fixture function into a helper method (`self._make_xxx()`) called at the top of each test that used it. Convert `@mark.parametrize(...)` cases (if any) into `with self.subTest(case=...):` loops over the same value lists.
-
-- [ ] Delete the trailing `add_pytest_style_tests(globals(), ...)` line from each migrated module.
-
-- [ ] In `test_sheet_cutting_layout.py`, remove `from sheet_cutting_layout.tests.factories import register_test_doc` (line 14) and every `register_test_doc(...)` call (no-op now). The `_insert_if_missing` helper at line 48 calls it — drop that one line too.
-
-- [ ] Run the migrated modules and see PASS:
-  - `bench --site development.localhost run-tests --app sheet_cutting_layout --module sheet_cutting_layout.tests.test_release_service`
-  - `bench --site development.localhost run-tests --app sheet_cutting_layout --module sheet_cutting_layout.tests.test_model_workflow_state_machine`
-  - `bench --site development.localhost run-tests --app sheet_cutting_layout --module sheet_cutting_layout.tests.test_validators`
+- [ ] Run the affected module and see PASS:
   - `bench --site development.localhost run-tests --app sheet_cutting_layout --module sheet_cutting_layout.sheet_cutting_layout.doctype.sheet_cutting_layout.test_sheet_cutting_layout`
-  - Expected: identical assertions pass; no `unittest_adapter` import.
+  - Expected: identical assertions pass; no `register_test_doc` reference remains.
 
-- [ ] Run lint over the four files: `python -m ruff check sheet_cutting_layout/tests/test_release_service.py sheet_cutting_layout/tests/test_model_workflow_state_machine.py sheet_cutting_layout/tests/test_validators.py sheet_cutting_layout/sheet_cutting_layout/doctype/sheet_cutting_layout/test_sheet_cutting_layout.py && python -m ruff format --check <same paths>`
-- [ ] Commit: `test: migrate remaining suites off pytest emulation adapter`
+- [ ] Run lint: `python -m ruff check sheet_cutting_layout/sheet_cutting_layout/doctype/sheet_cutting_layout/test_sheet_cutting_layout.py && python -m ruff format --check sheet_cutting_layout/sheet_cutting_layout/doctype/sheet_cutting_layout/test_sheet_cutting_layout.py`
+- [ ] Commit: `test: drop no-op register_test_doc call sites`
 
-### Task A-5: delete the pytest-emulation adapter and its test
+### Task A-5: delete the pytest-emulation adapter and its test — ALREADY DONE BY THE develop MERGE — skip
 
-Pure refactor. After A-3/A-4, nothing imports `unittest_adapter` (`grep` to confirm zero hits outside the two files being deleted).
-
-**Files:**
-- Delete: `sheet_cutting_layout/tests/unittest_adapter.py`
-- Delete: `sheet_cutting_layout/tests/test_unittest_adapter.py`
-
-- [ ] Confirm no remaining references: from app root run `grep -rn "unittest_adapter" sheet_cutting_layout/ --include="*.py"`. Expected output: only the two files about to be deleted (and their `__pycache__`, which is not matched by `*.py`).
-- [ ] Delete both files: `git rm sheet_cutting_layout/tests/unittest_adapter.py sheet_cutting_layout/tests/test_unittest_adapter.py`
-- [ ] Run the full suite and see PASS (no collection error): `bench --site development.localhost run-tests --app sheet_cutting_layout`
-- [ ] Commit: `test: remove pytest-emulation adapter`
+**ALREADY DONE BY THE develop MERGE — skip.** Both `sheet_cutting_layout/tests/unittest_adapter.py` and `sheet_cutting_layout/tests/test_unittest_adapter.py` were deleted by the merge, and no module references `unittest_adapter` any more — confirm with `grep -rn "unittest_adapter" sheet_cutting_layout/ --include="*.py"` (zero hits). Nothing to delete or commit.
 
 ### Task A-6: remove the frappe-less import shim from the SCL controller and child controllers
 
@@ -379,12 +376,12 @@ _ = frappe._
 
 Pure refactor. `validators.py` (finding 11), `end_piece_item_service.py` (finding 31), `end_piece_bom_service.py`, `overrides/bom.py` (finding 18), `release_service.py`, and `versioning.py`'s inner `try: import frappe` (finding 33 touches this file too — done fully in E-7; here only its import). Replace each `try: import frappe / except ImportError: <_FrappeCompat>` with `import frappe`.
 
-**Files:**
-- Modify: `sheet_cutting_layout/services/validators.py` (lines 16-32)
-- Modify: `sheet_cutting_layout/services/end_piece_item_service.py` (lines 5-31)
-- Modify: `sheet_cutting_layout/services/end_piece_bom_service.py` (lines 14-30)
-- Modify: `sheet_cutting_layout/services/release_service.py` (lines 19-24)
-- Modify: `sheet_cutting_layout/overrides/bom.py` (lines 3-19)
+**Files:** (shims survived the develop merge; spans re-confirmed against the merged tree)
+- Modify: `sheet_cutting_layout/services/validators.py` (`try`@16 / `except ImportError`@18 / `_FrappeCompat`@23-30)
+- Modify: `sheet_cutting_layout/services/end_piece_item_service.py` (`try`@5 / `except ImportError`@7 / `_FrappeCompat`@12-29)
+- Modify: `sheet_cutting_layout/services/end_piece_bom_service.py` (`try`@14 / `except ImportError`@16 / `_FrappeCompat`@21-28)
+- Modify: `sheet_cutting_layout/services/release_service.py` (`try`@19 / `except ImportError: frappe = None`@21-22)
+- Modify: `sheet_cutting_layout/overrides/bom.py` (`try`@3 / `except ImportError`@5 / `_FrappeCompat`@10-17)
 - Test: `sheet_cutting_layout/tests/test_service_imports.py` (Create)
 
 - [ ] Write the failing test `sheet_cutting_layout/tests/test_service_imports.py`:
@@ -438,7 +435,7 @@ class TestServiceImports(FrappeTestCase):
 
 - [ ] In `end_piece_bom_service.py` replace lines 14-28 (the `_FrappeCompat` shim) with `import frappe`. Keep `_ = frappe._`.
 
-- [ ] In `release_service.py` replace lines 19-24:
+- [ ] In `release_service.py` replace lines 19-22 (and the `_ = getattr(...)` on line 24):
 
 ```python
 try:
@@ -461,7 +458,7 @@ _ = frappe._
 
   > Safe minimal version: keep the structure but change `getattr(frappe, "db", None) if frappe else None` → `frappe.db`, and remove `if not frappe: return None` lines, since Group D rewrites the retirement helpers anyway.
 
-- [ ] In `overrides/bom.py` replace lines 3-19 (the `_FrappeCompat` shim) with `import frappe`. Keep `_ = frappe._`.
+- [ ] In `overrides/bom.py` replace lines 3-17 (the `_FrappeCompat` shim) with `import frappe`. Keep `_ = frappe._`.
 
 - [ ] Run tests and see PASS: `bench --site development.localhost run-tests --app sheet_cutting_layout --module sheet_cutting_layout.tests.test_service_imports`
 - [ ] Run the full suite to confirm no regression: `bench --site development.localhost run-tests --app sheet_cutting_layout`
@@ -476,7 +473,7 @@ Resolves findings 19-22 (patch drop) and the dead-field cleanup. Task B-1 is a *
 
 ### Task B-1: remove the dead `qty_per_sheet` field and its EndPieceRow attrs
 
-The `qty_per_sheet` field on `Layout End Piece` is `hidden: 1` and only consumed by `validators._validate_unreleased_legacy_end_piece_multiplicity` / `_has_legacy_qty_per_sheet_multiplicity` (a legacy guard). It is declared on the `EndPieceRow` Protocols in **exactly three** services — `bom_service` (line 19), `release_service` (line 31), and `validators` (line 40) — and is **NOT** declared in `end_piece_bom_service.EndPieceRow` (verified: `grep -n qty_per_sheet sheet_cutting_layout/services` returns hits only in those three plus the two validators-guard helpers). This matches the spec §6 ("the three `EndPieceRow` Protocols in `bom_service`, `release_service`, `validators` — `end_piece_bom_service` does not declare it"). Remove the attr from those three Protocols, the field, and — since dropping the field makes the legacy multiplicity guard unreachable — the guard too (and the test that exercised it).
+The `qty_per_sheet` field on `Layout End Piece` is `hidden: 1` and only consumed by `validators._validate_unreleased_legacy_end_piece_multiplicity` / `_has_legacy_qty_per_sheet_multiplicity` (a legacy guard). It is declared on the `EndPieceRow` Protocols in **exactly three** services — `bom_service` (line 19), `release_service` (line 35), and `validators` (line 40) — and is **NOT** declared in `end_piece_bom_service.EndPieceRow` (verified: `grep -n qty_per_sheet sheet_cutting_layout/services` returns hits only in those three plus the two validators-guard helpers). This matches the spec §6 ("the three `EndPieceRow` Protocols in `bom_service`, `release_service`, `validators` — `end_piece_bom_service` does not declare it"). Remove the attr from those three Protocols, the field, and — since dropping the field makes the legacy multiplicity guard unreachable — the guard too (and the test that exercised it).
 
 > **Decision (note in commit):** This drops the "Qty Per Sheet > 1 is legacy data" guard. That guard exists only to block stale pre-split data; per §6 the field is dead and rows are already one-per-instance. Removing it is a deliberate behaviour change scoped to legacy data only.
 
@@ -485,7 +482,7 @@ The `qty_per_sheet` field on `Layout End Piece` is `hidden: 1` and only consumed
 - Modify: `sheet_cutting_layout/services/validators.py` (remove `qty_per_sheet: float | None` from `EndPieceRow` line 40; remove `_validate_unreleased_legacy_end_piece_multiplicity` lines 318-331 + `_has_legacy_qty_per_sheet_multiplicity` lines 333-338 and the call on line 98)
 - Modify: `sheet_cutting_layout/services/bom_service.py` (remove `qty_per_sheet: float` from `EndPieceRow` line 19 — it IS declared here and must be removed)
 - Modify: `sheet_cutting_layout/services/end_piece_bom_service.py` (`EndPieceRow` Protocol does **not** declare `qty_per_sheet` — nothing to change; this file is left untouched. Confirm with `grep -n qty_per_sheet sheet_cutting_layout/services/end_piece_bom_service.py` returning no hits.)
-- Modify: `sheet_cutting_layout/services/release_service.py` (remove `qty_per_sheet: float` from `EndPieceRow` line 31)
+- Modify: `sheet_cutting_layout/services/release_service.py` (remove `qty_per_sheet: float` from `EndPieceRow` line 35)
 - Modify: tests that set `qty_per_sheet` (`test_bom_service.py`, `test_release_service.py`, `test_validators.py`, `test_sheet_cutting_layout.py`) — remove the field from their fake `EndPiece` dataclasses and the legacy-guard test.
 - Test: `sheet_cutting_layout/tests/test_validators.py` (modify — drop the legacy-multiplicity test, add a guard-absence assertion)
 
@@ -503,7 +500,7 @@ The `qty_per_sheet` field on `Layout End Piece` is `hidden: 1` and only consumed
 		self.assertNotIn("qty_per_sheet", validators_source)
 		self.assertNotIn("_validate_unreleased_legacy_end_piece_multiplicity", validators_source)
 		# qty_per_sheet is also declared on the EndPieceRow Protocol in bom_service
-		# (line 19) and release_service (line 31); both must drop it.
+		# (line 19) and release_service (line 35); both must drop it.
 		self.assertNotIn("qty_per_sheet", inspect.getsource(bom_service))
 		self.assertNotIn("qty_per_sheet", inspect.getsource(release_service))
 ```
@@ -514,7 +511,7 @@ The `qty_per_sheet` field on `Layout End Piece` is `hidden: 1` and only consumed
 - [ ] Implement:
   - In `validators.py`: delete the `qty_per_sheet: float | None` line from the `EndPieceRow` Protocol (line 40); delete `_validate_unreleased_legacy_end_piece_multiplicity` (lines 318-331) and `_has_legacy_qty_per_sheet_multiplicity` (lines 333-338); delete the call `_validate_unreleased_legacy_end_piece_multiplicity(layout, end_pieces)` on line 98.
   - In `bom_service.py`: delete `qty_per_sheet: float` from the `EndPieceRow` Protocol (line 19).
-  - In `release_service.py`: delete `qty_per_sheet: float` from the `EndPieceRow` Protocol (line 31).
+  - In `release_service.py`: delete `qty_per_sheet: float` from the `EndPieceRow` Protocol (line 35).
   - Leave `end_piece_bom_service.py` untouched (its `EndPieceRow` never declared `qty_per_sheet`).
   - In `layout_end_piece.json`: remove `"qty_per_sheet"` from `field_order`, and remove the field object (the `{"fieldname": "qty_per_sheet", ...}` block).
   - In the test dataclasses: remove `qty_per_sheet: float = 1` (and any `qty_per_sheet=...` kwargs) from the fake `EndPiece` classes in `test_bom_service.py`, `test_release_service.py`, `test_validators.py`; remove the `"qty_per_sheet": 2` key from the `make_layout` end-piece dict and delete `test_unreleased_layout_with_qty_per_sheet_gt_one_is_blocked_until_rows_are_split` and `test_qty_per_sheet_is_not_required_for_end_piece_validation` / `test_stale_qty_per_sheet_payload_is_ignored_for_weight_and_consumption` in `test_validators.py` (these assert the now-removed guard).
@@ -526,10 +523,10 @@ The `qty_per_sheet` field on `Layout End Piece` is `hidden: 1` and only consumed
 
 ### Task B-2: multi-BOM primary fix + `generated_bom`/`orientation` columns on Layout Finished Part
 
-**Behaviour change.** Today `_generate_boms` calls `_set_frappe_field_if_supported(layout, "generated_bom", bom.name)` on **every** iteration (release_service line 325), so for multiple finished parts `layout.generated_bom` ends up holding the **last** BOM, not the primary. Per §6/§8.2, `layout.generated_bom` must hold the **primary** (first) part's BOM; the rest live in the `finished_parts` mirror rows. Also add the `generated_bom` (Link → BOM) and `orientation` (Select LH/RH) columns to `Layout Finished Part` — `_layout_bom_names` (release_service line 256) and `_sync_finished_part_reference_rows` already read/write `row.generated_bom`, but the doctype has no such field (latent mismatch, §8.1).
+**Behaviour change.** Today `_generate_boms` calls `_set_frappe_field_if_supported(layout, "generated_bom", bom.name)` on **every** iteration (release_service line 335), so for multiple finished parts `layout.generated_bom` ends up holding the **last** BOM, not the primary. Per §6/§8.2, `layout.generated_bom` must hold the **primary** (first) part's BOM; the rest live in the `finished_parts` mirror rows. Also add the `generated_bom` (Link → BOM) and `orientation` (Select LH/RH) columns to `Layout Finished Part` — `_layout_bom_names` and `_sync_finished_part_reference_rows` already read/write `row.generated_bom`, but the doctype has no such field (latent mismatch, §8.1).
 
 **Files:**
-- Modify: `sheet_cutting_layout/services/release_service.py` (`_generate_boms` lines 311-328; `_sync_finished_part_reference_rows` lines 438-457)
+- Modify: `sheet_cutting_layout/services/release_service.py` (`_generate_boms` lines 321-338, with the last-write overwrite at line 335; `_sync_finished_part_reference_rows` lines 448-466)
 - Modify: `sheet_cutting_layout/sheet_cutting_layout/doctype/layout_finished_part/layout_finished_part.json` (add two fields)
 - Test: `sheet_cutting_layout/tests/test_release_service.py` (add a multi-part method)
 
@@ -579,7 +576,7 @@ The `qty_per_sheet` field on `Layout End Piece` is `hidden: 1` and only consumed
 - [ ] Run it and see it FAIL: `bench --site development.localhost run-tests --app sheet_cutting_layout --module sheet_cutting_layout.tests.test_release_service`
   - Expected failure: `AssertionError: 'BOM-002-PART001SHR_TWIN' != 'BOM-001-PART001SHR'` — `layout.generated_bom` currently holds the last (`index=2`) BOM because the loop overwrites it every iteration.
 
-- [ ] Implement — rewrite `_generate_boms` (release_service lines 311-328) so only the **first** part sets `layout.generated_bom`:
+- [ ] Implement — rewrite `_generate_boms` (release_service lines 321-338) so only the **first** part sets `layout.generated_bom`:
 
 ```python
 def _generate_boms(
@@ -603,7 +600,7 @@ def _generate_boms(
 	return generated_boms
 ```
 
-- [ ] Extend `_sync_finished_part_reference_rows` (release_service lines 438-457) so each mirror row also records its `generated_bom` (and, when present on the parent row, `orientation`). Change the dict comprehension to:
+- [ ] Extend `_sync_finished_part_reference_rows` (release_service lines 448-466) so each mirror row also records its `generated_bom` (and, when present on the parent row, `orientation`). Change the dict comprehension to:
 
 ```python
 	references = [
@@ -849,6 +846,11 @@ Resolves findings 1, 2, 3, 9, 10, 13, 14, 17, 32. **Behaviour change** throughou
 
 The `Released` workflow state has `doc_status = 1` (verified in `fixtures/workflow.json` line 30-34), so native `apply_workflow` (verified `frappe/model/workflow.py:130-144`: draft→submitted runs `doc.submit()`; submitted→cancelled runs `doc.cancel()`) calls `doc.submit()` when transitioning `Approved by Purchase --MR Release--> Released`. **`MR Release` is the only docstatus 0→1 transition in the workflow**, so `on_submit` fires only on release. Release therefore belongs in `on_submit`, not `validate()` reached via `before_workflow_action`/`frappe.flags.selected_workflow_action`. Remove the `override_whitelisted_methods` entry, the `apply_sheet_cutting_layout_workflow` whitelisted method, `before_workflow_action`, `_apply_workflow_action_effects`, `_get_selected_workflow_action`, the suppress-side-effects machinery, and the `frappe.flags` plumbing. Keep `record_approval_snapshot` (§7 theme 7 — IATF trail) but drive it from the doc-event hooks.
 
+> **Post-merge state of release_service (read before editing the controller/release path).**
+> - The "always persist the **in-memory** layout, never a re-fetched copy" fix is **ALREADY DONE** by the develop merge: `release_layout` calls `_save_layout_records((layout,))` directly (release_service ~lines 137-141). The old `_release_layout_records` and `_copy_generated_end_piece_item_links` helpers were **removed** in that merge — do **not** add a persist fix or try to edit those helpers; they no longer exist.
+> - `_set_frappe_field_if_supported` was split into **three** helpers by the merge: `_field_is_supported(doc, fieldname) -> bool` (~line 600), `_set_frappe_field_if_supported(doc, fieldname, value)` (~line 607), and `_supported_field_values(doc, values) -> dict` (~line 612). Steps below that reference `_set_frappe_field_if_supported` still apply, but column-guarded writes now go through `_supported_field_values`.
+> - `SUPPRESS_WORKFLOW_SIDE_EFFECTS_FLAG` (release_service ~line 30) and the `_save_layout_records` early-return that checks it (~lines 540-544) exist only to support the controller's suppress machinery driven from `validate()`. Once **this task (D-1)** removes that machinery, both the flag constant and the early-return guard become **dead** — remove the flag constant + its early-return branch as part of D-1 (and drop the `SUPPRESS_WORKFLOW_SIDE_EFFECTS_FLAG` member from the controller's `release_service` import on line 32).
+
 > **Snapshot semantics (gating fix).** The old `_apply_workflow_action_effects` recorded a snapshot for *every* workflow action that mapped to a step name. Under the native model the in-app snapshot is driven from two doc events: `on_submit` records the **MR Release** snapshot (the only docstatus 0→1 transition reaches it), and `on_cancel` records the **Supersede** snapshot. So the `on_submit` snapshot call is **gated inside the `if status == "Released"` branch** — the label `"MR Release"` only fires on the one path that reaches `on_submit` with `status == "Released"`. (The intermediate draft→draft approval steps — Submit for Check / PM / Purchase — are not in scope for Phase 0; they are recorded by the existing native workflow audit and revisited if needed in a later phase.)
 >
 > **`Supersede` must be added to the snapshot action map.** `record_approval_snapshot` returns `False` for any action not in `services/workflow.py::APPROVAL_SNAPSHOT_ACTIONS` (verified: the map has `Submit for Check`, `Project Manager Approves`, `Purchase Approves`, `MR Release`, `Reject` — **no `Supersede`**). So `on_cancel` recording a `"Supersede"` snapshot is a no-op until `"Supersede"` is added to the map. This task adds that entry.
@@ -953,7 +955,7 @@ APPROVAL_SNAPSHOT_ACTIONS: dict[str, str] = {
 		)
 ```
 
-  Delete the obsolete `test_validate_mr_release_records_snapshot_and_release_once` and `test_apply_workflow_sets_selected_action_only_for_sheet_cutting_layout` tests (they assert the removed override path). Also replace `test_validate_delegates_to_validator` (line 142) — it patches the now-deleted `controller._get_selected_workflow_action` — with `test_validate_only_runs_validator_no_workflow_side_effects` above (which patches only `validate_sheet_cutting_layout`).
+  Delete the obsolete `test_validate_mr_release_records_snapshot_and_release_once` (merged module line 48) and `test_apply_workflow_sets_selected_action_only_for_sheet_cutting_layout` (line 113) tests (they assert the removed override path). Also replace `test_validate_delegates_to_validator` (merged module line 36) — it patches the now-deleted `controller._get_selected_workflow_action` — with `test_validate_only_runs_validator_no_workflow_side_effects` above (which patches only `validate_sheet_cutting_layout`).
 
 - [ ] Run it and see it FAIL: `bench --site development.localhost run-tests --app sheet_cutting_layout --module sheet_cutting_layout.sheet_cutting_layout.doctype.sheet_cutting_layout.test_sheet_cutting_layout`
   - Expected failure: `AttributeError: 'SheetCuttingLayout' object has no attribute 'on_submit'` (no `on_submit` yet); and `assertFalse(hasattr(controller, "apply_sheet_cutting_layout_workflow"))` fails because that whitelisted function still exists.
@@ -993,6 +995,7 @@ class SheetCuttingLayout(Document):
   - Move the existing `on_trash` Workflow-Action cleanup body into `_clear_rejected_workflow_actions(self)` (it already exists as the `on_trash` body lines 58-78 — extract it; keep the `status == "Rejected"` guard).
   - Delete `before_workflow_action`, `_apply_workflow_action_effects`, `_get_selected_workflow_action`, `_suppress_workflow_side_effects`, `_workflow_side_effects_are_suppressed`, and the whitelisted `apply_sheet_cutting_layout_workflow` function. The old `before_cancel` (which wrote `self.status = "Cancel"` — that state is removed in D-5) is deleted; native `doc.cancel()` sets `docstatus = 2` and `apply_workflow` sets `status = "Superseded"`.
   - `retire_layout` is imported from `release_service` (introduced in D-3); for D-1 add a temporary `retire_layout` import alias to the existing `cancel_generated_bom` so the module imports cleanly, e.g. `from sheet_cutting_layout.services.release_service import cancel_generated_bom as retire_layout` — D-3 replaces it with the real `retire_layout`. (`on_cancel` calls `retire_layout(self)`, which resolves through this alias until D-3.)
+  - Drop the now-dead `SUPPRESS_WORKFLOW_SIDE_EFFECTS_FLAG` member from the controller's `release_service` import (merged controller line 32) — it was only referenced by the suppress machinery being deleted. Per the post-merge note above, also delete the `SUPPRESS_WORKFLOW_SIDE_EFFECTS_FLAG` constant and the `_save_layout_records` early-return guard in `release_service.py` (they become dead with the controller suppress machinery gone).
 
 - [ ] In `hooks.py`, delete the `override_whitelisted_methods = { "frappe.model.workflow.apply_workflow": ... }` block (lines 36-41).
 
@@ -1017,35 +1020,25 @@ class SheetCuttingLayout(Document):
 		# Build a layout via the controller path and submit it; assert the BOM
 		# the app inserted carries the FG item's stock UOM (set by validate_main_item),
 		# not a hard-coded "Kg", and is active because submit ran manage_default_bom.
-		from sheet_cutting_layout.sheet_cutting_layout.doctype.sheet_cutting_layout import (
-			test_sheet_cutting_layout as helpers,
-		)
 		import frappe
 
-		layout = helpers.make_layout(
-			finished_part_code=f"SCLTESTFG{frappe.generate_hash(length=5).upper()}SHR",
-			net_weight_per_part_kg=0.289,
-			generated_bom=None,
-		)
-		layout.parts_per_strip = 1
-		layout.no_of_strips = 1
-		layout.strip_length_mm = 2500
-		layout.insert()
-		layout.db_set("status", "Approved by Purchase", update_modified=False)
-		layout.reload()
-		layout.net_weight_per_part_kg = layout.gross_weight_per_part_kg
-		layout.save()
+		from sheet_cutting_layout.tests.factories import make_release_ready_layout
+
+		# make_release_ready_layout inserts + registers, sets status "Approved by
+		# Purchase" and net == gross, and reloads — i.e. the full release-gate
+		# boilerplate. Submitting then drives the MR Release (docstatus 0->1) path.
+		layout = make_release_ready_layout()
 		layout.submit()  # Released state has docstatus 1; native submit runs on_submit
 
 		self.assertEqual(layout.status, "Released")
 		self.assertTrue(layout.generated_bom)
 		bom = frappe.get_doc("BOM", layout.generated_bom)
 		self.assertEqual(bom.is_active, 1)
-		# FG item stock_uom is "Nos" (make_layout sets it); validate_main_item set bom.uom.
+		# FG item stock_uom is "Nos" (the factory sets it); validate_main_item set bom.uom.
 		self.assertEqual(bom.uom, frappe.db.get_value("Item", layout.finished_part_code, "stock_uom"))
 ```
 
-  > Note: this also exercises the new `on_submit` path end-to-end (replacing the old `validate()`-with-patched-action test). `make_layout` is imported from the doctype test module exactly as shown above (`from sheet_cutting_layout.sheet_cutting_layout.doctype.sheet_cutting_layout import test_sheet_cutting_layout as helpers` → `helpers.make_layout(...)`); it lives there permanently (pinned in A-2) and is not relocated.
+  > Note: this also exercises the new `on_submit` path end-to-end (replacing the old `validate()`-with-patched-action test). `make_release_ready_layout` is imported from `sheet_cutting_layout.tests.factories` (where `make_layout`/`make_release_ready_layout` permanently live after the develop merge — pinned in A-2); it is **not** imported from the doctype test module.
 
 - [ ] Run it and see it FAIL: `bench --site development.localhost run-tests --app sheet_cutting_layout --module sheet_cutting_layout.tests.test_release_service`
   - Expected failure: `AssertionError: 'Kg' != 'Nos'` because `_insert_frappe_bom` hard-codes `bom_doc.uom = "Kg"`, which currently survives (or, depending on validate ordering, the assertion still pins the bug).
@@ -1202,19 +1195,9 @@ def retire_layout(layout: object) -> None:
 	def test_cancel_released_layout_deactivates_bom_natively(self) -> None:
 		import frappe
 
-		layout = make_layout(
-			finished_part_code=f"SCLTESTFG{frappe.generate_hash(length=5).upper()}SHR",
-			net_weight_per_part_kg=0.289,
-			generated_bom=None,
-		)
-		layout.parts_per_strip = 1
-		layout.no_of_strips = 1
-		layout.strip_length_mm = 2500
-		layout.insert()
-		layout.db_set("status", "Approved by Purchase", update_modified=False)
-		layout.reload()
-		layout.net_weight_per_part_kg = layout.gross_weight_per_part_kg
-		layout.save()
+		# make_release_ready_layout (tests.factories) inserts + registers and puts
+		# the layout in the release-gate state (Approved by Purchase, net == gross).
+		layout = make_release_ready_layout()
 		layout.status = "Released"
 		layout.submit()
 		bom_name = layout.generated_bom
@@ -1225,6 +1208,8 @@ def retire_layout(layout: object) -> None:
 		self.assertEqual(frappe.db.get_value("BOM", bom_name, "is_active"), 0)
 		self.assertEqual(frappe.db.get_value("Sheet Cutting Layout", layout.name, "docstatus"), 2)
 ```
+
+  > `make_release_ready_layout` and `make_layout` are imported from `sheet_cutting_layout.tests.factories` (already imported at the top of `test_sheet_cutting_layout.py`, lines 11-15 after the merge); they no longer live in this module.
 
 - [ ] Run it and see it FAIL: `bench --site development.localhost run-tests --app sheet_cutting_layout --module sheet_cutting_layout.sheet_cutting_layout.doctype.sheet_cutting_layout.test_sheet_cutting_layout`
   - Expected failure: without `ignore_linked_doctypes` taking effect (or with leftover `status="Cancel"` writes conflicting with native cancel), `layout.cancel()` raises a `LinkExistsError` for the BOM backlink, or the BOM stays `is_active=1`.
@@ -1248,26 +1233,16 @@ def retire_layout(layout: object) -> None:
 - Modify: `sheet_cutting_layout/hooks.py` (remove `"Cancel"` from the `Workflow State` fixture filter `name in [...]` list, lines 16-24)
 - Test: `sheet_cutting_layout/sheet_cutting_layout/doctype/sheet_cutting_layout/test_sheet_cutting_layout.py` (bench-gated integration: supersede via `apply_workflow` drives docstatus 2 and `on_cancel` retires the BOM)
 
-- [ ] Write the failing integration test (bench runtime). Add to `TestSheetCuttingLayoutController` in `test_sheet_cutting_layout.py` (reuses `make_layout`, defined in this module at line 105):
+- [ ] Write the failing integration test (bench runtime). Add to `TestSheetCuttingLayoutController` in `test_sheet_cutting_layout.py` (reuses `make_release_ready_layout`, imported from `sheet_cutting_layout.tests.factories` at the top of the module):
 
 ```python
 	def test_supersede_action_cancels_layout_and_retires_bom(self) -> None:
 		import frappe
 		from frappe.model.workflow import apply_workflow
 
-		layout = make_layout(
-			finished_part_code=f"SCLTESTFG{frappe.generate_hash(length=5).upper()}SHR",
-			net_weight_per_part_kg=0.289,
-			generated_bom=None,
-		)
-		layout.parts_per_strip = 1
-		layout.no_of_strips = 1
-		layout.strip_length_mm = 2500
-		layout.insert()
-		layout.db_set("status", "Approved by Purchase", update_modified=False)
-		layout.reload()
-		layout.net_weight_per_part_kg = layout.gross_weight_per_part_kg
-		layout.save()
+		# make_release_ready_layout (tests.factories) inserts + registers and puts
+		# the layout in the release-gate state (Approved by Purchase, net == gross).
+		layout = make_release_ready_layout()
 		layout.status = "Released"
 		layout.submit()  # MR Release path: docstatus 0 -> 1, on_submit releases
 		bom_name = layout.generated_bom
@@ -1651,7 +1626,7 @@ def _copy_layout(old_layout: RevisionLayoutT) -> RevisionLayoutT:
 
   Also delete the now-unused `from copy import deepcopy` line at the top of `versioning.py` (grep `deepcopy` after the edit to confirm zero remaining references in the module).
 
-  > Note: `test_model_workflow_state_machine.py` previously monkeypatched `frappe.copy_doc = None` to exercise the `deepcopy` fallback. After this change that fallback is gone; update/remove the monkeypatch (set up in A-4's `setUp`) so those state-machine tests use real `copy_doc` or a fake doc with a `copy_doc`-compatible interface. Adjust the affected tests to construct revision layouts directly rather than relying on the removed deepcopy path.
+  > Note: `test_model_workflow_state_machine.py` monkeypatches `frappe.copy_doc = None` to exercise the `deepcopy` fallback (the patch lives in that merged module directly — the develop merge already converted this suite to `FrappeTestCase` methods, so it is **not** something A-4 introduces). After this change that fallback is gone; update/remove the monkeypatch so those state-machine tests use real `copy_doc` or a fake doc with a `copy_doc`-compatible interface. Adjust the affected tests to construct revision layouts directly rather than relying on the removed deepcopy path. Confirm the current location with `grep -n "copy_doc" sheet_cutting_layout/tests/test_model_workflow_state_machine.py`.
 - [ ] Run tests and see PASS (`test_versioning`, `test_model_workflow_state_machine`).
 - [ ] Run lint.
 - [ ] Commit: `refactor: let copy_doc localize revision child rows`
