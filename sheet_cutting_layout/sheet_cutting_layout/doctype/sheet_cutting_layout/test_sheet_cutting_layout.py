@@ -236,3 +236,17 @@ class TestSheetCuttingLayoutController(SheetCuttingLayoutTestCase):
 
 		snapshot_steps = [row.step_name for row in layout.approval_snapshot]
 		self.assertIn("Supersession", snapshot_steps)
+
+	def test_cancel_released_layout_deactivates_bom_natively(self) -> None:
+		import frappe
+
+		layout = make_release_ready_layout()
+		layout.status = "Released"
+		layout.submit()
+		bom_name = layout.generated_bom
+		self.assertEqual(frappe.db.get_value("BOM", bom_name, "is_active"), 1)
+
+		layout.cancel()
+
+		self.assertEqual(frappe.db.get_value("BOM", bom_name, "is_active"), 0)
+		self.assertEqual(frappe.db.get_value("Sheet Cutting Layout", layout.name, "docstatus"), 2)
