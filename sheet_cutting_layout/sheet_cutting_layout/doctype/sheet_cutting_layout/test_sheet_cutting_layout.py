@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from sheet_cutting_layout.tests.base import SheetCuttingLayoutTestCase
@@ -94,6 +95,18 @@ class TestSheetCuttingLayoutController(SheetCuttingLayoutTestCase):
 
 		throw.assert_not_called()
 
+	def test_before_submit_rejects_non_release_status(self) -> None:
+		doc = object.__new__(controller.SheetCuttingLayout)
+		doc.doctype = "Sheet Cutting Layout"
+		doc.status = "Approved by Purchase"
+		doc._doc_before_save = _PreviousDoc(status="Approved by Purchase")
+
+		with (
+			patch.object(controller.frappe, "throw", side_effect=Exception("release required")),
+			self.assertRaisesRegex(Exception, "release required"),
+		):
+			doc.before_submit()
+
 	def test_before_submit_rejects_owner_self_approval_on_native_submit(self) -> None:
 		doc = object.__new__(controller.SheetCuttingLayout)
 		doc.doctype = "Sheet Cutting Layout"
@@ -111,11 +124,72 @@ class TestSheetCuttingLayoutController(SheetCuttingLayoutTestCase):
 
 		allows_self.assert_called_once_with(doc, action="MR Release")
 
+	def test_before_submit_allows_administrator_owner_without_self_approval_lookup(self) -> None:
+		doc = object.__new__(controller.SheetCuttingLayout)
+		doc.doctype = "Sheet Cutting Layout"
+		doc.owner = "Administrator"
+		doc.status = "Released"
+		doc._doc_before_save = _PreviousDoc(status="Approved by Purchase")
+
+		with (
+			patch.object(controller, "_get_session_user", return_value="Administrator"),
+			patch.object(controller, "_workflow_action_allows_self_approval") as allows_self,
+			patch.object(controller.frappe, "throw") as throw,
+		):
+			doc.before_submit()
+
+		allows_self.assert_not_called()
+		throw.assert_not_called()
+
+	def test_before_submit_allows_non_owner_without_self_approval_lookup(self) -> None:
+		doc = object.__new__(controller.SheetCuttingLayout)
+		doc.doctype = "Sheet Cutting Layout"
+		doc.owner = "owner@example.com"
+		doc.status = "Released"
+		doc._doc_before_save = _PreviousDoc(status="Approved by Purchase")
+
+		with (
+			patch.object(controller, "_get_session_user", return_value="mr@example.com"),
+			patch.object(controller, "_workflow_action_allows_self_approval") as allows_self,
+			patch.object(controller.frappe, "throw") as throw,
+		):
+			doc.before_submit()
+
+		allows_self.assert_not_called()
+		throw.assert_not_called()
+
+	def test_before_submit_allows_owner_when_transition_allows_self_approval(self) -> None:
+		doc = object.__new__(controller.SheetCuttingLayout)
+		doc.doctype = "Sheet Cutting Layout"
+		doc.owner = "mr@example.com"
+		doc.status = "Released"
+		doc._doc_before_save = _PreviousDoc(status="Approved by Purchase")
+
+		with (
+			patch.object(controller, "_get_session_user", return_value="mr@example.com"),
+			patch.object(controller, "_workflow_action_allows_self_approval", return_value=True),
+			patch.object(controller.frappe, "throw") as throw,
+		):
+			doc.before_submit()
+
+		throw.assert_not_called()
+
 	def test_before_submit_rejects_direct_release_without_purchase_approval(self) -> None:
 		doc = object.__new__(controller.SheetCuttingLayout)
 		doc.doctype = "Sheet Cutting Layout"
 		doc.status = "Released"
 		doc._doc_before_save = _PreviousDoc(status="Draft")
+
+		with (
+			patch.object(controller.frappe, "throw", side_effect=Exception("MR Release requires approval")),
+			self.assertRaisesRegex(Exception, "MR Release requires approval"),
+		):
+			doc.before_submit()
+
+	def test_before_submit_rejects_release_without_previous_status(self) -> None:
+		doc = object.__new__(controller.SheetCuttingLayout)
+		doc.doctype = "Sheet Cutting Layout"
+		doc.status = "Released"
 
 		with (
 			patch.object(controller.frappe, "throw", side_effect=Exception("MR Release requires approval")),
@@ -171,6 +245,33 @@ class TestSheetCuttingLayoutController(SheetCuttingLayoutTestCase):
 		):
 			doc.before_cancel()
 
+	def test_workflow_action_allows_self_approval_reads_matching_transition(self) -> None:
+		doc = SimpleNamespace(doctype="Sheet Cutting Layout")
+		workflow = SimpleNamespace(
+			transitions=[
+				SimpleNamespace(action="MR Release", allow_self_approval=1),
+				SimpleNamespace(action="Supersede", allow_self_approval=0),
+			]
+		)
+
+		with patch.object(controller, "_get_workflow", return_value=workflow):
+			self.assertTrue(controller._workflow_action_allows_self_approval(doc, action="MR Release"))
+			self.assertFalse(controller._workflow_action_allows_self_approval(doc, action="Supersede"))
+			self.assertFalse(controller._workflow_action_allows_self_approval(doc, action="Missing"))
+
+	def test_get_workflow_defaults_to_sheet_cutting_layout_doctype(self) -> None:
+		doc = object()
+
+		with patch("frappe.model.workflow.get_workflow", return_value="workflow") as get_workflow:
+			self.assertEqual(controller._get_workflow(doc), "workflow")
+
+		get_workflow.assert_called_once_with("Sheet Cutting Layout")
+
+	def test_doc_get_uses_attribute_when_get_method_is_absent(self) -> None:
+		doc = SimpleNamespace(owner="owner@example.com")
+
+		self.assertEqual(controller._doc_get(doc, "owner"), "owner@example.com")
+
 	def test_on_cancel_retires_layout_without_snapshot(self) -> None:
 		doc = object.__new__(controller.SheetCuttingLayout)
 		doc.doctype = "Sheet Cutting Layout"
@@ -183,6 +284,21 @@ class TestSheetCuttingLayoutController(SheetCuttingLayoutTestCase):
 
 		retire.assert_called_once_with(doc)
 		snapshot.assert_not_called()
+
+	def test_on_trash_keeps_rejected_layout_without_workflow_actions(self) -> None:
+		doc = object.__new__(controller.SheetCuttingLayout)
+		doc.doctype = "Sheet Cutting Layout"
+		doc.name = "SCL-TEST-REJECTED"
+		doc.status = "Rejected"
+
+		with (
+			patch.object(controller.frappe.db, "get_all", return_value=[]) as get_all,
+			patch.object(controller.frappe.db, "delete") as delete,
+		):
+			doc.on_trash()
+
+		get_all.assert_called_once()
+		delete.assert_not_called()
 
 	def test_generate_end_piece_boms_checks_write_permission_and_calls_service(self) -> None:
 		doc = _FakeLayoutDoc(name="SCL-TEST-002")
