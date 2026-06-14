@@ -21,12 +21,11 @@ def collect_descendant_layouts(root: str, child_links: ChildLinks) -> list[str]:
 			)
 		next_ancestors = (*ancestors, layout_name)
 		for child in child_links(layout_name):
-			if not child:
+			if not child or child in seen:
 				continue
 			visit(child, next_ancestors)
-			if child not in seen:
-				seen.add(child)
-				ordered.append(child)
+			seen.add(child)
+			ordered.append(child)
 
 	visit(root, ())
 	return ordered

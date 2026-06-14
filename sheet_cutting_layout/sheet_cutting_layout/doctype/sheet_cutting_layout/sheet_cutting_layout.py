@@ -202,7 +202,8 @@ def download_sheet_cutting_layout(name: str) -> None:
 			child_check_permission("read")
 		return child
 
-	pages = [(layout.name, _export_layout_dict(layout)) for layout in walk_layout_tree(doc, fetch_child)]
+	layouts = walk_layout_tree(doc, fetch_child)
+	pages = [(layout.name, _export_layout_dict(layout)) for layout in layouts]
 	workbook = build_multi_sheet_workbook(pages)
 	stream = BytesIO()
 	workbook.save(stream)

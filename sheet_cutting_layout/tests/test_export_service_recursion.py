@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from collections.abc import Callable
+
 from sheet_cutting_layout.tests.base import SheetCuttingLayoutTestCase
 
 
@@ -15,7 +17,12 @@ class _FakeLayout:
 		self.end_pieces = end_pieces or []
 
 
-def _base_page(name: str, *, part_name: str = "Bracket", part_numbers: list[str] | None = None):
+def _base_page(
+	name: str,
+	*,
+	part_name: str = "Bracket",
+	part_numbers: list[str] | None = None,
+) -> tuple[str, dict[str, object]]:
 	return (
 		name,
 		{
@@ -32,7 +39,7 @@ def _base_page(name: str, *, part_name: str = "Bracket", part_numbers: list[str]
 
 
 class TestWalkLayoutTree(SheetCuttingLayoutTestCase):
-	def _registry(self, *layouts: _FakeLayout):
+	def _registry(self, *layouts: _FakeLayout) -> Callable[[str], _FakeLayout]:
 		registry = {layout.name: layout for layout in layouts}
 		return lambda name: registry[name]
 

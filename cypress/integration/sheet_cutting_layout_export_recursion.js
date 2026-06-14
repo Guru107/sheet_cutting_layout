@@ -10,12 +10,12 @@ describe("Sheet Cutting Layout export + recursion arc", () => {
 	const childCode = `SCLEXPCHILD${suffix}`;
 	const parentCode = `SCLEXPPARENT${suffix}`;
 	let projectName;
+	let childName;
+	let parentName;
 
 	const downloadMethod =
 		"sheet_cutting_layout.sheet_cutting_layout.doctype.sheet_cutting_layout." +
 		"sheet_cutting_layout.download_sheet_cutting_layout";
-
-	Cypress.on("uncaught:exception", () => false);
 
 	function runWorkflowAction(action, expectedStatus) {
 		cy.contains(".actions-btn-group button, button", "Actions").click();
@@ -131,43 +131,47 @@ describe("Sheet Cutting Layout export + recursion arc", () => {
 					finished_part_code: childPart,
 					net_weight_per_part_kg: 7.86,
 				},
-			});
-			cy.call("frappe.client.insert", {
-				doc: {
-					doctype: "Sheet Cutting Layout",
-					layout_code: parentCode,
-					project: projectName,
-					revision_no: 1,
-					status: "Draft",
-					raw_material_item: rawMaterial,
-					process_scrap_item: scrapItem,
-					sheet_thickness_mm: 2,
-					sheet_width_mm: 1000,
-					sheet_length_mm: 1000,
-					strip_thickness_mm: 2,
-					strip_width_mm: 500,
-					strip_length_mm: 1000,
-					parts_per_strip: 1,
-					no_of_strips: 1,
-					finished_part_code: parentPart,
-					is_lh_rh: 1,
-					orientation: "LH",
-					twin_finished_part: twinPart,
-					net_weight_per_part_kg: 7.86,
-					end_pieces: [
-						{
-							doctype: "Layout End Piece",
-							width_mm: 500,
-							length_mm: 1000,
-							disposition: "Reuse",
-							used_for_finished_part: childPart,
-							scrap_item: scrapItem,
-							child_layout: childCode,
-							bom_quantity: 1,
-							net_weight_per_part_kg: 7.86,
-						},
-					],
-				},
+			}).then(({ message }) => {
+				childName = message.name;
+				cy.call("frappe.client.insert", {
+					doc: {
+						doctype: "Sheet Cutting Layout",
+						layout_code: parentCode,
+						project: projectName,
+						revision_no: 1,
+						status: "Draft",
+						raw_material_item: rawMaterial,
+						process_scrap_item: scrapItem,
+						sheet_thickness_mm: 2,
+						sheet_width_mm: 1000,
+						sheet_length_mm: 1000,
+						strip_thickness_mm: 2,
+						strip_width_mm: 500,
+						strip_length_mm: 1000,
+						parts_per_strip: 1,
+						no_of_strips: 1,
+						finished_part_code: parentPart,
+						is_lh_rh: 1,
+						orientation: "LH",
+						twin_finished_part: twinPart,
+						net_weight_per_part_kg: 7.86,
+						end_pieces: [
+							{
+								doctype: "Layout End Piece",
+								width_mm: 500,
+								length_mm: 1000,
+								disposition: "Reuse",
+								used_for_finished_part: childPart,
+								scrap_item: scrapItem,
+								child_layout: childName,
+								bom_quantity: 1,
+								net_weight_per_part_kg: 7.86,
+							},
+						],
+					},
+				}).then(({ message: parentMessage }) => {
+					parentName = parentMessage.name;
+				});
 			});
 		});
 	});
@@ -177,12 +181,12 @@ describe("Sheet Cutting Layout export + recursion arc", () => {
 	});
 
 	it("releases, downloads, supersedes, and cascades retirement", { retries: 0 }, () => {
-		releaseLayout(childCode);
-		releaseLayout(parentCode);
+		releaseLayout(childName);
+		releaseLayout(parentName);
 
 		cy.request({
 			method: "GET",
-			url: `/api/method/${downloadMethod}?name=${encodeURIComponent(parentCode)}`,
+			url: `/api/method/${downloadMethod}?name=${encodeURIComponent(parentName)}`,
 			encoding: "binary",
 		}).then((response) => {
 			expect(response.status).to.equal(200);
@@ -191,17 +195,17 @@ describe("Sheet Cutting Layout export + recursion arc", () => {
 			expect(response.body.slice(0, 2)).to.equal("PK");
 		});
 
-		cy.visit(`/app/sheet-cutting-layout/${parentCode}`);
+		cy.visit(`/app/sheet-cutting-layout/${parentName}`);
 		runWorkflowAction("Supersede");
 		cy.get(".freeze:visible").should("not.exist");
 
-		fetchLayout(parentCode).then((parent) => {
+		fetchLayout(parentName).then((parent) => {
 			expect(parent.docstatus).to.equal(2);
 		});
-		fetchLayout(childCode).then((child) => {
+		fetchLayout(childName).then((child) => {
 			expect(child.docstatus).to.equal(2);
 		});
-		[parentCode, childCode].forEach((layoutCode) => {
+		[parentName, childName].forEach((layoutCode) => {
 			bomsForLayout(layoutCode).then((boms) => {
 				expect(boms).to.not.be.empty;
 				boms.forEach((bom) => {

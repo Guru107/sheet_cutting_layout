@@ -208,7 +208,11 @@ def cancel_descendant_layouts(layout: object) -> list[str]:
 			continue
 		if hasattr(descendant, "status"):
 			descendant.status = "Superseded"
-		descendant.ignore_linked_doctypes = ["BOM", "Sheet Cutting Layout"]
+		ignore_linked_doctypes = list(getattr(descendant, "ignore_linked_doctypes", None) or [])
+		for doctype in ("BOM", "Sheet Cutting Layout"):
+			if doctype not in ignore_linked_doctypes:
+				ignore_linked_doctypes.append(doctype)
+		descendant.ignore_linked_doctypes = ignore_linked_doctypes
 		descendant.cancel()
 		cancelled.append(descendant_name)
 	return cancelled

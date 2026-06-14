@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from collections.abc import Callable
+
 from sheet_cutting_layout.services.cascade_graph import (
 	CascadeCycleError,
 	collect_descendant_layouts,
@@ -7,7 +9,7 @@ from sheet_cutting_layout.services.cascade_graph import (
 from sheet_cutting_layout.tests.base import SheetCuttingLayoutTestCase
 
 
-def _links_from_map(graph: dict[str, list[str]]):
+def _links_from_map(graph: dict[str, list[str]]) -> Callable[[str], list[str]]:
 	def child_links(layout_name: str) -> list[str]:
 		return list(graph.get(layout_name, []))
 
@@ -29,6 +31,16 @@ class TestCascadeGraph(SheetCuttingLayoutTestCase):
 	def test_shared_descendant_is_listed_once(self) -> None:
 		child_links = _links_from_map({"ROOT": ["A", "B"], "A": ["SHARED"], "B": ["SHARED"], "SHARED": []})
 		self.assertEqual(collect_descendant_layouts("ROOT", child_links), ["SHARED", "A", "B"])
+
+	def test_shared_descendant_is_not_reloaded(self) -> None:
+		calls: list[str] = []
+
+		def child_links(layout_name: str) -> list[str]:
+			calls.append(layout_name)
+			return {"ROOT": ["A", "B"], "A": ["SHARED"], "B": ["SHARED"], "SHARED": []}.get(layout_name, [])
+
+		self.assertEqual(collect_descendant_layouts("ROOT", child_links), ["SHARED", "A", "B"])
+		self.assertEqual(calls, ["ROOT", "A", "SHARED", "B"])
 
 	def test_direct_self_reference_raises_cycle_error(self) -> None:
 		with self.assertRaises(CascadeCycleError):

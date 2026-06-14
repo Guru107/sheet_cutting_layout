@@ -8,8 +8,6 @@ describe("Sheet Cutting Layout recursive end-piece cascade", () => {
 	const parentCode = `SCLRECURP${suffix}`;
 	const childCode = `SCLRECURC${suffix}`;
 
-	Cypress.on("uncaught:exception", () => false);
-
 	function runWorkflowAction(action, expectedStatus) {
 		cy.contains(".actions-btn-group button, button", "Actions").click();
 		cy.contains(".dropdown-menu a, .dropdown-menu button", action).click();

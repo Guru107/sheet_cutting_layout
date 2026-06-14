@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import re
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from typing import Protocol
 
 import frappe
@@ -414,7 +414,7 @@ def _validate_no_child_layout_cycle(layout_name: str, child_layout: str) -> None
 		frappe.throw(_("Linking child layout {0} would create a cycle").format(child_layout))
 
 
-def _child_links_provider():
+def _child_links_provider() -> Callable[[str], list[str]]:
 	def child_links(layout_name: str) -> list[str]:
 		rows = frappe.get_all(
 			"Layout End Piece",

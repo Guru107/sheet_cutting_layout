@@ -1904,6 +1904,41 @@ class TestRevisioning(ReleaseServiceIsolatedTestCase):
 
 
 class TestBomLifecycle(ReleaseServiceIsolatedTestCase):
+	def test_cancel_descendant_layouts_preserves_existing_ignore_linked_doctypes(self) -> None:
+		from sheet_cutting_layout.services import release_service
+
+		cancelled: list[tuple[str, ...]] = []
+
+		class Descendant:
+			def __init__(self) -> None:
+				self.name = "SCL-CHILD"
+				self.docstatus = 1
+				self.status = "Released"
+				self.end_pieces: list[object] = []
+				self.ignore_linked_doctypes = ["Stock Entry"]
+
+			def cancel(self) -> None:
+				cancelled.append(tuple(self.ignore_linked_doctypes))
+				self.docstatus = 2
+
+		descendant = Descendant()
+		parent = SimpleNamespace(
+			name="SCL-PARENT",
+			end_pieces=[SimpleNamespace(child_layout="SCL-CHILD")],
+		)
+
+		class FrappeStub:
+			@staticmethod
+			def get_doc(doctype: str, name: str) -> object:
+				assert (doctype, name) == ("Sheet Cutting Layout", "SCL-CHILD")
+				return descendant
+
+		with patch.object(release_service, "frappe", FrappeStub):
+			result = release_service.cancel_descendant_layouts(parent)
+
+		self.assertEqual(result, ["SCL-CHILD"])
+		self.assertEqual(cancelled, [("Stock Entry", "BOM", "Sheet Cutting Layout")])
+
 	def test_retire_layout_cancels_unused_bom(self) -> None:
 		from sheet_cutting_layout.overrides.bom import APP_CONTROLLED_BOM_UPDATE_FLAG
 		from sheet_cutting_layout.services import release_service
