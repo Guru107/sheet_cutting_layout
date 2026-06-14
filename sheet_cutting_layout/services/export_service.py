@@ -125,7 +125,13 @@ def _walk_layout_tree(layout: object, fetch_child: Callable[[str], object], visi
 
 def _apply_cell_map(worksheet: object, layout: Mapping[str, object]) -> None:
 	for coordinate, value in build_cell_map(layout).items():
-		worksheet[coordinate] = value if value != "" else None
+		worksheet[coordinate] = _excel_safe_cell(value) if value != "" else None
+
+
+def _excel_safe_cell(value: object) -> object:
+	if isinstance(value, str) and value[:1] in {"=", "+", "-", "@"}:
+		return f"'{value}"
+	return value
 
 
 def _clone_template_worksheet(workbook: object, source_worksheet: object, title: str) -> object:

@@ -853,6 +853,25 @@ class TestSaveTimeAudit(ReleaseServiceIsolatedTestCase):
 		):
 			validators.validate_sheet_cutting_layout(layout)
 
+	def test_save_time_audit_accepts_secondary_scrap_rows(self) -> None:
+		from sheet_cutting_layout.services import validators
+
+		layout = _audit_layout(end_piece_fields=_AUDIT_REUSE_END_PIECE, sheet_thickness_mm=1.6)
+
+		with (
+			patch.object(
+				validators,
+				"frappe",
+				_audit_frappe_stub(
+					bom_quantity=77,
+					end_piece_item_code="FG002SHR-EP-1.6x1250x179",
+					use_secondary_items=True,
+				),
+			),
+			patch.object(validators, "_", lambda message: message),
+		):
+			validators.validate_sheet_cutting_layout(layout)
+
 	def test_save_time_audit_rejects_fractional_generated_bom_quantity(self) -> None:
 		from sheet_cutting_layout.services import validators
 
@@ -1159,7 +1178,13 @@ def _in_memory_bom_factory(layout: Layout | RevisionLayout, row: FinishedPart, i
 	return bom
 
 
-def _audit_frappe_stub(*, bom_quantity: float, include_end_piece_scrap_row: bool = True) -> type:
+def _audit_frappe_stub(
+	*,
+	bom_quantity: float,
+	include_end_piece_scrap_row: bool = True,
+	end_piece_item_code: str = "ENDSCRAP001",
+	use_secondary_items: bool = False,
+) -> type:
 	scrap_items = [
 		type(
 			"ScrapItem",
@@ -1172,9 +1197,22 @@ def _audit_frappe_stub(*, bom_quantity: float, include_end_piece_scrap_row: bool
 			type(
 				"ScrapItem",
 				(),
-				{"item_code": "ENDSCRAP001", "stock_qty": 2.81388, "qty": 2.81388},
+				{"item_code": end_piece_item_code, "stock_qty": 2.81388, "qty": 2.81388},
 			)()
 		)
+	secondary_items = [
+		type(
+			"SecondaryItem",
+			(),
+			{
+				"type": "Scrap" if item.item_code == "PROCESSSCRAP001" else "By-Product",
+				"item_code": item.item_code,
+				"stock_qty": item.stock_qty,
+				"qty": item.qty,
+			},
+		)()
+		for item in scrap_items
+	]
 
 	class FrappeStub:
 		ValidationError = ValueError
@@ -1193,7 +1231,8 @@ def _audit_frappe_stub(*, bom_quantity: float, include_end_piece_scrap_row: bool
 					"item": "FG01SHR",
 					"quantity": bom_quantity,
 					"items": [type("BomItem", (), {"item_code": "RMSHEET001", "qty": 39.3})()],
-					"scrap_items": scrap_items,
+					"scrap_items": [] if use_secondary_items else scrap_items,
+					"secondary_items": secondary_items if use_secondary_items else [],
 				},
 			)()
 
@@ -1388,6 +1427,7 @@ class TestFrappeBomInsertAndEndPieces(ReleaseServiceIsolatedTestCase):
 		bom = BomDocument(item="PART001SHR", name="BOM-PART001SHR")
 		bom._layout = type("LayoutWithCompany", (), {"company": "Test Company", "name": "SCL-001"})()
 		bom.scrap_items.append(BomItemRow(item_code="SCRAP-ITEM", qty=1.0, row_type="process_scrap"))
+		bom.scrap_items.append(BomItemRow(item_code="BYP-ITEM", qty=2.0, row_type="end_piece_byproduct"))
 		self.start_patcher(patch.object(release_service, "frappe", FrappeStub))
 
 		release_service._insert_frappe_bom(bom)
@@ -1408,7 +1448,21 @@ class TestFrappeBomInsertAndEndPieces(ReleaseServiceIsolatedTestCase):
 					"process_loss_qty": 0,
 					"cost": 0,
 					"base_cost": 0,
-				}
+				},
+				{
+					"type": "By-Product",
+					"item_code": "BYP-ITEM",
+					"stock_qty": 2.0,
+					"qty": 2.0,
+					"uom": "Kg",
+					"stock_uom": "Kg",
+					"conversion_factor": 1,
+					"cost_allocation_per": 0,
+					"process_loss_per": 0,
+					"process_loss_qty": 0,
+					"cost": 0,
+					"base_cost": 0,
+				},
 			],
 		)
 

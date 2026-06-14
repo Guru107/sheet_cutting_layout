@@ -300,6 +300,8 @@ def _validate_lh_rh_fields(layout: SheetCuttingLayoutDocument) -> None:
 		frappe.throw(_("Twin finished part cannot match the primary finished part"))
 	if _same_item_code(twin_finished_part, getattr(layout, "raw_material_item", None)):
 		frappe.throw(_("Twin finished part cannot match the raw material item"))
+	if _same_item_code(twin_finished_part, getattr(layout, "process_scrap_item", None)):
+		frappe.throw(_("Twin finished part cannot match the process scrap item"))
 
 
 def _validate_end_piece_required_fields(
@@ -613,11 +615,21 @@ def _validate_generated_bom_matches_layout(layout: SheetCuttingLayoutDocument) -
 		category="raw material",
 	)
 	_validate_bom_rows(
-		actual_rows=list(getattr(bom, "scrap_items", []) or []),
+		actual_rows=_actual_bom_scrap_rows(bom),
 		expected_rows=expected.scrap_items,
 		qty_getter=_bom_scrap_row_qty,
 		category="scrap",
 	)
+
+
+def _actual_bom_scrap_rows(bom: object) -> list[object]:
+	rows = list(getattr(bom, "scrap_items", []) or [])
+	rows.extend(
+		row
+		for row in getattr(bom, "secondary_items", []) or []
+		if _secondary_item_type(row) in {"Scrap", "By-Product"}
+	)
+	return rows
 
 
 def _validate_bom_rows(
@@ -684,6 +696,10 @@ def _bom_row_qty(row: object) -> float:
 
 def _bom_scrap_row_qty(row: object) -> float:
 	return float(getattr(row, "stock_qty", None) or getattr(row, "qty", 0) or 0)
+
+
+def _secondary_item_type(row: object) -> str:
+	return str(getattr(row, "type", "") or "").strip()
 
 
 def _is_missing(value: object) -> bool:

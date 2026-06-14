@@ -9,34 +9,34 @@ from sheet_cutting_layout.tests.base import SheetCuttingLayoutTestCase
 
 
 def _layout(**overrides: object) -> SimpleNamespace:
-	values = dict(
-		finished_part_code="SCLTESTFG001SHR",
-		twin_finished_part="SCLTESTFG002SHR",
-		is_lh_rh=1,
-		orientation="LH",
-		raw_material_item="SCLTESTRM001",
-		process_scrap_item=None,
-		sheet_thickness_mm=1,
-		sheet_width_mm=1250,
-		sheet_length_mm=2500,
-		strip_thickness_mm=1,
-		strip_width_mm=1250,
-		strip_length_mm=2500,
-		weight_of_strip_kg=None,
-		weight_per_sheet_kg=None,
-		parts_per_strip=1,
-		no_of_strips=1,
-		parts_per_sheet=None,
-		gross_weight_per_part_kg=None,
-		net_weight_per_part_kg=24.5625,
-		scrap_weight_per_part_kg=None,
-		generated_bom=None,
-		end_piece_bom_status=None,
-		consumed_weight_kg=None,
-		leftover_weight_kg=None,
-		consumption_status=None,
-		end_pieces=[],
-	)
+	values = {
+		"finished_part_code": "SCLTESTFG001SHR",
+		"twin_finished_part": "SCLTESTFG002SHR",
+		"is_lh_rh": 1,
+		"orientation": "LH",
+		"raw_material_item": "SCLTESTRM001",
+		"process_scrap_item": None,
+		"sheet_thickness_mm": 1,
+		"sheet_width_mm": 1250,
+		"sheet_length_mm": 2500,
+		"strip_thickness_mm": 1,
+		"strip_width_mm": 1250,
+		"strip_length_mm": 2500,
+		"weight_of_strip_kg": None,
+		"weight_per_sheet_kg": None,
+		"parts_per_strip": 1,
+		"no_of_strips": 1,
+		"parts_per_sheet": None,
+		"gross_weight_per_part_kg": None,
+		"net_weight_per_part_kg": 24.5625,
+		"scrap_weight_per_part_kg": None,
+		"generated_bom": None,
+		"end_piece_bom_status": None,
+		"consumed_weight_kg": None,
+		"leftover_weight_kg": None,
+		"consumption_status": None,
+		"end_pieces": [],
+	}
 	values.update(overrides)
 	return SimpleNamespace(**values)
 
@@ -59,6 +59,10 @@ class TestLhRhValidation(SheetCuttingLayoutTestCase):
 			validate_sheet_cutting_layout(
 				_layout(raw_material_item="SCLTESTRM001SHR", twin_finished_part="SCLTESTRM001SHR")
 			)
+
+	def test_lh_rh_rejects_process_scrap_as_twin(self) -> None:
+		with self.assertRaisesRegex(frappe.ValidationError, "process scrap"):
+			validate_sheet_cutting_layout(_layout(process_scrap_item="SCLTESTFG002SHR"))
 
 	def test_lh_rh_rejects_invalid_twin_code(self) -> None:
 		with self.assertRaisesRegex(frappe.ValidationError, "must end with SHR"):

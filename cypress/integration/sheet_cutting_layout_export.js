@@ -65,21 +65,23 @@ describe("Sheet Cutting Layout IATF export", () => {
 				gross_weight_per_part_kg: 15.72,
 				scrap_weight_per_part_kg: 0.2,
 			},
-		});
+		}).then(({ message }) => {
+			const layoutName = message.name;
 
-		cy.visit(`/app/sheet-cutting-layout/${layoutCode}`);
-		cy.contains('[data-fieldname="status"]', "Draft");
-		cy.contains("button", "Download Layout (Excel)").should("exist");
+			cy.visit(`/app/sheet-cutting-layout/${layoutName}`);
+			cy.contains('[data-fieldname="status"]', "Draft");
+			cy.contains("button", "Download Layout (Excel)").should("exist");
 
-		cy.request({
-			method: "GET",
-			url: `/api/method/${downloadMethod}?name=${encodeURIComponent(layoutCode)}`,
-			encoding: "binary",
-		}).then((response) => {
-			expect(response.status).to.equal(200);
-			expect(response.headers["content-disposition"]).to.contain(".xlsx");
-			expect(response.body.length).to.be.greaterThan(0);
-			expect(response.body.slice(0, 2)).to.equal("PK");
+			cy.request({
+				method: "GET",
+				url: `/api/method/${downloadMethod}?name=${encodeURIComponent(layoutName)}`,
+				encoding: "binary",
+			}).then((response) => {
+				expect(response.status).to.equal(200);
+				expect(response.headers["content-disposition"]).to.contain(".xlsx");
+				expect(response.body.length).to.be.greaterThan(0);
+				expect(response.body.slice(0, 2)).to.equal("PK");
+			});
 		});
 	});
 });

@@ -341,7 +341,7 @@ def _append_frappe_bom_scrap_row(bom_doc: object, row: BomItemRow) -> None:
 		bom_doc.append(
 			"secondary_items",
 			{
-				"type": "Scrap",
+				"type": _secondary_item_type(row),
 				"item_code": row.item_code,
 				"stock_qty": row.qty,
 				"qty": row.qty,
@@ -358,6 +358,10 @@ def _append_frappe_bom_scrap_row(bom_doc: object, row: BomItemRow) -> None:
 		return
 
 	frappe.throw(_("BOM DocType must include a scrap or secondary item table"))
+
+
+def _secondary_item_type(row: BomItemRow) -> str:
+	return "By-Product" if row.row_type == "end_piece_byproduct" else "Scrap"
 
 
 def _has_bom_child_table(bom_doc: object, fieldname: str) -> bool:

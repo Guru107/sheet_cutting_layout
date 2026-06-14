@@ -234,3 +234,34 @@ class TestRenderWorkbookBytes(SheetCuttingLayoutTestCase):
 		workbook = load_workbook(io.BytesIO(content))
 		worksheet = workbook.active
 		self.assertIn(worksheet["K8"].value, (None, ""))
+
+	def test_formula_like_text_cells_are_escaped(self) -> None:
+		import io
+
+		from openpyxl import load_workbook
+
+		from sheet_cutting_layout.services.export_service import (
+			default_template_path,
+			render_workbook_bytes,
+		)
+
+		layout = _base_layout()
+		layout.update(
+			{
+				"company": "=2+2",
+				"part_name": "+part",
+				"part_numbers": ["-PART001SHR"],
+				"project": "@project",
+				"end_pieces": [{"end_piece_item_code": "=EP-001"}],
+			}
+		)
+
+		content = render_workbook_bytes(layout, default_template_path())
+		workbook = load_workbook(io.BytesIO(content))
+		worksheet = workbook.active
+
+		self.assertEqual(worksheet["B1"].value, "'=2+2")
+		self.assertEqual(worksheet["G5"].value, "'+part")
+		self.assertEqual(worksheet["N5"].value, "'-PART001SHR")
+		self.assertEqual(worksheet["B6"].value, "'@project")
+		self.assertEqual(worksheet["O9"].value, "'=EP-001")

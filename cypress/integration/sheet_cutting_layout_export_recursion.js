@@ -64,7 +64,9 @@ describe("Sheet Cutting Layout export + recursion arc", () => {
 				"GET",
 				`/api/method/frappe.client.get_list?doctype=BOM&filters=${encodeURIComponent(
 					JSON.stringify([["sheet_cutting_layout", "=", layoutCode]])
-				)}&fields=${encodeURIComponent(JSON.stringify(["name", "is_active", "docstatus"]))}`
+				)}&fields=${encodeURIComponent(
+					JSON.stringify(["name", "is_active", "docstatus"])
+				)}`
 			)
 			.then(({ body }) => body.message);
 	}
