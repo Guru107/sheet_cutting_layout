@@ -40,6 +40,9 @@
   "no_of_strips",
   "parts_per_sheet",
   "finished_part_code",
+  "is_lh_rh",
+  "orientation",
+  "twin_finished_part",
   "net_weight_per_part_kg",
   "scrap_weight_per_part_kg",
   "generated_bom",
@@ -252,6 +255,28 @@
    "label": "Finished Part Code",
    "options": "Item",
    "reqd": 1
+  },
+  {
+   "default": "0",
+   "fieldname": "is_lh_rh",
+   "fieldtype": "Check",
+   "label": "Symmetric LH/RH Part"
+  },
+  {
+   "depends_on": "eval:doc.is_lh_rh",
+   "fieldname": "orientation",
+   "fieldtype": "Select",
+   "label": "Primary Orientation",
+   "mandatory_depends_on": "eval:doc.is_lh_rh",
+   "options": "\nLH\nRH"
+  },
+  {
+   "depends_on": "eval:doc.is_lh_rh",
+   "fieldname": "twin_finished_part",
+   "fieldtype": "Link",
+   "label": "Twin Finished Part",
+   "mandatory_depends_on": "eval:doc.is_lh_rh",
+   "options": "Item"
   },
   {
    "fieldname": "net_weight_per_part_kg",

@@ -366,6 +366,24 @@ frappe.provide("sheet_cutting_layout");
 		);
 	}
 
+	function updateLhRhFields(frm) {
+		if (frm.doc.is_lh_rh) {
+			if (!frm.doc.orientation) {
+				return frm.set_value("orientation", "LH");
+			}
+			return Promise.resolve();
+		}
+
+		const updates = [];
+		if (frm.doc.orientation) {
+			updates.push(frm.set_value("orientation", ""));
+		}
+		if (frm.doc.twin_finished_part) {
+			updates.push(frm.set_value("twin_finished_part", ""));
+		}
+		return Promise.all(updates);
+	}
+
 	function addEndPieceBomButtons(frm) {
 		const hasReusableEndPieces = (frm.doc.end_pieces || []).some(
 			(row) => row.disposition === "Reuse"
@@ -444,6 +462,7 @@ frappe.provide("sheet_cutting_layout");
 		parts_per_strip: updatePartsPerSheetAndDerivedFields,
 		no_of_strips: updatePartsPerSheetAndDerivedFields,
 		net_weight_per_part_kg: updateParentWeightsAndConsumption,
+		is_lh_rh: updateLhRhFields,
 	});
 
 	frappe.ui.form.on("Layout End Piece", {

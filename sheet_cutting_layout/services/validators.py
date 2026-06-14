@@ -36,6 +36,9 @@ class EndPieceRow(Protocol):
 
 class SheetCuttingLayoutDocument(Protocol):
 	finished_part_code: str | None
+	is_lh_rh: int | None
+	orientation: str | None
+	twin_finished_part: str | None
 	net_weight_per_part_kg: float | None
 	generated_bom: str | None
 	end_pieces: Sequence[EndPieceRow]
@@ -83,6 +86,7 @@ def validate_sheet_cutting_layout(layout: SheetCuttingLayoutDocument) -> None:
 	apply_end_piece_weight_formulas(layout, end_pieces)
 	apply_end_piece_reuse_weight_formulas(end_pieces)
 	_validate_parent_finished_part_fields(layout)
+	_validate_lh_rh_fields(layout)
 
 	for end_piece in end_pieces:
 		_validate_end_piece_item_code_is_locked(end_piece)
@@ -267,6 +271,24 @@ def _validate_parent_finished_part_fields(layout: SheetCuttingLayoutDocument) ->
 			frappe.throw(_("Process scrap item is required when process scrap weight is positive"))
 		if _same_item_code(process_scrap_item, finished_part_code):
 			frappe.throw(_("Process scrap item cannot be the finished part item"))
+
+
+def _validate_lh_rh_fields(layout: SheetCuttingLayoutDocument) -> None:
+	if not getattr(layout, "is_lh_rh", None):
+		return
+
+	orientation = str(getattr(layout, "orientation", "") or "").strip()
+	if orientation not in {"LH", "RH"}:
+		frappe.throw(_("Primary orientation must be LH or RH for LH/RH layouts"))
+
+	twin_finished_part = str(getattr(layout, "twin_finished_part", "") or "").strip()
+	if _is_missing(twin_finished_part):
+		frappe.throw(_("Twin finished part is required for LH/RH layouts"))
+	validate_finished_part_code(twin_finished_part)
+	if _same_item_code(twin_finished_part, getattr(layout, "finished_part_code", None)):
+		frappe.throw(_("Twin finished part cannot match the primary finished part"))
+	if _same_item_code(twin_finished_part, getattr(layout, "raw_material_item", None)):
+		frappe.throw(_("Twin finished part cannot match the raw material item"))
 
 
 def _validate_end_piece_required_fields(

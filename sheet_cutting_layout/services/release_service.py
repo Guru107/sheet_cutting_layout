@@ -9,9 +9,11 @@ import frappe
 from sheet_cutting_layout.overrides.bom import mark_bom_app_controlled
 from sheet_cutting_layout.services.bom_service import (
 	BomDocument,
+	BomItemRow,
 	ParentFinishedPartRow,
 	build_bom_from_layout_row,
 	parent_finished_part_row,
+	twin_finished_part_row,
 )
 from sheet_cutting_layout.services.end_piece_item_service import ensure_end_piece_item
 from sheet_cutting_layout.services.validators import validate_sheet_cutting_layout
@@ -37,7 +39,7 @@ class FinishedPartRow(Protocol):
 	parts_per_sheet: int
 	gross_weight_per_part_kg: float
 	scrap_weight_per_part_kg: float
-	generated_bom: str | None
+	orientation: str | None
 
 
 class ReleaseLayoutDocument(Protocol):
@@ -49,6 +51,9 @@ class ReleaseLayoutDocument(Protocol):
 	no_of_strips: int
 	weight_per_sheet_kg: float
 	finished_part_code: str | None
+	is_lh_rh: int | bool | None
+	orientation: str | None
+	twin_finished_part: str | None
 	net_weight_per_part_kg: float | None
 	gross_weight_per_part_kg: float | None
 	scrap_weight_per_part_kg: float | None
@@ -262,15 +267,7 @@ def _insert_frappe_bom(bom: BomDocument) -> BomDocument:
 			},
 		)
 	for row in bom.scrap_items:
-		bom_doc.append(
-			"scrap_items",
-			{
-				"item_code": row.item_code,
-				"stock_qty": row.qty,
-				"qty": row.qty,
-				"uom": row.uom,
-			},
-		)
+		_append_frappe_bom_scrap_row(bom_doc, row)
 	bom_doc.insert()
 	bom_doc.submit()
 
@@ -280,10 +277,56 @@ def _insert_frappe_bom(bom: BomDocument) -> BomDocument:
 	return bom
 
 
+def _append_frappe_bom_scrap_row(bom_doc: object, row: BomItemRow) -> None:
+	if _has_bom_child_table(bom_doc, "scrap_items"):
+		bom_doc.append(
+			"scrap_items",
+			{
+				"item_code": row.item_code,
+				"stock_qty": row.qty,
+				"qty": row.qty,
+				"uom": row.uom,
+			},
+		)
+		return
+
+	if _has_bom_child_table(bom_doc, "secondary_items"):
+		bom_doc.append(
+			"secondary_items",
+			{
+				"type": "Scrap",
+				"item_code": row.item_code,
+				"stock_qty": row.qty,
+				"qty": row.qty,
+				"uom": row.uom,
+				"stock_uom": row.uom,
+				"conversion_factor": 1,
+				"cost_allocation_per": 0,
+				"process_loss_per": 0,
+				"process_loss_qty": 0,
+				"cost": 0,
+				"base_cost": 0,
+			},
+		)
+		return
+
+	frappe.throw(_("BOM DocType must include a scrap or secondary item table"))
+
+
+def _has_bom_child_table(bom_doc: object, fieldname: str) -> bool:
+	meta = getattr(bom_doc, "meta", None)
+	if meta is not None and hasattr(meta, "get_field"):
+		return meta.get_field(fieldname) is not None
+	return hasattr(bom_doc, fieldname)
+
+
 def _parent_finished_part_rows(layout: ReleaseLayoutDocument) -> list[ParentFinishedPartRow]:
 	if not str(getattr(layout, "finished_part_code", "") or "").strip():
 		return []
-	return [parent_finished_part_row(layout)]  # type: ignore[arg-type]
+	rows = [parent_finished_part_row(layout)]  # type: ignore[arg-type]
+	if getattr(layout, "is_lh_rh", None):
+		rows.append(twin_finished_part_row(layout))  # type: ignore[arg-type]
+	return rows
 
 
 def _sync_finished_part_reference_rows(

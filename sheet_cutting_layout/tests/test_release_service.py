@@ -1353,6 +1353,65 @@ class TestFrappeBomInsertAndEndPieces(ReleaseServiceIsolatedTestCase):
 			[{"item_code": "SCRAP-ITEM", "stock_qty": 1.0, "qty": 1.0, "uom": "Kg"}],
 		)
 
+	def test_frappe_bom_insert_appends_scrap_to_secondary_items_when_required(self) -> None:
+		from sheet_cutting_layout.services import release_service
+		from sheet_cutting_layout.services.bom_service import BomDocument, BomItemRow
+
+		created_boms: list[object] = []
+
+		class FrappeBom:
+			def __init__(self) -> None:
+				self.name = ""
+				self.items: list[dict[str, object]] = []
+				self.secondary_items: list[dict[str, object]] = []
+
+			def append(self, fieldname: str, row: dict[str, object]) -> None:
+				getattr(self, fieldname).append(row)
+
+			def insert(self) -> None:
+				self.name = self.name or "BOM-PERSISTED"
+				created_boms.append(self)
+
+			def submit(self) -> None:
+				self.docstatus = 1
+
+		class FrappeStub:
+			@staticmethod
+			def new_doc(doctype: str) -> FrappeBom:
+				assert doctype == "BOM"
+				return FrappeBom()
+
+			@staticmethod
+			def throw(message: str) -> None:
+				raise ValueError(message)
+
+		bom = BomDocument(item="PART001SHR", name="BOM-PART001SHR")
+		bom._layout = type("LayoutWithCompany", (), {"company": "Test Company", "name": "SCL-001"})()
+		bom.scrap_items.append(BomItemRow(item_code="SCRAP-ITEM", qty=1.0, row_type="process_scrap"))
+		self.start_patcher(patch.object(release_service, "frappe", FrappeStub))
+
+		release_service._insert_frappe_bom(bom)
+
+		self.assertEqual(
+			created_boms[0].secondary_items,
+			[
+				{
+					"type": "Scrap",
+					"item_code": "SCRAP-ITEM",
+					"stock_qty": 1.0,
+					"qty": 1.0,
+					"uom": "Kg",
+					"stock_uom": "Kg",
+					"conversion_factor": 1,
+					"cost_allocation_per": 0,
+					"process_loss_per": 0,
+					"process_loss_qty": 0,
+					"cost": 0,
+					"base_cost": 0,
+				}
+			],
+		)
+
 	def test_default_release_creates_reuse_end_piece_byproduct_row(self) -> None:
 		from sheet_cutting_layout.services import release_service
 
