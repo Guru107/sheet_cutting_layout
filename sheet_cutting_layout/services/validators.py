@@ -4,6 +4,8 @@ import re
 from collections.abc import Sequence
 from typing import Protocol
 
+import frappe
+
 from sheet_cutting_layout.services import geometry
 from sheet_cutting_layout.services.bom_service import (
 	BomItemRow,
@@ -13,8 +15,6 @@ from sheet_cutting_layout.services.end_piece_item_service import (
 	derive_end_piece_item_code,
 	format_code_number,
 )
-
-import frappe
 
 _ = frappe._
 

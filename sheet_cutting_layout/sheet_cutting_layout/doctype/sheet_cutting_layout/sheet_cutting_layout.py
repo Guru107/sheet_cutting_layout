@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import ClassVar
 
 import frappe
 from frappe.model.document import Document
@@ -17,11 +18,15 @@ from sheet_cutting_layout.services.release_service import (
 )
 from sheet_cutting_layout.services.validators import apply_end_piece_bom_status, validate_sheet_cutting_layout
 from sheet_cutting_layout.services.versioning import create_revision
-from sheet_cutting_layout.services.workflow import MR_RELEASE_ACTION, SUPERSEDE_ACTION, record_approval_snapshot
+from sheet_cutting_layout.services.workflow import (
+	MR_RELEASE_ACTION,
+	SUPERSEDE_ACTION,
+	record_approval_snapshot,
+)
 
 
 class SheetCuttingLayout(Document):
-	ignore_linked_doctypes = ["BOM"]
+	ignore_linked_doctypes: ClassVar[list[str]] = ["BOM"]
 
 	def before_insert(self) -> None:
 		_clear_copied_release_artifacts(self)

@@ -4,7 +4,6 @@ import inspect
 
 from frappe.model.document import Document
 
-from sheet_cutting_layout.tests.base import SheetCuttingLayoutTestCase
 from sheet_cutting_layout.sheet_cutting_layout.doctype.layout_approval_snapshot import (
 	layout_approval_snapshot as snapshot_module,
 )
@@ -17,6 +16,7 @@ from sheet_cutting_layout.sheet_cutting_layout.doctype.layout_finished_part impo
 from sheet_cutting_layout.sheet_cutting_layout.doctype.sheet_cutting_layout import (
 	sheet_cutting_layout as controller,
 )
+from sheet_cutting_layout.tests.base import SheetCuttingLayoutTestCase
 
 
 class TestControllerImports(SheetCuttingLayoutTestCase):

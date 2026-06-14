@@ -68,7 +68,9 @@ class TestGeometry(unittest.TestCase):
 
 	def test_gross_weight_per_part_guards_nonfinite_inputs(self) -> None:
 		self.assertIsNone(geometry.gross_weight_per_part_kg(weight_of_strip_kg=math.inf, parts_per_strip=4))
-		self.assertIsNone(geometry.gross_weight_per_part_kg(weight_of_strip_kg=10.0, parts_per_strip=math.inf))
+		self.assertIsNone(
+			geometry.gross_weight_per_part_kg(weight_of_strip_kg=10.0, parts_per_strip=math.inf)
+		)
 
 	def test_gross_weight_per_part_rejects_nonintegral_part_counts(self) -> None:
 		self.assertIsNone(geometry.gross_weight_per_part_kg(weight_of_strip_kg=10.0, parts_per_strip=4.5))

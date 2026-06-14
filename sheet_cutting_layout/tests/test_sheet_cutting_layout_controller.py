@@ -4,13 +4,14 @@ from dataclasses import dataclass
 from types import SimpleNamespace
 from unittest.mock import patch
 
+from sheet_cutting_layout.sheet_cutting_layout.doctype.sheet_cutting_layout import (
+	sheet_cutting_layout as controller,
+)
 from sheet_cutting_layout.tests.base import SheetCuttingLayoutTestCase
 from sheet_cutting_layout.tests.factories import (
 	make_layout,
 	make_release_ready_layout,
 )
-
-from . import sheet_cutting_layout as controller
 
 
 @dataclass
@@ -116,7 +117,9 @@ class TestSheetCuttingLayoutController(SheetCuttingLayoutTestCase):
 
 		with (
 			patch.object(controller, "_get_session_user", return_value="mr@example.com"),
-			patch.object(controller, "_workflow_action_allows_self_approval", return_value=False) as allows_self,
+			patch.object(
+				controller, "_workflow_action_allows_self_approval", return_value=False
+			) as allows_self,
 			patch.object(controller.frappe, "throw", side_effect=Exception("self approval blocked")),
 			self.assertRaisesRegex(Exception, "self approval blocked"),
 		):
@@ -224,7 +227,9 @@ class TestSheetCuttingLayoutController(SheetCuttingLayoutTestCase):
 
 		with (
 			patch.object(controller, "_get_session_user", return_value="mr@example.com"),
-			patch.object(controller, "_workflow_action_allows_self_approval", return_value=False) as allows_self,
+			patch.object(
+				controller, "_workflow_action_allows_self_approval", return_value=False
+			) as allows_self,
 			patch.object(controller, "record_approval_snapshot") as snapshot,
 			patch.object(controller.frappe, "throw", side_effect=Exception("self approval blocked")),
 			self.assertRaisesRegex(Exception, "self approval blocked"),

@@ -80,9 +80,7 @@ class FakeDoc:
 	def insert(self, ignore_permissions: bool = False) -> FakeDoc:
 		self.insert_calls += 1
 		self.ignore_permissions = ignore_permissions
-		if self.doctype == "Item" and not any(
-			row.get("uom") == self.stock_uom for row in self.uoms
-		):
+		if self.doctype == "Item" and not any(row.get("uom") == self.stock_uom for row in self.uoms):
 			self.uoms.insert(0, {"uom": self.stock_uom, "conversion_factor": 1})
 		if self.doctype == "BOM":
 			validate_shearing_bom_source(self, "before_insert")

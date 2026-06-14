@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from sheet_cutting_layout.tests.base import SheetCuttingLayoutTestCase
 from sheet_cutting_layout.tests import factories
+from sheet_cutting_layout.tests.base import SheetCuttingLayoutTestCase
 
 
 class TestFactories(SheetCuttingLayoutTestCase):

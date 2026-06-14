@@ -174,6 +174,10 @@ class RevisionLayout:
 		}
 
 
+def _revision_layout_doc(layout: RevisionLayout) -> object:
+	return frappe.get_doc(layout.as_dict())
+
+
 @dataclass
 class Bom:
 	name: str
@@ -903,13 +907,9 @@ class TestControllerWorkflow(ReleaseServiceIsolatedTestCase):
 			calls.append((layout, kwargs))
 			return type("ReleaseResult", (), {"status": "Released"})()
 
-		self.start_patcher(
-			patch.object(sheet_cutting_layout, "release_layout", fake_release_layout)
-		)
+		self.start_patcher(patch.object(sheet_cutting_layout, "release_layout", fake_release_layout))
 		snapshot = self.start_patcher(patch.object(sheet_cutting_layout, "record_approval_snapshot"))
-		self.start_patcher(
-			patch.object(sheet_cutting_layout, "_get_session_user", lambda: "mr@example.com")
-		)
+		self.start_patcher(patch.object(sheet_cutting_layout, "_get_session_user", lambda: "mr@example.com"))
 		self.start_patcher(
 			patch.object(
 				sheet_cutting_layout,
@@ -1062,9 +1062,7 @@ class TestControllerWorkflow(ReleaseServiceIsolatedTestCase):
 		)
 
 		snapshot = self.start_patcher(patch.object(sheet_cutting_layout, "record_approval_snapshot"))
-		self.start_patcher(
-			patch.object(sheet_cutting_layout, "_get_session_user", lambda: "mr@example.com")
-		)
+		self.start_patcher(patch.object(sheet_cutting_layout, "_get_session_user", lambda: "mr@example.com"))
 		self.start_patcher(
 			patch.object(
 				sheet_cutting_layout,
@@ -1661,13 +1659,15 @@ class TestRevisioning(ReleaseServiceIsolatedTestCase):
 	def test_revising_released_layout_clones_and_increments_revision(self) -> None:
 		from sheet_cutting_layout.services.versioning import create_revision
 
-		old_layout = RevisionLayout(
-			name="SCL-001",
-			project="FAM-001",
-			layout_code="SCL-001",
-			revision_no=2,
-			status="Released",
-			is_active=True,
+		old_layout = _revision_layout_doc(
+			RevisionLayout(
+				name="SCL-001",
+				project="FAM-001",
+				layout_code="SCL-001",
+				revision_no=2,
+				status="Released",
+				is_active=True,
+			)
 		)
 
 		new_layout = create_revision(old_layout)
@@ -1682,20 +1682,22 @@ class TestRevisioning(ReleaseServiceIsolatedTestCase):
 	def test_revision_resets_approval_snapshot_and_generated_boms(self) -> None:
 		from sheet_cutting_layout.services.versioning import create_revision
 
-		old_layout = RevisionLayout(
-			name="SCL-001",
-			project="FAM-001",
-			revision_no=1,
-			status="Released",
-			is_active=True,
-			approval_snapshot=["purchase-approved"],
-			generated_bom="BOM-PARENT-001-001",
-			finished_parts=[
-				FinishedPart("PART001SHR", generated_bom="BOM-PART-001-001"),
-				FinishedPart("PART002SHR", generated_bom="BOM-PART-002-001"),
-			],
-			end_pieces=[EndPiece(weight_kg=2.5, end_piece_item_code="PART001SHR-EP-1x1250x260")],
-			end_piece_bom_status="Generated",
+		old_layout = _revision_layout_doc(
+			RevisionLayout(
+				name="SCL-001",
+				project="FAM-001",
+				revision_no=1,
+				status="Released",
+				is_active=True,
+				approval_snapshot=["purchase-approved"],
+				generated_bom="BOM-PARENT-001-001",
+				finished_parts=[
+					FinishedPart("PART001SHR", generated_bom="BOM-PART-001-001"),
+					FinishedPart("PART002SHR", generated_bom="BOM-PART-002-001"),
+				],
+				end_pieces=[EndPiece(weight_kg=2.5, end_piece_item_code="PART001SHR-EP-1x1250x260")],
+				end_piece_bom_status="Generated",
+			)
 		)
 
 		new_layout = create_revision(old_layout)
@@ -1795,8 +1797,8 @@ class TestRevisioning(ReleaseServiceIsolatedTestCase):
 
 class TestBomLifecycle(ReleaseServiceIsolatedTestCase):
 	def test_retire_layout_cancels_unused_bom(self) -> None:
-		from sheet_cutting_layout.services import release_service
 		from sheet_cutting_layout.overrides.bom import APP_CONTROLLED_BOM_UPDATE_FLAG
+		from sheet_cutting_layout.services import release_service
 
 		cancelled: list[str] = []
 		app_controlled_before_cancel: list[bool] = []

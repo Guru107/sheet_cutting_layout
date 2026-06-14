@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import inspect
 
-from sheet_cutting_layout.tests.base import SheetCuttingLayoutTestCase
 from sheet_cutting_layout.overrides import bom as bom_override
 from sheet_cutting_layout.services import (
 	bom_service,
@@ -11,6 +10,7 @@ from sheet_cutting_layout.services import (
 	release_service,
 	validators,
 )
+from sheet_cutting_layout.tests.base import SheetCuttingLayoutTestCase
 
 
 class TestServiceImports(SheetCuttingLayoutTestCase):

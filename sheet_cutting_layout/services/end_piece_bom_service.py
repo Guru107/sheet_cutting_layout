@@ -3,12 +3,12 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import Protocol
 
+import frappe
+
 from sheet_cutting_layout.overrides.bom import mark_bom_app_controlled
 from sheet_cutting_layout.services import validators
 from sheet_cutting_layout.services.bom_service import build_weight_split_bom_rows
 from sheet_cutting_layout.services.end_piece_item_service import ensure_end_piece_item
-
-import frappe
 
 _ = frappe._
 

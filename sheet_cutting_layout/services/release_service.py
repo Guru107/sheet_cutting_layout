@@ -4,6 +4,8 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from typing import Literal, Protocol
 
+import frappe
+
 from sheet_cutting_layout.overrides.bom import mark_bom_app_controlled
 from sheet_cutting_layout.services.bom_service import (
 	BomDocument,
@@ -15,11 +17,10 @@ from sheet_cutting_layout.services.end_piece_item_service import ensure_end_piec
 from sheet_cutting_layout.services.validators import validate_sheet_cutting_layout
 from sheet_cutting_layout.services.versioning import finalize_new_revision_release
 
-import frappe
-
 _ = frappe._
 
 LayoutReleaseStatus = Literal["Approved by Purchase", "Released"]
+
 
 class EndPieceRow(Protocol):
 	weight_kg: float

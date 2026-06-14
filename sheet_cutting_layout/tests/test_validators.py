@@ -286,7 +286,9 @@ class TestValidators(SheetCuttingLayoutTestCase):
 	def test_validators_parts_per_sheet_delegates_to_geometry(self) -> None:
 		from sheet_cutting_layout.services import validators
 
-		with patch("sheet_cutting_layout.services.validators.geometry.parts_per_sheet", return_value=42) as spy:
+		with patch(
+			"sheet_cutting_layout.services.validators.geometry.parts_per_sheet", return_value=42
+		) as spy:
 			result = validators.calculate_parts_per_sheet(parts_per_strip=6, no_of_strips=7)
 
 		self.assertEqual(result, 42)

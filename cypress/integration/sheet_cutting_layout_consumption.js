@@ -40,6 +40,12 @@ describe("Sheet Cutting Layout consumption tracking", () => {
 			});
 	}
 
+	function setDocField(fieldname, value) {
+		cy.window().then((win) =>
+			win.frappe.model.set_value(win.cur_frm.doctype, win.cur_frm.docname, fieldname, value)
+		);
+	}
+
 	function addEndPiece() {
 		cy.window().then((win) => {
 			const frm = win.cur_frm;
@@ -101,10 +107,10 @@ describe("Sheet Cutting Layout consumption tracking", () => {
 		cy.visit("/app/sheet-cutting-layout/new-sheet-cutting-layout-1");
 
 		setField("layout_code", layoutCode);
-		setField("project", `${projectName}{enter}`);
+		setDocField("project", projectName);
 		setField("revision_no", 1);
-		setField("raw_material_item", `${rawMaterialItem}{enter}`);
-		setField("process_scrap_item", `${processScrapItem}{enter}`);
+		setDocField("raw_material_item", rawMaterialItem);
+		setDocField("process_scrap_item", processScrapItem);
 		setField("sheet_width_mm", 1250);
 		setField("sheet_length_mm", 2500);
 		setField("sheet_thickness_mm", 1.6);
@@ -113,7 +119,7 @@ describe("Sheet Cutting Layout consumption tracking", () => {
 		setField("strip_thickness_mm", 1.6);
 		setField("no_of_strips", 11);
 		setField("parts_per_strip", 7);
-		setField("finished_part_code", `${finishedPartItem}{enter}`);
+		setDocField("finished_part_code", finishedPartItem);
 		setField("net_weight_per_part_kg", 0.288846);
 		recalculateLayoutFields();
 
@@ -125,7 +131,14 @@ describe("Sheet Cutting Layout consumption tracking", () => {
 		expectFieldNumber("leftover_weight_kg", 0);
 		expectFieldValue("consumption_status", "Balanced");
 
-		cy.window().then((win) => win.cur_frm.save());
+		cy.intercept("POST", "/api/method/frappe.desk.form.save.savedocs").as("saveLayout");
+		cy.window().then((win) => {
+			win.cur_frm.save();
+		});
+		cy.wait("@saveLayout", { timeout: 30000 })
+			.its("response.statusCode")
+			.should("eq", 200);
+		cy.get(".freeze:visible").should("not.exist");
 		cy.contains('[data-fieldname="status"]', "Draft");
 	});
 });
