@@ -245,6 +245,59 @@ class TestEndPieceBomService(SheetCuttingLayoutTestCase):
 		self.assertEqual(result, "GRP")
 		spy.assert_called_once_with("Item", "SOME-ITEM", "item_group")
 
+	def test_append_app_created_item_uoms_supports_nos_and_rejects_other_stock_uoms(self) -> None:
+		from sheet_cutting_layout.services import end_piece_item_service
+
+		item = FakeDoc("Item")
+		end_piece_item_service._append_app_created_item_uoms(item, stock_uom="Nos", weight_kg=2)
+
+		self.assertEqual(item.uoms, [{"uom": "Kg", "conversion_factor": 0.5}])
+
+		with (
+			patch.object(end_piece_item_service, "_", lambda message: message),
+			self.assertRaisesRegex(Exception, "Unsupported stock UOM"),
+		):
+			end_piece_item_service._append_app_created_item_uoms(item, stock_uom="Box", weight_kg=2)
+
+	def test_item_exists_uses_db_exists_fallback(self) -> None:
+		from sheet_cutting_layout.services import end_piece_item_service
+
+		fake_frappe = SimpleNamespace(
+			db=object(),
+			db_exists=lambda doctype, name: doctype == "Item" and name == "FG01SHR-EP-2x100x200",
+		)
+
+		with patch.object(end_piece_item_service, "frappe", fake_frappe):
+			self.assertTrue(end_piece_item_service._item_exists("FG01SHR-EP-2x100x200"))
+			self.assertFalse(end_piece_item_service._item_exists("MISSING"))
+
+	def test_item_exists_returns_false_when_no_lookup_api_is_available(self) -> None:
+		from sheet_cutting_layout.services import end_piece_item_service
+
+		with patch.object(end_piece_item_service, "frappe", SimpleNamespace(db=object())):
+			self.assertFalse(end_piece_item_service._item_exists("FG01SHR-EP-2x100x200"))
+
+	def test_clean_converts_non_string_values(self) -> None:
+		from sheet_cutting_layout.services import end_piece_item_service
+
+		self.assertIsNone(end_piece_item_service._clean(None))
+		self.assertEqual(end_piece_item_service._clean("  FG01SHR  "), "FG01SHR")
+		self.assertIsNone(end_piece_item_service._clean("   "))
+		self.assertEqual(end_piece_item_service._clean(123), "123")
+
+	def test_existing_item_valuation_repair_skips_when_raw_material_rate_is_not_positive(self) -> None:
+		fake_frappe = self._install_fakes(
+			existing_items={"FG01SHR-EP-2x100x200"},
+			raw_item_valuation_rates={
+				"FG01SHR-EP-2x100x200": 0,
+				"RAW-001": 0,
+			},
+		)
+
+		self.item_service._ensure_existing_item_valuation_rate("FG01SHR-EP-2x100x200", Layout())
+
+		self.assertEqual(fake_frappe.created_docs, [])
+
 	def test_generation_requires_released_layout(self) -> None:
 		self._install_fakes()
 		layout = Layout(status="Draft", end_pieces=[EndPiece()])
