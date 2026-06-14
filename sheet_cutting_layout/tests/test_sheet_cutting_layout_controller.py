@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -59,7 +60,7 @@ class TestSheetCuttingLayoutController(SheetCuttingLayoutTestCase):
 			patch.object(controller, "release_layout") as release,
 			patch.object(controller, "record_approval_snapshot") as snapshot,
 			patch.object(controller, "_get_session_user", return_value="Administrator"),
-			patch.object(controller, "_get_now_datetime", return_value="2026-06-13T12:00:00"),
+			patch.object(controller, "_get_now_datetime", return_value=datetime(2026, 6, 13, 12, 0, 0)),
 		):
 			doc.on_submit()
 
@@ -68,7 +69,7 @@ class TestSheetCuttingLayoutController(SheetCuttingLayoutTestCase):
 			doc,
 			action="MR Release",
 			approver="Administrator",
-			decision_time="2026-06-13T12:00:00",
+			decision_time=datetime(2026, 6, 13, 12, 0, 0),
 		)
 
 	def test_on_submit_does_not_snapshot_or_release_when_not_released(self) -> None:
@@ -208,7 +209,7 @@ class TestSheetCuttingLayoutController(SheetCuttingLayoutTestCase):
 		with (
 			patch.object(controller, "record_approval_snapshot") as snapshot,
 			patch.object(controller, "_get_session_user", return_value="Administrator"),
-			patch.object(controller, "_get_now_datetime", return_value="2026-06-13T12:00:00"),
+			patch.object(controller, "_get_now_datetime", return_value=datetime(2026, 6, 13, 12, 0, 0)),
 		):
 			doc.before_cancel()
 
@@ -216,7 +217,7 @@ class TestSheetCuttingLayoutController(SheetCuttingLayoutTestCase):
 			doc,
 			action="Supersede",
 			approver="Administrator",
-			decision_time="2026-06-13T12:00:00",
+			decision_time=datetime(2026, 6, 13, 12, 0, 0),
 		)
 
 	def test_before_cancel_rejects_owner_self_approval_on_native_cancel(self) -> None:

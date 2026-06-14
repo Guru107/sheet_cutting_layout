@@ -135,9 +135,7 @@ describe("Sheet Cutting Layout consumption tracking", () => {
 		cy.window().then((win) => {
 			win.cur_frm.save();
 		});
-		cy.wait("@saveLayout", { timeout: 30000 })
-			.its("response.statusCode")
-			.should("eq", 200);
+		cy.wait("@saveLayout", { timeout: 30000 }).its("response.statusCode").should("eq", 200);
 		cy.get(".freeze:visible").should("not.exist");
 		cy.contains('[data-fieldname="status"]', "Draft");
 	});

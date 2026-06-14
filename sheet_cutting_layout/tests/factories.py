@@ -11,7 +11,6 @@ def register_test_doc(doctype: str, name: str | None) -> None:
 	FrappeTestCase rolls back the database after each test, so explicitly
 	created docs do not need to be tracked or swept.
 	"""
-	return None
 
 
 def insert_if_missing(
@@ -81,8 +80,8 @@ def make_layout(
 	**overrides: object,
 ):
 	"""Build an UNINSERTED Sheet Cutting Layout doc; callers must insert() it and
-	register_test_doc("Sheet Cutting Layout", doc.name) themselves. Item/Project
-	prerequisites are inserted here."""
+	set any required post-insert fields themselves. Item/Project prerequisites are
+	inserted here."""
 	unique_suffix = frappe.generate_hash(length=8)
 	project = ensure_project()
 	raw_material_item = ensure_item("SCLTESTRM001", stock_uom="Kg")

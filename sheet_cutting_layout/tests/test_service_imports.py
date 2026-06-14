@@ -32,5 +32,7 @@ class TestServiceImports(SheetCuttingLayoutTestCase):
 			validators.validate_finished_part_code("not-alnum-!")
 
 	def test_bom_service_remains_frappe_free_at_import(self) -> None:
-		# Pure-domain module: no top-level `import frappe`.
-		self.assertNotIn("\nimport frappe", inspect.getsource(bom_service))
+		# Pure-domain module: no top-level frappe import.
+		source = inspect.getsource(bom_service)
+		self.assertNotIn("\nimport frappe", source)
+		self.assertNotIn("\nfrom frappe import", source)

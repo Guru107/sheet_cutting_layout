@@ -16,5 +16,6 @@ class TestFixturesScope(FrappeTestCase):
 		for fixture in custom_field_fixtures:
 			filters = fixture["filters"]
 			flattened = str(filters)
+			self.assertIn("BOM", flattened)
 			self.assertNotIn("Work Order", flattened)
 			self.assertNotIn("Production Plan", flattened)

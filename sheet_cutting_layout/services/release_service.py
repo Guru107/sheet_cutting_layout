@@ -149,6 +149,7 @@ def retire_layout(layout: object) -> None:
 		except frappe.LinkExistsError:
 			frappe.db.rollback(save_point=save_point)
 			bom_doc = frappe.get_doc("BOM", bom_name)
+			mark_bom_app_controlled(bom_doc)
 			bom_doc.is_active = 0
 			bom_doc.save(ignore_permissions=True)
 

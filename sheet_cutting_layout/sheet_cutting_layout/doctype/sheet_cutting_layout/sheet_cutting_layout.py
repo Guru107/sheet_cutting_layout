@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import ClassVar
 
 import frappe
@@ -170,7 +170,7 @@ def _get_now_datetime() -> datetime:
 	if callable(now_datetime):
 		return now_datetime()
 
-	return datetime.now()
+	return datetime.now(tz=timezone.utc)
 
 
 @whitelist()
