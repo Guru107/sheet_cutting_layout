@@ -406,6 +406,19 @@ frappe.provide("sheet_cutting_layout");
 		});
 	}
 
+	function addDownloadLayoutButton(frm) {
+		if (frm.is_new()) {
+			return;
+		}
+		frm.add_custom_button(__("Download Layout (Excel)"), () => {
+			const method =
+				"sheet_cutting_layout.sheet_cutting_layout.doctype.sheet_cutting_layout." +
+				"sheet_cutting_layout.download_sheet_cutting_layout";
+			const url = `/api/method/${method}?name=${encodeURIComponent(frm.doc.name)}`;
+			window.open(url, "_blank");
+		});
+	}
+
 	function ignoreBomInGenericCancelAll(frm) {
 		frm.ignore_doctypes_on_cancel_all = Array.from(
 			new Set([...(frm.ignore_doctypes_on_cancel_all || []), "BOM"])
@@ -416,6 +429,7 @@ frappe.provide("sheet_cutting_layout");
 		refresh(frm) {
 			ignoreBomInGenericCancelAll(frm);
 			addEndPieceBomButtons(frm);
+			addDownloadLayoutButton(frm);
 			if (!frm.is_new() && ["Released", "Superseded"].includes(frm.doc.status)) {
 				frm.add_custom_button(__("New Version"), () => {
 					frappe.call({

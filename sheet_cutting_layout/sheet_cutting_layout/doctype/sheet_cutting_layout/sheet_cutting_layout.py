@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import ClassVar
 
+import erpnext
 import frappe
 from frappe.model.document import Document
 
@@ -11,6 +12,10 @@ _ = frappe._
 
 from sheet_cutting_layout.services.end_piece_bom_service import (
 	generate_end_piece_boms,
+)
+from sheet_cutting_layout.services.export_service import (
+	default_template_path,
+	render_workbook_bytes,
 )
 from sheet_cutting_layout.services.release_service import (
 	release_layout,
@@ -177,3 +182,78 @@ def generate_sheet_cutting_layout_end_piece_boms(name: str) -> dict[str, list[st
 	if callable(check_permission):
 		check_permission("write")
 	return generate_end_piece_boms(doc)
+
+
+@whitelist()
+def download_sheet_cutting_layout(name: str) -> None:
+	doc = frappe.get_doc("Sheet Cutting Layout", name)
+	check_permission = getattr(doc, "check_permission", None)
+	if callable(check_permission):
+		check_permission("read")
+
+	content = render_workbook_bytes(_export_layout_dict(doc), default_template_path())
+	frappe.response["filename"] = f"{doc.name}.xlsx"
+	frappe.response["filecontent"] = content
+	frappe.response["type"] = "binary"
+
+
+def _export_layout_dict(doc: object) -> dict[str, object]:
+	finished_part_code = getattr(doc, "finished_part_code", None)
+	part_numbers = [finished_part_code] if finished_part_code else []
+	twin_finished_part = getattr(doc, "twin_finished_part", None)
+	if getattr(doc, "is_lh_rh", None) and twin_finished_part:
+		part_numbers.append(twin_finished_part)
+
+	part_name = ""
+	if finished_part_code:
+		part_name = frappe.get_cached_value("Item", finished_part_code, "item_name") or finished_part_code
+
+	project = getattr(doc, "project", None)
+	project_name = frappe.db.get_value("Project", project, "project_name") if project else ""
+
+	raw_material_weight_kg = None
+	for row in getattr(doc, "finished_parts", None) or []:
+		raw_material_weight_kg = getattr(row, "raw_material_weight_kg", None)
+		break
+
+	return {
+		"company": _default_company(),
+		"part_name": part_name,
+		"part_numbers": part_numbers,
+		"is_lh_rh": bool(getattr(doc, "is_lh_rh", False)),
+		"orientation": getattr(doc, "orientation", None),
+		"project": project,
+		"project_name": project_name or "",
+		"sheet_thickness_mm": getattr(doc, "sheet_thickness_mm", None),
+		"sheet_width_mm": getattr(doc, "sheet_width_mm", None),
+		"sheet_length_mm": getattr(doc, "sheet_length_mm", None),
+		"weight_of_strip_kg": getattr(doc, "weight_of_strip_kg", None),
+		"strip_thickness_mm": getattr(doc, "strip_thickness_mm", None),
+		"strip_width_mm": getattr(doc, "strip_width_mm", None),
+		"strip_length_mm": getattr(doc, "strip_length_mm", None),
+		"parts_per_strip": getattr(doc, "parts_per_strip", None),
+		"no_of_strips": getattr(doc, "no_of_strips", None),
+		"parts_per_sheet": getattr(doc, "parts_per_sheet", None),
+		"gross_weight_per_part_kg": getattr(doc, "gross_weight_per_part_kg", None),
+		"net_weight_per_part_kg": getattr(doc, "net_weight_per_part_kg", None),
+		"scrap_weight_per_part_kg": getattr(doc, "scrap_weight_per_part_kg", None),
+		"raw_material_weight_kg": raw_material_weight_kg,
+		"end_pieces": [_export_end_piece_dict(row) for row in getattr(doc, "end_pieces", None) or []],
+	}
+
+
+def _export_end_piece_dict(row: object) -> dict[str, object]:
+	return {
+		"end_piece_item_code": getattr(row, "end_piece_item_code", None),
+		"width_mm": getattr(row, "width_mm", None),
+		"length_mm": getattr(row, "length_mm", None),
+		"weight_kg": getattr(row, "weight_kg", None),
+		"gross_weight_per_part_kg": getattr(row, "gross_weight_per_part_kg", None),
+		"net_weight_per_part_kg": getattr(row, "net_weight_per_part_kg", None),
+		"scrap_weight_per_part_kg": getattr(row, "scrap_weight_per_part_kg", None),
+		"bom_quantity": getattr(row, "bom_quantity", None),
+	}
+
+
+def _default_company() -> str:
+	return erpnext.get_default_company() or ""

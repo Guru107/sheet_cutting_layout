@@ -11,3 +11,10 @@
 - Decision: Defer joined part-number and label formatting until the export phase.
   Options: add BOM-service helpers in Phase 1; add export-local helpers in Phase 2; add stored display fields.
   Chosen: add the formatting only where Phase 2 consumes it, because Phase 1 does not need new public helper surface.
+
+## Phase 2
+
+- Decision: Ship the generated minimal FRM/PRD/15 workbook template for implementation verification.
+  Options: stop until the curated audit-approved workbook is provided; generate a minimal testable workbook; hard-code workbook bytes in tests.
+  Chosen: generate and commit the minimal workbook, because the cell-map contract remains testable and the curated template can replace the file later without code changes if coordinates match.
+  Trade-off: this does not certify the workbook artwork as audit-approved; it verifies the export contract now and keeps the template swap isolated to one file when the approved workbook is supplied.
