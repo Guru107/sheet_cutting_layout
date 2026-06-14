@@ -16,7 +16,6 @@ class FinishedPartRow(Protocol):
 
 class EndPieceRow(Protocol):
 	weight_kg: float
-	qty_per_sheet: float
 	disposition: str
 	scrap_item: str | None
 	end_piece_item_code: str | None
@@ -62,8 +61,6 @@ class BomDocument:
 	quantity: int = 1
 	sheet_cutting_layout: str | None = None
 	is_active: bool = True
-	disabled: bool = False
-	status: str = "Active"
 	items: list[BomItemRow] = field(default_factory=list)
 	scrap_items: list[BomItemRow] = field(default_factory=list)
 
@@ -86,39 +83,6 @@ class ExpectedBomWeightBalance:
 
 BomDocumentFactory = Callable[[str], BomDocument]
 EndPieceItemCodeResolver = Callable[[LayoutDocument, EndPieceRow], str]
-
-
-def resolve_scrap_item_rate(
-	*,
-	item_code: str | None,
-	company: str | None,
-	existing_rate: float | int | str | None = None,
-) -> float:
-	# Zero/negative/invalid existing rates are treated as unresolved and fall back
-	# to valuation-rate lookup for deterministic BOM scrap pricing.
-	if existing_rate is not None:
-		try:
-			existing_rate_value = float(existing_rate)
-		except (TypeError, ValueError):
-			existing_rate_value = 0.0
-		if existing_rate_value > 0:
-			return existing_rate_value
-
-	item_code = str(item_code or "").strip()
-	if not item_code:
-		raise ValueError("Scrap item code is required to resolve scrap rate")
-	company = str(company or "").strip()
-	if not company:
-		raise ValueError(f"Company is required to resolve scrap rate for scrap item {item_code}")
-
-	rate = _fetch_valuation_rate(item_code=item_code, company=company)
-	try:
-		rate_value = float(rate)
-	except (TypeError, ValueError):
-		raise ValueError(f"Valuation rate is required for scrap item {item_code}") from None
-	if rate_value <= 0:
-		raise ValueError(f"Valuation rate is required for scrap item {item_code}")
-	return rate_value
 
 
 def build_weight_split_bom_rows(
@@ -289,11 +253,3 @@ def _sheet_weight_kg(layout_doc: LayoutDocument, finished_part_row: FinishedPart
 
 	end_piece_weight = sum(end_piece.weight_kg for end_piece in layout_doc.end_pieces)
 	return finished_part_row.gross_weight_per_part_kg * finished_part_row.parts_per_sheet + end_piece_weight
-
-
-def _fetch_valuation_rate(*, item_code: str, company: str) -> float | int | str | None:
-	import frappe
-	from erpnext.manufacturing.doctype.bom.bom import get_valuation_rate
-
-	args = frappe._dict({"item_code": item_code, "company": company})
-	return get_valuation_rate(args)

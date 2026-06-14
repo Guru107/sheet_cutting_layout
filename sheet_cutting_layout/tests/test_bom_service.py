@@ -1,13 +1,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from unittest.mock import patch
-
-import frappe
 
 from sheet_cutting_layout.services import bom_service
 from sheet_cutting_layout.tests.base import SheetCuttingLayoutTestCase
-from sheet_cutting_layout.tests.factories import ensure_item
 
 
 @dataclass
@@ -21,7 +17,6 @@ class FinishedPart:
 @dataclass
 class EndPiece:
 	weight_kg: float
-	qty_per_sheet: float = 1
 	disposition: str = "Reuse"
 	scrap_item: str | None = None
 	end_piece_item_code: str | None = None
@@ -46,6 +41,12 @@ class Layout:
 
 
 class TestBomService(SheetCuttingLayoutTestCase):
+	def test_bom_document_has_no_status_or_disabled_fields(self) -> None:
+		bom = bom_service.BomDocument(item="FINISHED-SHR")
+
+		self.assertFalse(hasattr(bom, "status"))
+		self.assertFalse(hasattr(bom, "disabled"))
+
 	def test_generated_bom_uses_parts_per_sheet_quantity_and_sheet_weight_raw_qty(self) -> None:
 		bom = bom_service.build_bom_from_layout_row(
 			Layout(no_of_strips=11, parts_per_sheet=77),
@@ -152,9 +153,7 @@ class TestBomService(SheetCuttingLayoutTestCase):
 			Layout(
 				no_of_strips=11,
 				parts_per_sheet=77,
-				end_pieces=[
-					EndPiece(weight_kg=8, qty_per_sheet=2, disposition="Scrap", scrap_item="EP-SCRAP")
-				],
+				end_pieces=[EndPiece(weight_kg=8, disposition="Scrap", scrap_item="EP-SCRAP")],
 			),
 			FinishedPart(parts_per_sheet=77, scrap_weight_per_part_kg=1),
 		)
@@ -187,36 +186,6 @@ class TestBomService(SheetCuttingLayoutTestCase):
 		)
 
 		assert bom.name == "CUSTOM-BOM"
-
-	def test_resolve_scrap_item_rate_reuses_positive_existing_rate_without_lookup(self) -> None:
-		with patch.object(bom_service, "_fetch_valuation_rate", return_value=99.0) as fetch_rate:
-			rate = bom_service.resolve_scrap_item_rate(
-				item_code="SCRAP-001",
-				company="Test Company",
-				existing_rate=42.5,
-			)
-
-		self.assertEqual(rate, 42.5)
-		fetch_rate.assert_not_called()
-
-	def test_resolve_scrap_item_rate_looks_up_when_existing_rate_is_zero_or_invalid(self) -> None:
-		with patch.object(bom_service, "_fetch_valuation_rate", return_value=88.25) as fetch_rate:
-			rate_zero = bom_service.resolve_scrap_item_rate(
-				item_code="SCRAP-001",
-				company="Test Company",
-				existing_rate=0,
-			)
-			rate_invalid = bom_service.resolve_scrap_item_rate(
-				item_code="SCRAP-001",
-				company="Test Company",
-				existing_rate="not-a-number",
-			)
-
-		self.assertEqual(rate_zero, 88.25)
-		self.assertEqual(rate_invalid, 88.25)
-		assert fetch_rate.call_count == 2
-		assert fetch_rate.call_args_list[0].kwargs == {"item_code": "SCRAP-001", "company": "Test Company"}
-		assert fetch_rate.call_args_list[1].kwargs == {"item_code": "SCRAP-001", "company": "Test Company"}
 
 	def test_weight_split_helper_matches_main_bom_raw_and_scrap_rows(self) -> None:
 		from sheet_cutting_layout.services.bom_service import build_weight_split_bom_rows
@@ -413,19 +382,3 @@ class TestBomService(SheetCuttingLayoutTestCase):
 
 	def _sum_bom_qty(self, items: list[object], row_type: str) -> float:
 		return sum(item.qty for item in items if item.row_type == row_type)
-
-
-class TestBomServiceIntegration(SheetCuttingLayoutTestCase):
-	def test_resolve_scrap_item_rate_reads_real_item_valuation(self) -> None:
-		from sheet_cutting_layout.services.bom_service import resolve_scrap_item_rate
-
-		# A fresh stock-less item has no Bin or Stock Ledger Entry rows, so the
-		# ERPNext valuation lookup falls back to the Item's valuation_rate field.
-		companies = frappe.get_all("Company", pluck="name", limit=1)
-		self.assertTrue(companies, "Test requires at least one Company record on the site")
-		company = companies[0]
-		scrap_item = ensure_item("SCLTESTSCRAPRATE001", stock_uom="Kg", valuation_rate=62.5)
-
-		rate = resolve_scrap_item_rate(item_code=scrap_item, company=company, existing_rate=0)
-
-		self.assertFloatAlmostEqual(rate, 62.5)

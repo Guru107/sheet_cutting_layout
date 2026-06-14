@@ -9,7 +9,9 @@
   "finished_part_item",
   "bom_quantity",
   "scrap_weight_kg",
-  "raw_material_weight_kg"
+  "raw_material_weight_kg",
+  "generated_bom",
+  "orientation"
  ],
  "fields": [
   {
@@ -39,6 +41,20 @@
    "fieldtype": "Float",
    "in_list_view": 1,
    "label": "Raw Material Weight Kg",
+   "read_only": 1
+  },
+  {
+   "fieldname": "generated_bom",
+   "fieldtype": "Link",
+   "label": "Generated BOM",
+   "options": "BOM",
+   "read_only": 1
+  },
+  {
+   "fieldname": "orientation",
+   "fieldtype": "Select",
+   "label": "Orientation",
+   "options": "\nLH\nRH",
    "read_only": 1
   }
  ],

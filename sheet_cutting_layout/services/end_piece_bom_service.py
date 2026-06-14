@@ -3,31 +3,14 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import Protocol
 
+import frappe
+
 from sheet_cutting_layout.overrides.bom import mark_bom_app_controlled
 from sheet_cutting_layout.services import validators
-from sheet_cutting_layout.services.bom_service import (
-	build_weight_split_bom_rows,
-	resolve_scrap_item_rate,
-)
+from sheet_cutting_layout.services.bom_service import build_weight_split_bom_rows
 from sheet_cutting_layout.services.end_piece_item_service import ensure_end_piece_item
 
-try:
-	import frappe
-except ImportError:
-
-	class _ValidationError(Exception):
-		pass
-
-	class _FrappeCompat:
-		ValidationError = _ValidationError
-
-		@staticmethod
-		def throw(message: str) -> None:
-			raise _ValidationError(message)
-
-	frappe = _FrappeCompat()
-
-_ = getattr(frappe, "_", lambda message: message)
+_ = frappe._
 
 
 class EndPieceRow(Protocol):
@@ -91,7 +74,6 @@ def _create_end_piece_bom(layout: LayoutDocument, row: EndPieceRow, item_code: s
 	bom.item = _required_clean(row, "used_for_finished_part")
 	bom.company = _company_for_layout(layout)
 	bom.quantity = getattr(row, "bom_quantity", None)
-	bom.uom = "Kg"
 	bom.custom_operation = "Shearing"
 	bom.sheet_cutting_layout = getattr(layout, "name", None)
 
@@ -109,17 +91,10 @@ def _create_end_piece_bom(layout: LayoutDocument, row: EndPieceRow, item_code: s
 				"item_code": item_row.item_code,
 				"qty": item_row.qty,
 				"uom": item_row.uom,
-				"stock_uom": item_row.uom,
-				"stock_qty": item_row.qty,
-				"conversion_factor": 1,
 			},
 		)
 
 	for scrap_row in weight_rows.scrap_items:
-		try:
-			rate = resolve_scrap_item_rate(item_code=scrap_row.item_code, company=bom.company)
-		except ValueError as error:
-			_throw(_("Row {0}: {1}").format(getattr(row, "idx", 0), str(error)))
 		bom.append(
 			"scrap_items",
 			{
@@ -127,15 +102,10 @@ def _create_end_piece_bom(layout: LayoutDocument, row: EndPieceRow, item_code: s
 				"qty": scrap_row.qty,
 				"stock_qty": scrap_row.qty,
 				"uom": scrap_row.uom,
-				"rate": rate,
 			},
 		)
 
 	mark_bom_app_controlled(bom)
-	bom.is_active = 1
-	bom.disabled = 0
-	if hasattr(bom, "status"):
-		bom.status = "Active"
 	bom.insert(ignore_permissions=True)
 	bom.submit()
 	return bom.name
@@ -170,21 +140,18 @@ def _apply_end_piece_bom_status(layout: LayoutDocument) -> None:
 def _persist_generated_links(layout: LayoutDocument, rows: Sequence[EndPieceRow]) -> None:
 	if _is_submitted_document(layout):
 		for row in rows:
-			_db_set(
-				row,
+			row.db_set(
 				"end_piece_item_code",
 				getattr(row, "end_piece_item_code", None),
 				update_modified=False,
 			)
 			if hasattr(row, "generated_end_piece_bom"):
-				_db_set(
-					row,
+				row.db_set(
 					"generated_end_piece_bom",
 					getattr(row, "generated_end_piece_bom", None),
 					update_modified=False,
 				)
-		_db_set(
-			layout,
+		layout.db_set(
 			"end_piece_bom_status",
 			getattr(layout, "end_piece_bom_status", None),
 			update_modified=True,
@@ -194,29 +161,6 @@ def _persist_generated_links(layout: LayoutDocument, rows: Sequence[EndPieceRow]
 	save = getattr(layout, "save", None)
 	if callable(save):
 		save(ignore_permissions=True)
-
-
-def _db_set(
-	doc: object,
-	fieldname: object,
-	value: object = None,
-	*,
-	update_modified: bool,
-) -> None:
-	db_set = getattr(doc, "db_set", None)
-	if callable(db_set):
-		db_set(fieldname, value, update_modified=update_modified, notify=False)
-		return
-
-	db = getattr(frappe, "db", None)
-	set_value = getattr(db, "set_value", None)
-	doctype = getattr(doc, "doctype", None)
-	name = getattr(doc, "name", None)
-	if callable(set_value) and doctype and name:
-		set_value(doctype, name, fieldname, value, update_modified=update_modified)
-		return
-
-	_throw(_("Generated end-piece item links could not be persisted safely on a submitted layout"))
 
 
 def _is_submitted_document(doc: object) -> bool:
@@ -233,19 +177,11 @@ def _company_for_layout(layout: LayoutDocument | None) -> str:
 		if company:
 			return company
 
-	defaults = getattr(frappe, "defaults", None)
-	get_user_default = getattr(defaults, "get_user_default", None)
-	if callable(get_user_default):
-		company = _clean(get_user_default("Company"))
-		if company:
-			return company
+	import erpnext
 
-	db = getattr(frappe, "db", None)
-	get_default = getattr(db, "get_default", None)
-	if callable(get_default):
-		company = _clean(get_default("company"))
-		if company:
-			return company
+	company = _clean(erpnext.get_default_company())
+	if company:
+		return company
 
 	_throw(_("Company is required to create generated BOMs"))
 	raise RuntimeError("Company is required to create generated BOMs")

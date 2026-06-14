@@ -11,6 +11,7 @@ node_modules
 __pycache__
 cypress/screenshots/
 cypress/videos/
+cypress/downloads/
 cypress/results/
 .playwright-mcp/
 /001.png

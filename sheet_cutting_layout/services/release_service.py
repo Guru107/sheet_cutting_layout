@@ -4,35 +4,26 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from typing import Literal, Protocol
 
+import frappe
+
 from sheet_cutting_layout.overrides.bom import mark_bom_app_controlled
 from sheet_cutting_layout.services.bom_service import (
 	BomDocument,
 	ParentFinishedPartRow,
 	build_bom_from_layout_row,
 	parent_finished_part_row,
-	resolve_scrap_item_rate,
 )
 from sheet_cutting_layout.services.end_piece_item_service import ensure_end_piece_item
 from sheet_cutting_layout.services.validators import validate_sheet_cutting_layout
 from sheet_cutting_layout.services.versioning import finalize_new_revision_release
 
-try:
-	import frappe
-except ImportError:
-	frappe = None
-
-_ = getattr(frappe, "_", lambda message: message)
+_ = frappe._
 
 LayoutReleaseStatus = Literal["Approved by Purchase", "Released"]
-
-# Set on frappe.flags by the layout controller while its own save cycle runs
-# release_layout; _save_layout_records skips the nested save when it is active.
-SUPPRESS_WORKFLOW_SIDE_EFFECTS_FLAG = "sheet_cutting_layout_suppress_workflow_side_effects"
 
 
 class EndPieceRow(Protocol):
 	weight_kg: float
-	qty_per_sheet: float
 	disposition: str
 	scrap_item: str | None
 
@@ -73,8 +64,6 @@ class BomRecord(Protocol):
 	custom_operation: str | None
 	sheet_cutting_layout: str | None
 	is_active: bool
-	disabled: bool
-	status: str
 
 
 @dataclass
@@ -95,6 +84,8 @@ class FinishedPartReferenceRow:
 	bom_quantity: float | None
 	scrap_weight_kg: float | None
 	raw_material_weight_kg: float | None
+	generated_bom: str | None = None
+	orientation: str | None = None
 
 
 ReleaseContextProvider = Callable[[ReleaseLayoutDocument], ReleaseContext]
@@ -144,118 +135,23 @@ def release_layout(
 	return ReleaseResult(status=layout.status, generated_boms=generated_boms)
 
 
-def deactivate_generated_bom(layout: object) -> object | None:
-	bom_names = _layout_bom_names(layout)
-	if not bom_names or not frappe:
-		return None
-
-	deactivated_boms = []
-	for bom_name in bom_names:
+def retire_layout(layout: object) -> None:
+	for index, bom_name in enumerate(_layout_bom_names(layout), start=1):
 		bom_doc = frappe.get_doc("BOM", bom_name)
-		deactivated_boms.append(bom_doc)
-		_set_frappe_field_if_supported(bom_doc, "is_active", 0)
-		_set_frappe_field_if_supported(bom_doc, "disabled", 1)
-		_set_frappe_field_if_supported(bom_doc, "is_default", 0)
-		_set_frappe_field_if_supported(bom_doc, "status", "Superseded")
-		if _is_submitted_document(bom_doc) and hasattr(bom_doc, "db_set"):
-			# Submitted BOMs cannot be safely re-saved through the layout flow here.
-			# Persist the retirement fields directly — but only those the doctype
-			# actually has, or db_set fails with an unknown-column error — and leave
-			# broader ERPNext BOM-update orchestration to the explicit submitted-BOM
-			# lifecycle follow-up.
-			retirement_values = _supported_field_values(
-				bom_doc,
-				{"is_active": 0, "disabled": 1, "is_default": 0, "status": "Superseded"},
-			)
-			if retirement_values:
-				bom_doc.db_set(retirement_values, update_modified=True, notify=False)
-		else:
-			mark_bom_app_controlled(bom_doc)
-			bom_doc.save(ignore_permissions=True)
-		_clear_item_default_bom_reference(bom_doc)
-	return deactivated_boms[0]
-
-
-def cancel_generated_bom(layout: object) -> object | None:
-	bom_names = _layout_bom_names(layout)
-	if not bom_names or not frappe:
-		return None
-
-	cancelled_boms = []
-	for bom_name in bom_names:
-		bom_doc = frappe.get_doc("BOM", bom_name)
-		cancelled_boms.append(bom_doc)
 		if _is_cancelled_document(bom_doc):
-			_unlink_layout_bom_reference_fields(layout, bom_name)
-			_unlink_layout_from_generated_bom(bom_doc)
 			continue
 
-		savepoint = f"scl_cancel_generated_bom_{len(cancelled_boms)}"
-		_db_savepoint(savepoint)
+		save_point = f"scl_retire_bom_{index}"
+		frappe.db.savepoint(save_point)
+		mark_bom_app_controlled(bom_doc)
 		try:
-			_set_frappe_field_if_supported(bom_doc, "is_active", 0)
-			_set_frappe_field_if_supported(bom_doc, "disabled", 1)
-			_set_frappe_field_if_supported(bom_doc, "is_default", 0)
+			bom_doc.cancel()
+		except frappe.LinkExistsError:
+			frappe.db.rollback(save_point=save_point)
+			bom_doc = frappe.get_doc("BOM", bom_name)
 			mark_bom_app_controlled(bom_doc)
-			# The submitted layout's own backlinks must be cleared before cancelling the
-			# BOM, or ERPNext link validation would always block the cancellation below.
-			_unlink_layout_bom_reference_fields(layout, bom_name)
-
-			if _is_submitted_document(bom_doc):
-				cancel = getattr(bom_doc, "cancel", None)
-				if not callable(cancel):
-					raise RuntimeError(f"Submitted generated BOM {bom_name} cannot be cancelled")
-				cancel()
-				_unlink_layout_from_generated_bom(bom_doc)
-				_clear_item_default_bom_reference(bom_doc)
-				continue
-
-			save = getattr(bom_doc, "save", None)
-			_unlink_layout_from_generated_bom(bom_doc)
-			if callable(save):
-				save(ignore_permissions=True)
-			_clear_item_default_bom_reference(bom_doc)
-		except Exception:
-			_db_rollback_to_savepoint(savepoint)
-			raise
-
-	return cancelled_boms[0]
-
-
-def _clear_item_default_bom_reference(bom_doc: object) -> None:
-	"""Mirror ERPNext's manage_default_bom for retirements persisted via db_set."""
-	item_code = str(getattr(bom_doc, "item", "") or "").strip()
-	bom_name = str(getattr(bom_doc, "name", "") or "").strip()
-	if not item_code or not bom_name:
-		return
-
-	db = getattr(frappe, "db", None) if frappe else None
-	get_value = getattr(db, "get_value", None)
-	set_value = getattr(db, "set_value", None)
-	if not callable(get_value) or not callable(set_value):
-		return
-	if get_value("Item", item_code, "default_bom") == bom_name:
-		set_value("Item", item_code, "default_bom", None, update_modified=False)
-
-
-def _db_savepoint(name: str) -> None:
-	db = getattr(frappe, "db", None) if frappe else None
-	savepoint = getattr(db, "savepoint", None)
-	if callable(savepoint):
-		savepoint(name)
-
-
-def _db_rollback_to_savepoint(name: str) -> None:
-	db = getattr(frappe, "db", None) if frappe else None
-	rollback = getattr(db, "rollback", None)
-	if not callable(rollback):
-		return
-	try:
-		rollback(save_point=name)
-	except Exception:
-		# An intermediate commit can release the savepoint; surface the original
-		# cancellation error instead of the rollback failure.
-		pass
+			bom_doc.is_active = 0
+			bom_doc.save(ignore_permissions=True)
 
 
 def _layout_bom_names(layout: object) -> list[str]:
@@ -268,7 +164,7 @@ def _layout_bom_names(layout: object) -> list[str]:
 		_append_unique_clean(names, getattr(row, "generated_end_piece_bom", None))
 
 	layout_name = str(getattr(layout, "name", "") or "").strip()
-	db = getattr(frappe, "db", None) if frappe else None
+	db = getattr(frappe, "db", None)
 	get_all = getattr(db, "get_all", None)
 	if layout_name and callable(get_all):
 		for bom_name in get_all("BOM", filters={"sheet_cutting_layout": layout_name}, pluck="name"):
@@ -283,36 +179,7 @@ def _append_unique_clean(values: list[str], value: object) -> None:
 		values.append(clean_value)
 
 
-def _unlink_layout_bom_reference_fields(layout: object, bom_name: str) -> None:
-	_unlink_generated_bom_from_layout(layout, bom_name)
-	for row in getattr(layout, "finished_parts", []) or []:
-		if getattr(row, "generated_bom", None) == bom_name:
-			row.generated_bom = None
-			_db_set_child_field(row, "generated_bom", None)
-	for row in getattr(layout, "end_pieces", []) or []:
-		if getattr(row, "generated_end_piece_bom", None) == bom_name:
-			row.generated_end_piece_bom = None
-			_db_set_child_field(row, "generated_end_piece_bom", None)
-
-
-def _db_set_child_field(row: object, fieldname: str, value: object) -> None:
-	db_set = getattr(row, "db_set", None)
-	if callable(db_set):
-		db_set(fieldname, value, update_modified=False)
-		return
-
-	db = getattr(frappe, "db", None)
-	set_value = getattr(db, "set_value", None)
-	doctype = getattr(row, "doctype", None)
-	name = getattr(row, "name", None)
-	if callable(set_value) and doctype and name:
-		set_value(doctype, name, fieldname, value, update_modified=False)
-
-
 def get_release_context(layout: ReleaseLayoutDocument) -> ReleaseContext:
-	if not frappe:
-		raise RuntimeError("Frappe is required to build Sheet Cutting Layout release context")
-
 	layouts = _get_same_project_layouts(layout)
 	boms = _get_finished_part_boms(layout)
 	return ReleaseContext(layouts=layouts, boms=boms)
@@ -332,7 +199,8 @@ def _generate_boms(
 			if bom_document_factory is not None
 			else _default_bom_document_factory(layout, finished_part, index, bom_name_factory)
 		)
-		_set_frappe_field_if_supported(layout, "generated_bom", bom.name)
+		if index == 1:
+			_set_frappe_field_if_supported(layout, "generated_bom", bom.name)
 		generated_boms.append(bom)
 
 	return generated_boms
@@ -362,9 +230,6 @@ def _default_bom_document_factory(
 	bom._layout = layout
 	bom.sheet_cutting_layout = getattr(layout, "name", None)
 
-	if not frappe:
-		raise RuntimeError("Frappe is required to persist generated BOM documents")
-
 	return _insert_frappe_bom(bom)
 
 
@@ -376,20 +241,12 @@ def _ensure_and_link_end_piece_item(layout: ReleaseLayoutDocument, row: object) 
 
 
 def _insert_frappe_bom(bom: BomDocument) -> BomDocument:
-	if not frappe:
-		raise RuntimeError("Frappe is required to persist generated BOM documents")
-
 	bom_doc = frappe.new_doc("BOM")
 	if bom.name:
 		bom_doc.name = bom.name
 	bom_doc.item = bom.item
 	bom_doc.company = _company_for_layout(getattr(bom, "_layout", None))
 	bom_doc.quantity = bom.quantity
-	bom_doc.uom = "Kg"
-	bom_doc.is_active = 1
-	bom_doc.disabled = 0
-	if hasattr(bom_doc, "status"):
-		bom_doc.status = "Active"
 	bom_doc.custom_operation = "Shearing"
 	bom_doc.sheet_cutting_layout = bom.sheet_cutting_layout or getattr(
 		getattr(bom, "_layout", None), "name", None
@@ -405,19 +262,6 @@ def _insert_frappe_bom(bom: BomDocument) -> BomDocument:
 			},
 		)
 	for row in bom.scrap_items:
-		try:
-			rate = resolve_scrap_item_rate(
-				item_code=row.item_code,
-				company=bom_doc.company,
-				existing_rate=getattr(row, "rate", None),
-			)
-		except ValueError as error:
-			frappe.throw(
-				_("Failed to resolve valuation rate for scrap item {0}: {1}").format(
-					row.item_code,
-					str(error),
-				)
-			)
 		bom_doc.append(
 			"scrap_items",
 			{
@@ -425,7 +269,6 @@ def _insert_frappe_bom(bom: BomDocument) -> BomDocument:
 				"stock_qty": row.qty,
 				"qty": row.qty,
 				"uom": row.uom,
-				"rate": rate,
 			},
 		)
 	bom_doc.insert()
@@ -433,8 +276,6 @@ def _insert_frappe_bom(bom: BomDocument) -> BomDocument:
 
 	bom.name = bom_doc.name
 	bom.is_active = bool(getattr(bom_doc, "is_active", True))
-	bom.disabled = bool(getattr(bom_doc, "disabled", False))
-	bom.status = str(getattr(bom_doc, "status", "Active") or "Active")
 	bom._persisted_with_frappe = True
 	return bom
 
@@ -450,12 +291,17 @@ def _sync_finished_part_reference_rows(
 	generated_boms: Sequence[BomDocument],
 	finished_parts: Sequence[FinishedPartRow],
 ) -> None:
+	if len(generated_boms) != len(finished_parts):
+		raise ValueError("generated_boms and finished_parts length mismatch")
+
 	references = [
 		{
 			"finished_part_item": finished_part.finished_part_item,
 			"bom_quantity": _finished_part_bom_quantity(finished_part),
 			"scrap_weight_kg": _sum_bom_qty(bom.scrap_items),
 			"raw_material_weight_kg": _sum_bom_qty(bom.items),
+			"generated_bom": getattr(bom, "name", None),
+			"orientation": getattr(finished_part, "orientation", None),
 		}
 		for finished_part, bom in zip(finished_parts, generated_boms, strict=False)
 	]
@@ -473,14 +319,9 @@ def _finished_part_bom_quantity(finished_part: FinishedPartRow) -> int:
 def _activate_boms(boms: Sequence[BomRecord]) -> None:
 	for bom in boms:
 		bom.is_active = True
-		bom.disabled = False
-		bom.status = "Active"
 
 
 def _get_same_project_layouts(layout: ReleaseLayoutDocument) -> list[object]:
-	if not frappe:
-		raise RuntimeError("Frappe is required to discover same-project layouts")
-
 	project = getattr(layout, "project", None)
 	if not project:
 		return [layout]
@@ -501,9 +342,6 @@ def _get_same_project_layouts(layout: ReleaseLayoutDocument) -> list[object]:
 
 
 def _get_finished_part_boms(layout: ReleaseLayoutDocument) -> list[BomRecord]:
-	if not frappe:
-		raise RuntimeError("Frappe is required to discover BOM records")
-
 	finished_part_items = [
 		row.finished_part_item for row in _parent_finished_part_rows(layout) if row.finished_part_item
 	]
@@ -519,43 +357,55 @@ def _get_finished_part_boms(layout: ReleaseLayoutDocument) -> list[BomRecord]:
 
 
 def _save_bom_records(boms: Sequence[BomRecord]) -> None:
-	if not frappe:
-		return
-
 	for bom in boms:
 		if getattr(bom, "_persisted_with_frappe", False):
 			continue
 		bom_doc = bom if hasattr(bom, "save") else frappe.get_doc("BOM", bom.name)
 		_set_frappe_field_if_supported(bom_doc, "is_active", 1 if bom.is_active else 0)
-		_set_frappe_field_if_supported(bom_doc, "disabled", 1 if bom.disabled else 0)
-		_set_frappe_field_if_supported(bom_doc, "status", bom.status)
 		mark_bom_app_controlled(bom_doc)
 		bom_doc.save(ignore_permissions=True)
 
 
 def _save_layout_records(layouts: Sequence[object]) -> None:
-	if not frappe:
-		return
-
-	if getattr(getattr(frappe, "flags", None), SUPPRESS_WORKFLOW_SIDE_EFFECTS_FLAG, False):
-		# The layout controller is mid-save (workflow action cycle): the outer save
-		# persists the released layout, and a nested save of the same document
-		# would trip Frappe's timestamp conflict check.
-		return
-
 	for layout in layouts:
-		if _is_submitted_document(layout) and hasattr(layout, "db_set"):
-			state_values = _supported_field_values(
-				layout,
-				{
-					"status": getattr(layout, "status", None),
-					"is_active": getattr(layout, "is_active", None),
-				},
-			)
-			if state_values:
-				layout.db_set(state_values, update_modified=True, notify=False)
+		if _is_submitted_document(layout):
+			_save_submitted_layout_record(layout)
 		elif hasattr(layout, "save"):
 			layout.save(ignore_permissions=True)
+
+
+def _save_submitted_layout_record(layout: object) -> None:
+	save = getattr(layout, "save", None)
+	if callable(save):
+		flags = getattr(layout, "flags", None)
+		previous_value = getattr(flags, "ignore_validate_update_after_submit", None)
+		had_previous_value = hasattr(flags, "ignore_validate_update_after_submit")
+		if flags is not None:
+			flags.ignore_validate_update_after_submit = True
+		try:
+			save(ignore_permissions=True)
+		finally:
+			if flags is not None:
+				if had_previous_value:
+					flags.ignore_validate_update_after_submit = previous_value
+				else:
+					delattr(flags, "ignore_validate_update_after_submit")
+		return
+
+	db_set = getattr(layout, "db_set", None)
+	if not callable(db_set):
+		return
+
+	state_values = _supported_field_values(
+		layout,
+		{
+			"status": getattr(layout, "status", None),
+			"is_active": getattr(layout, "is_active", None),
+			"generated_bom": getattr(layout, "generated_bom", None),
+		},
+	)
+	if state_values:
+		db_set(state_values, update_modified=True, notify=False)
 
 
 def _is_submitted_document(doc: object) -> bool:
@@ -580,18 +430,11 @@ def _company_for_layout(layout: object | None) -> str:
 		if company:
 			return company
 
-	if not frappe:
-		raise RuntimeError("Frappe is required to resolve BOM company")
+	import erpnext
 
-	company = frappe.defaults.get_user_default("Company")
+	company = erpnext.get_default_company()
 	if company:
 		return company
-
-	db = getattr(frappe, "db", None)
-	if db is not None and hasattr(db, "get_default"):
-		company = db.get_default("company")
-		if company:
-			return company
 
 	frappe.throw(_("Company is required to create generated BOMs"))
 	raise RuntimeError("Company is required to create generated BOMs")
@@ -615,32 +458,3 @@ def _supported_field_values(doc: object, values: dict[str, object]) -> dict[str,
 
 def _sum_bom_qty(rows: Sequence[object]) -> float:
 	return sum(float(getattr(row, "qty", 0) or 0) for row in rows)
-
-
-def _unlink_generated_bom_from_layout(layout: object, generated_bom: str) -> None:
-	if getattr(layout, "generated_bom", None) != generated_bom:
-		return
-
-	layout.generated_bom = None
-
-	db = getattr(frappe, "db", None)
-	set_value = getattr(db, "set_value", None)
-	doctype = getattr(layout, "doctype", None)
-	name = getattr(layout, "name", None)
-	if callable(set_value) and doctype and name:
-		set_value(doctype, name, "generated_bom", None, update_modified=False)
-
-
-def _unlink_layout_from_generated_bom(bom_doc: object) -> None:
-	if hasattr(bom_doc, "sheet_cutting_layout"):
-		bom_doc.sheet_cutting_layout = None
-
-	db_set = getattr(bom_doc, "db_set", None)
-	if callable(db_set):
-		db_set("sheet_cutting_layout", None, update_modified=False, notify=False)
-		return
-
-	db = getattr(frappe, "db", None)
-	set_value = getattr(db, "set_value", None)
-	if callable(set_value):
-		set_value("BOM", getattr(bom_doc, "name", None), "sheet_cutting_layout", None, update_modified=False)

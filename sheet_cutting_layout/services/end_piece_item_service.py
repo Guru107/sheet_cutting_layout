@@ -2,33 +2,9 @@ from __future__ import annotations
 
 from typing import Protocol
 
-try:
-	import frappe
-except ImportError:
+import frappe
 
-	class _ValidationError(Exception):
-		pass
-
-	class _FrappeCompat:
-		ValidationError = _ValidationError
-		DuplicateEntryError = _ValidationError
-		_ = staticmethod(lambda message: message)
-
-		@staticmethod
-		def throw(message: str) -> None:
-			raise _ValidationError(message)
-
-		@staticmethod
-		def log_error(message: str | None = None, title: str | None = None) -> None:
-			return None
-
-		@staticmethod
-		def get_traceback() -> str:
-			return ""
-
-	frappe = _FrappeCompat()
-
-_ = getattr(frappe, "_", lambda message: message)
+_ = frappe._
 
 
 class EndPieceRow(Protocol):
@@ -131,6 +107,7 @@ def ensure_end_piece_item(layout: LayoutDocument, row: EndPieceRow) -> str:
 	item.disabled = 0
 	_append_app_created_item_uoms(item, stock_uom=item.stock_uom, weight_kg=weight_kg)
 	try:
+		# System-generated Item downstream of a write-permission-checked layout action.
 		item.insert(ignore_permissions=True)
 	except (frappe.ValidationError, frappe.DuplicateEntryError) as error:
 		frappe.log_error(
@@ -164,11 +141,9 @@ def _coerce_positive_number(
 
 def _append_app_created_item_uoms(item: object, *, stock_uom: str, weight_kg: float) -> None:
 	if stock_uom == "Kg":
-		item.append("uoms", {"uom": "Kg", "conversion_factor": 1})
 		item.append("uoms", {"uom": "Nos", "conversion_factor": weight_kg})
 		return
 	if stock_uom == "Nos":
-		item.append("uoms", {"uom": "Nos", "conversion_factor": 1})
 		item.append("uoms", {"uom": "Kg", "conversion_factor": 1 / weight_kg})
 		return
 	_throw(_("Unsupported stock UOM for app-created Item: {0}").format(stock_uom))
@@ -186,10 +161,9 @@ def _ensure_existing_item_valuation_rate(item_code: str, layout: LayoutDocument)
 	if not _is_positive_number(raw_material_valuation_rate):
 		return
 
-	db = getattr(frappe, "db", None)
-	set_value = getattr(db, "set_value", None)
-	if callable(set_value):
-		set_value("Item", item_code, "valuation_rate", raw_material_valuation_rate, update_modified=True)
+	item = frappe.get_doc("Item", item_code)
+	item.valuation_rate = raw_material_valuation_rate
+	item.save(ignore_permissions=True)
 
 
 def _build_item_description(layout: LayoutDocument, row: EndPieceRow) -> str:
@@ -219,14 +193,9 @@ def _item_exists(item_code: str) -> bool:
 
 
 def _get_value(doctype: str, name: str | None, fieldname: str) -> object:
-	db = getattr(frappe, "db", None)
-	get_value = getattr(db, "get_value", None)
-	if callable(get_value):
-		return get_value(doctype, name, fieldname)
-	get_value = getattr(frappe, "get_value", None)
-	if callable(get_value):
-		return get_value(doctype, name, fieldname)
-	return None
+	if name is None or (isinstance(name, str) and not name.strip()):
+		return None
+	return frappe.get_cached_value(doctype, name, fieldname)
 
 
 def _clean(value: object) -> str | None:

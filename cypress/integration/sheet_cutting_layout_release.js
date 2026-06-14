@@ -118,6 +118,10 @@ describe("Sheet Cutting Layout release workflow", () => {
 					parts_per_strip: 1,
 					no_of_strips: 2,
 					parts_per_sheet: 2,
+					finished_part_code: finishedPartItem,
+					net_weight_per_part_kg: 15.52,
+					gross_weight_per_part_kg: 15.72,
+					scrap_weight_per_part_kg: 0.2,
 					finished_parts: [
 						{
 							doctype: "Layout Finished Part",

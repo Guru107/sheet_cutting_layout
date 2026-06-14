@@ -5,8 +5,11 @@ from dataclasses import dataclass, field
 from types import SimpleNamespace
 from unittest.mock import patch
 
+import frappe
+
 from sheet_cutting_layout.overrides.bom import validate_shearing_bom_source
 from sheet_cutting_layout.tests.base import SheetCuttingLayoutTestCase
+from sheet_cutting_layout.tests.factories import ensure_item
 
 
 @dataclass
@@ -69,6 +72,7 @@ class FakeDoc:
 		self.uoms: list[dict[str, object]] = []
 		self.insert_calls = 0
 		self.submit_calls = 0
+		self.save_calls: list[dict[str, object]] = []
 
 	def append(self, fieldname: str, row: dict[str, object]) -> None:
 		getattr(self, fieldname).append(row)
@@ -76,6 +80,8 @@ class FakeDoc:
 	def insert(self, ignore_permissions: bool = False) -> FakeDoc:
 		self.insert_calls += 1
 		self.ignore_permissions = ignore_permissions
+		if self.doctype == "Item" and not any(row.get("uom") == self.stock_uom for row in self.uoms):
+			self.uoms.insert(0, {"uom": self.stock_uom, "conversion_factor": 1})
 		if self.doctype == "BOM":
 			validate_shearing_bom_source(self, "before_insert")
 		if self.doctype == "BOM" and not getattr(self, "company", None):
@@ -86,6 +92,10 @@ class FakeDoc:
 
 	def submit(self) -> FakeDoc:
 		self.submit_calls += 1
+		return self
+
+	def save(self, **kwargs: object) -> FakeDoc:
+		self.save_calls.append(kwargs)
 		return self
 
 
@@ -161,6 +171,15 @@ class FakeFrappe:
 		self.created_docs.append(doc)
 		return doc
 
+	def get_cached_value(self, doctype: str, name: str, fieldname: str) -> object:
+		return self.db.get_value(doctype, name, fieldname)
+
+	def get_doc(self, doctype: str, name: str) -> FakeDoc:
+		doc = FakeDoc(doctype)
+		doc.name = name
+		self.created_docs.append(doc)
+		return doc
+
 	def throw(self, message: str) -> None:
 		raise ValueError(message)
 
@@ -205,6 +224,78 @@ class TestEndPieceBomService(SheetCuttingLayoutTestCase):
 		self.addCleanup(self.item_translation_patch.stop)
 		return fake_frappe
 
+	def test_get_value_returns_none_for_missing_name_without_query(self) -> None:
+		from sheet_cutting_layout.services import end_piece_item_service
+
+		with patch("frappe.get_cached_value") as spy:
+			self.assertIsNone(end_piece_item_service._get_value("Item", None, "item_group"))
+			self.assertIsNone(end_piece_item_service._get_value("Item", "", "item_group"))
+			self.assertIsNone(end_piece_item_service._get_value("Item", "   ", "item_group"))
+
+		spy.assert_not_called()
+
+	def test_get_value_uses_get_cached_value(self) -> None:
+		from sheet_cutting_layout.services import end_piece_item_service
+
+		with patch("frappe.get_cached_value", return_value="GRP") as spy:
+			result = end_piece_item_service._get_value("Item", "SOME-ITEM", "item_group")
+
+		self.assertEqual(result, "GRP")
+		spy.assert_called_once_with("Item", "SOME-ITEM", "item_group")
+
+	def test_append_app_created_item_uoms_supports_nos_and_rejects_other_stock_uoms(self) -> None:
+		from sheet_cutting_layout.services import end_piece_item_service
+
+		item = FakeDoc("Item")
+		end_piece_item_service._append_app_created_item_uoms(item, stock_uom="Nos", weight_kg=2)
+
+		self.assertEqual(item.uoms, [{"uom": "Kg", "conversion_factor": 0.5}])
+
+		with (
+			patch.object(end_piece_item_service, "_", lambda message: message),
+			self.assertRaisesRegex(Exception, "Unsupported stock UOM"),
+		):
+			end_piece_item_service._append_app_created_item_uoms(item, stock_uom="Box", weight_kg=2)
+
+	def test_item_exists_uses_db_exists_fallback(self) -> None:
+		from sheet_cutting_layout.services import end_piece_item_service
+
+		fake_frappe = SimpleNamespace(
+			db=object(),
+			db_exists=lambda doctype, name: doctype == "Item" and name == "FG01SHR-EP-2x100x200",
+		)
+
+		with patch.object(end_piece_item_service, "frappe", fake_frappe):
+			self.assertTrue(end_piece_item_service._item_exists("FG01SHR-EP-2x100x200"))
+			self.assertFalse(end_piece_item_service._item_exists("MISSING"))
+
+	def test_item_exists_returns_false_when_no_lookup_api_is_available(self) -> None:
+		from sheet_cutting_layout.services import end_piece_item_service
+
+		with patch.object(end_piece_item_service, "frappe", SimpleNamespace(db=object())):
+			self.assertFalse(end_piece_item_service._item_exists("FG01SHR-EP-2x100x200"))
+
+	def test_clean_converts_non_string_values(self) -> None:
+		from sheet_cutting_layout.services import end_piece_item_service
+
+		self.assertIsNone(end_piece_item_service._clean(None))
+		self.assertEqual(end_piece_item_service._clean("  FG01SHR  "), "FG01SHR")
+		self.assertIsNone(end_piece_item_service._clean("   "))
+		self.assertEqual(end_piece_item_service._clean(123), "123")
+
+	def test_existing_item_valuation_repair_skips_when_raw_material_rate_is_not_positive(self) -> None:
+		fake_frappe = self._install_fakes(
+			existing_items={"FG01SHR-EP-2x100x200"},
+			raw_item_valuation_rates={
+				"FG01SHR-EP-2x100x200": 0,
+				"RAW-001": 0,
+			},
+		)
+
+		self.item_service._ensure_existing_item_valuation_rate("FG01SHR-EP-2x100x200", Layout())
+
+		self.assertEqual(fake_frappe.created_docs, [])
+
 	def test_generation_requires_released_layout(self) -> None:
 		self._install_fakes()
 		layout = Layout(status="Draft", end_pieces=[EndPiece()])
@@ -217,8 +308,7 @@ class TestEndPieceBomService(SheetCuttingLayoutTestCase):
 		fake_frappe = self._install_fakes(existing_items={existing_code})
 		layout = Layout(end_pieces=[EndPiece()])
 
-		with patch.object(self.service, "resolve_scrap_item_rate", return_value=33.5) as resolve_rate:
-			result = self.service.generate_end_piece_boms(layout)
+		result = self.service.generate_end_piece_boms(layout)
 
 		self.assertEqual(result["items"], [existing_code])
 		self.assertEqual(len(result["boms"]), 1)
@@ -236,6 +326,10 @@ class TestEndPieceBomService(SheetCuttingLayoutTestCase):
 		self.assertEqual(bom.company, "Test Company")
 		self.assertEqual(bom.custom_operation, "Shearing")
 		self.assertEqual(bom.sheet_cutting_layout, "SCL-001")
+		self.assertFalse(hasattr(bom, "uom"))
+		self.assertFalse(hasattr(bom, "is_active"))
+		self.assertFalse(hasattr(bom, "disabled"))
+		self.assertFalse(hasattr(bom, "status"))
 		self.assertTrue(getattr(getattr(bom, "flags", None), "sheet_cutting_layout_allow_bom_update", False))
 		self.assertEqual(
 			bom.items,
@@ -244,14 +338,10 @@ class TestEndPieceBomService(SheetCuttingLayoutTestCase):
 					"item_code": existing_code,
 					"qty": 2.5,
 					"uom": "Kg",
-					"stock_uom": "Kg",
-					"stock_qty": 2.5,
-					"conversion_factor": 1,
 				}
 			],
 		)
 		self.assertEqual(bom.scrap_items, [])
-		resolve_rate.assert_not_called()
 
 	def test_generation_uses_linked_item_when_end_piece_bom_is_missing(self) -> None:
 		existing_code = "FG01SHR-EP-2x100x200"
@@ -259,10 +349,7 @@ class TestEndPieceBomService(SheetCuttingLayoutTestCase):
 		row = EndPiece(end_piece_item_code=existing_code, generated_end_piece_bom=None)
 		layout = Layout(end_pieces=[row])
 
-		with (
-			patch.object(self.service, "ensure_end_piece_item") as ensure_item,
-			patch.object(self.service, "resolve_scrap_item_rate", return_value=33.5),
-		):
+		with patch.object(self.service, "ensure_end_piece_item") as ensure_item:
 			result = self.service.generate_end_piece_boms(layout)
 
 		ensure_item.assert_not_called()
@@ -279,8 +366,7 @@ class TestEndPieceBomService(SheetCuttingLayoutTestCase):
 		fake_frappe = self._install_fakes(existing_items={existing_code})
 		layout = Layout(end_pieces=[EndPiece(used_for_finished_part=" fg01shr ")])
 
-		with patch.object(self.service, "resolve_scrap_item_rate", return_value=33.5):
-			result = self.service.generate_end_piece_boms(layout)
+		result = self.service.generate_end_piece_boms(layout)
 
 		self.assertEqual(result["items"], [existing_code])
 		self.assertEqual([doc.doctype for doc in fake_frappe.created_docs], ["BOM"])
@@ -296,8 +382,7 @@ class TestEndPieceBomService(SheetCuttingLayoutTestCase):
 		)
 		layout = Layout(end_pieces=[EndPiece()])
 
-		with patch.object(self.service, "resolve_scrap_item_rate", return_value=33.5):
-			result = self.service.generate_end_piece_boms(layout)
+		result = self.service.generate_end_piece_boms(layout)
 
 		self.assertEqual([doc.doctype for doc in fake_frappe.created_docs], ["Item", "BOM"])
 		self.assertEqual(result["items"], ["FG01SHR-EP-2x100x200"])
@@ -320,6 +405,24 @@ class TestEndPieceBomService(SheetCuttingLayoutTestCase):
 		)
 		self.assertEqual(fake_frappe.created_docs[1].submit_calls, 1)
 
+	def test_created_end_piece_item_has_single_stock_and_alternate_uom_rows(self) -> None:
+		from sheet_cutting_layout.services.end_piece_item_service import ensure_end_piece_item
+
+		suffix = frappe.generate_hash(length=8).upper()
+		raw_item = ensure_item(f"SCLTESTRM{suffix}", stock_uom="Kg", valuation_rate=82.75)
+		finished_item = ensure_item(f"SCLTESTFG{suffix}SHR", stock_uom="Nos")
+		layout = Layout(raw_material_item=raw_item, sheet_thickness_mm=2)
+		row = EndPiece(used_for_finished_part=finished_item, width_mm=100, length_mm=200, weight_kg=2.5)
+
+		item_code = ensure_end_piece_item(layout, row)
+
+		item = frappe.get_doc("Item", item_code)
+		uom_rows = [(row.uom, row.conversion_factor) for row in item.uoms]
+		self.assertEqual([uom for uom, _factor in uom_rows].count("Kg"), 1)
+		self.assertEqual([uom for uom, _factor in uom_rows].count("Nos"), 1)
+		self.assertIn(("Kg", 1.0), uom_rows)
+		self.assertIn(("Nos", 2.5), uom_rows)
+
 	def test_existing_generated_item_with_zero_valuation_is_repaired_from_raw_material(self) -> None:
 		existing_code = "FG01SHR-EP-2x100x200"
 		fake_frappe = self._install_fakes(
@@ -333,38 +436,39 @@ class TestEndPieceBomService(SheetCuttingLayoutTestCase):
 		item_code = self.item_service.ensure_end_piece_item(Layout(), EndPiece())
 
 		self.assertEqual(item_code, existing_code)
-		self.assertEqual(fake_frappe.created_docs, [])
-		self.assertEqual(
-			fake_frappe.db.set_value_calls,
-			[("Item", existing_code, "valuation_rate", 82.75, {"update_modified": True})],
-		)
+		repaired_item = fake_frappe.created_docs[0]
+		self.assertEqual(repaired_item.doctype, "Item")
+		self.assertEqual(repaired_item.name, existing_code)
+		self.assertEqual(repaired_item.valuation_rate, 82.75)
+		self.assertEqual(repaired_item.save_calls, [{"ignore_permissions": True}])
+		self.assertEqual(fake_frappe.db.set_value_calls, [])
 
 	def test_generation_keeps_fractional_end_piece_stock_qty_in_kg(self) -> None:
 		existing_code = "FG01SHR-EP-2x1250x179"
 		fake_frappe = self._install_fakes(existing_items={existing_code})
 		layout = Layout(end_pieces=[EndPiece(width_mm=1250, length_mm=179, weight_kg=2.814)])
 
-		with patch.object(self.service, "resolve_scrap_item_rate", return_value=33.5):
-			self.service.generate_end_piece_boms(layout)
+		self.service.generate_end_piece_boms(layout)
 
 		bom = fake_frappe.created_docs[0]
 		self.assertEqual(len(bom.items), 1)
 		self.assertEqual(bom.items[0]["item_code"], existing_code)
 		self.assertEqual(bom.items[0]["qty"], 2.814)
 		self.assertEqual(bom.items[0]["uom"], "Kg")
-		self.assertEqual(bom.items[0]["stock_uom"], "Kg")
-		self.assertEqual(bom.items[0]["stock_qty"], 2.814)
-		self.assertEqual(bom.items[0]["conversion_factor"], 1)
+		self.assertNotIn("stock_uom", bom.items[0])
+		self.assertNotIn("stock_qty", bom.items[0])
+		self.assertNotIn("conversion_factor", bom.items[0])
 
 	def test_generation_uses_default_company_when_layout_company_is_missing(self) -> None:
 		existing_code = "FG01SHR-EP-2x100x200"
 		fake_frappe = self._install_fakes(existing_items={existing_code})
 		layout = Layout(company=None, end_pieces=[EndPiece()])
 
-		with patch.object(self.service, "resolve_scrap_item_rate", return_value=33.5):
+		with patch("erpnext.get_default_company", return_value="ERPNext Default Company") as spy:
 			self.service.generate_end_piece_boms(layout)
 
-		self.assertEqual(fake_frappe.created_docs[0].company, "DB Default Company")
+		self.assertEqual(fake_frappe.created_docs[0].company, "ERPNext Default Company")
+		spy.assert_called_once()
 
 	def test_generation_persists_submitted_links_with_db_set(self) -> None:
 		existing_code = "FG01SHR-EP-2x100x200"
@@ -372,8 +476,7 @@ class TestEndPieceBomService(SheetCuttingLayoutTestCase):
 		row = EndPiece()
 		layout = SubmittedLayout(end_pieces=[row])
 
-		with patch.object(self.service, "resolve_scrap_item_rate", return_value=33.5):
-			result = self.service.generate_end_piece_boms(layout)
+		result = self.service.generate_end_piece_boms(layout)
 
 		self.assertEqual(result["items"], [existing_code])
 		self.assertEqual(row.end_piece_item_code, existing_code)
@@ -381,16 +484,16 @@ class TestEndPieceBomService(SheetCuttingLayoutTestCase):
 		self.assertEqual(
 			row.db_set_calls,
 			[
-				("end_piece_item_code", existing_code, {"update_modified": False, "notify": False}),
-				("generated_end_piece_bom", result["boms"][0], {"update_modified": False, "notify": False}),
+				("end_piece_item_code", existing_code, {"update_modified": False}),
+				("generated_end_piece_bom", result["boms"][0], {"update_modified": False}),
 			],
 		)
 		self.assertEqual(
 			layout.db_set_calls,
-			[("end_piece_bom_status", "Generated", {"update_modified": True, "notify": False})],
+			[("end_piece_bom_status", "Generated", {"update_modified": True})],
 		)
 
-	def test_generation_handles_scrap_rows_and_uses_rate_fallback(self) -> None:
+	def test_generation_handles_scrap_rows_with_input_fields_only(self) -> None:
 		existing_code = "FG01SHR-EP-2x100x200"
 		fake_frappe = self._install_fakes(existing_items={existing_code})
 		layout = Layout(
@@ -407,10 +510,8 @@ class TestEndPieceBomService(SheetCuttingLayoutTestCase):
 			]
 		)
 
-		with patch.object(self.service, "resolve_scrap_item_rate", return_value=88.25) as resolve_rate:
-			self.service.generate_end_piece_boms(layout)
+		self.service.generate_end_piece_boms(layout)
 
-		resolve_rate.assert_called_once_with(item_code="EP-SCRAP", company="Test Company")
 		bom = fake_frappe.created_docs[0]
 		self.assertEqual(
 			bom.scrap_items,
@@ -420,7 +521,6 @@ class TestEndPieceBomService(SheetCuttingLayoutTestCase):
 					"qty": 2.25,
 					"stock_qty": 2.25,
 					"uom": "Kg",
-					"rate": 88.25,
 				}
 			],
 		)
@@ -442,34 +542,6 @@ class TestEndPieceBomService(SheetCuttingLayoutTestCase):
 
 		with patch.object(FakeDoc, "insert", side_effect=RuntimeError("unexpected insert failure")):
 			with self.assertRaisesRegex(RuntimeError, "unexpected insert failure"):
-				self.service.generate_end_piece_boms(layout)
-
-	def test_generation_wraps_scrap_rate_resolution_error_with_row_context(self) -> None:
-		existing_code = "FG01SHR-EP-2x100x200"
-		self._install_fakes(existing_items={existing_code})
-		layout = Layout(
-			end_pieces=[
-				EndPiece(
-					weight_kg=12.0,
-					bom_quantity=3,
-					net_weight_per_part_kg=3.25,
-					gross_weight_per_part_kg=4.0,
-					scrap_weight_per_part_kg=0.75,
-					bom_scrap_quantity_kg=2.25,
-					scrap_item="EP-SCRAP",
-				)
-			]
-		)
-
-		with patch.object(
-			self.service,
-			"resolve_scrap_item_rate",
-			side_effect=ValueError("Valuation rate is required for scrap item EP-SCRAP"),
-		):
-			with self.assertRaisesRegex(
-				ValueError,
-				"Row 1: Valuation rate is required for scrap item EP-SCRAP",
-			):
 				self.service.generate_end_piece_boms(layout)
 
 	def test_generation_requires_row_scrap_item_for_positive_bom_scrap_qty(self) -> None:
@@ -503,8 +575,7 @@ class TestEndPieceBomService(SheetCuttingLayoutTestCase):
 			],
 		)
 
-		with patch.object(self.service, "resolve_scrap_item_rate", return_value=33.5) as resolve_rate:
-			result = self.service.generate_end_piece_boms(layout)
+		result = self.service.generate_end_piece_boms(layout)
 
 		self.assertEqual(result["items"], [existing_code])
 		bom = fake_frappe.created_docs[0]
@@ -516,9 +587,6 @@ class TestEndPieceBomService(SheetCuttingLayoutTestCase):
 					"item_code": existing_code,
 					"qty": 12.0,
 					"uom": "Kg",
-					"stock_uom": "Kg",
-					"stock_qty": 12.0,
-					"conversion_factor": 1,
 				}
 			],
 		)
@@ -530,11 +598,9 @@ class TestEndPieceBomService(SheetCuttingLayoutTestCase):
 					"qty": 2.25,
 					"stock_qty": 2.25,
 					"uom": "Kg",
-					"rate": 33.5,
 				}
 			],
 		)
-		resolve_rate.assert_called_once_with(item_code="EP-SCRAP", company="Test Company")
 
 	def test_generation_validates_pending_rows_with_row_numbered_messages(self) -> None:
 		self._install_fakes()
@@ -573,8 +639,7 @@ class TestEndPieceBomService(SheetCuttingLayoutTestCase):
 			]
 		)
 
-		with patch.object(self.service, "resolve_scrap_item_rate", return_value=33.5):
-			result = self.service.generate_end_piece_boms(layout)
+		result = self.service.generate_end_piece_boms(layout)
 
 		self.assertEqual(result["items"], [existing_code])
 		self.assertEqual(len(result["boms"]), 1)

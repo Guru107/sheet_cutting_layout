@@ -1,15 +1,12 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass, field
-from unittest.mock import patch
 
 import frappe
 from hypothesis import settings
 from hypothesis.stateful import RuleBasedStateMachine, invariant, rule, run_state_machine_as_test
 
 from sheet_cutting_layout.services.versioning import (
-	LayoutVersionStatus,
 	create_revision,
 	finalize_new_revision_release,
 )
@@ -21,27 +18,6 @@ STATE_MACHINE_SETTINGS = settings(
 	stateful_step_count=20,
 	deadline=None,
 )
-
-
-@dataclass
-class FinishedPart:
-	finished_part_item: str
-	generated_bom: str | None = None
-
-
-@dataclass
-class RevisionLayout:
-	name: str
-	project: str
-	revision_no: int
-	status: LayoutVersionStatus
-	is_active: bool
-	based_on_layout: str | None = None
-	approval_snapshot: list[str] = field(default_factory=list)
-	finished_parts: list[FinishedPart] = field(default_factory=list)
-	finished_part_code: str = ""
-	net_weight_per_part_kg: float = 0.0
-	generated_bom: str | None = None
 
 
 class WorkflowStateMachine(RuleBasedStateMachine):
@@ -155,17 +131,27 @@ class RevisionVersioningStateMachine(RuleBasedStateMachine):
 		super().__init__()
 		self.project = "FAM-STATEFUL"
 		self.layouts = [
-			RevisionLayout(
-				name="SCL-STATEFUL-001",
-				project=self.project,
-				revision_no=1,
-				status="Released",
-				is_active=True,
-				approval_snapshot=["purchase-approved"],
-				finished_part_code="PART-001SHR",
-				net_weight_per_part_kg=1.25,
-				generated_bom="BOM-PARENT-001-001",
-				finished_parts=[FinishedPart("PART-001SHR", generated_bom="BOM-PART-001-001")],
+			frappe.get_doc(
+				{
+					"doctype": "Sheet Cutting Layout",
+					"name": "SCL-STATEFUL-001",
+					"project": self.project,
+					"layout_code": "SCL-STATEFUL-001-R1",
+					"revision_no": 1,
+					"status": "Released",
+					"is_active": True,
+					"approval_snapshot": [],
+					"finished_part_code": "PART-001SHR",
+					"net_weight_per_part_kg": 1.25,
+					"generated_bom": "BOM-PARENT-001-001",
+					"finished_parts": [
+						{
+							"doctype": "Sheet Cutting Layout Finished Part",
+							"finished_part_item": "PART-001SHR",
+							"generated_bom": "BOM-PART-001-001",
+						}
+					],
+				}
 			)
 		]
 		self.next_layout_id = 2
@@ -201,7 +187,7 @@ class RevisionVersioningStateMachine(RuleBasedStateMachine):
 			if layout.project == self.project and layout.is_active:
 				assert layout.status == "Released"
 
-	def _active_released_layouts(self) -> list[RevisionLayout]:
+	def _active_released_layouts(self) -> list[object]:
 		return [
 			layout
 			for layout in self.layouts
@@ -210,11 +196,6 @@ class RevisionVersioningStateMachine(RuleBasedStateMachine):
 
 
 class TestModelWorkflowStateMachine(SheetCuttingLayoutTestCase):
-	def setUp(self) -> None:
-		super().setUp()
-		# frappe.copy_doc may not exist in this runtime; force the deepcopy fallback in _copy_layout.
-		self.start_patcher(patch.object(frappe, "copy_doc", new=None, create=True))
-
 	def test_project_manager_approval_moves_state_to_pm_approved(self) -> None:
 		machine = LayoutWorkflowModel()
 		machine.submit()
