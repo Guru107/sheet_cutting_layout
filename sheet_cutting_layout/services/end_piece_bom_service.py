@@ -22,6 +22,7 @@ class EndPieceRow(Protocol):
 	length_mm: float | None
 	weight_kg: float | None
 	used_for_finished_part: str | None
+	child_layout: str | None
 	bom_quantity: float | None
 	net_weight_per_part_kg: float | None
 	gross_weight_per_part_kg: float | None
@@ -126,7 +127,15 @@ def _validate_pending_row(layout: LayoutDocument, row: EndPieceRow) -> None:
 
 
 def _reuse_end_pieces(layout: LayoutDocument) -> list[EndPieceRow]:
-	return [row for row in getattr(layout, "end_pieces", []) or [] if _is_reuse(row)]
+	return [
+		row
+		for row in getattr(layout, "end_pieces", []) or []
+		if _is_reuse(row) and not _row_has_child_layout(row)
+	]
+
+
+def _row_has_child_layout(row: EndPieceRow) -> bool:
+	return bool(str(getattr(row, "child_layout", "") or "").strip())
 
 
 def _is_reuse(row: EndPieceRow) -> bool:

@@ -1911,7 +1911,7 @@ class TestBomLifecycle(ReleaseServiceIsolatedTestCase):
 	def test_retire_layout_deactivates_when_cancel_blocked(self) -> None:
 		from sheet_cutting_layout.services import release_service
 
-		saved_active: list[int] = []
+		deactivated: list[tuple[str, int, bool]] = []
 		rollbacks: list[str] = []
 
 		class FrappeStub:
@@ -1947,8 +1947,9 @@ class TestBomLifecycle(ReleaseServiceIsolatedTestCase):
 				self.is_active = 0
 				raise FrappeStub.LinkExistsError("used by Work Order")
 
-			def save(self, ignore_permissions: bool = False) -> None:
-				saved_active.append(self.is_active)
+			def db_set(self, fieldname: str, value: int, update_modified: bool = True) -> None:
+				deactivated.append((fieldname, value, update_modified))
+				self.is_active = value
 
 		mutating_bom = BomDoc()
 		fresh_bom = BomDoc()
@@ -1962,7 +1963,7 @@ class TestBomLifecycle(ReleaseServiceIsolatedTestCase):
 		self.assertEqual(mutating_bom.docstatus, 2)
 		self.assertEqual(fresh_bom.docstatus, 1)
 		self.assertEqual(fresh_bom.is_active, 0)
-		self.assertEqual(saved_active, [0])
+		self.assertEqual(deactivated, [("is_active", 0, False)])
 
 
 class TestReleaseServiceIntegration(SheetCuttingLayoutTestCase):

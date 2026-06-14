@@ -31,9 +31,11 @@ def _ensure_project(project_name: str) -> str:
 	existing = frappe.db.exists("Project", {"project_name": project_name})
 	if existing:
 		return str(existing)
-	return frappe.get_doc({"doctype": "Project", "project_name": project_name}).insert(
-		ignore_permissions=True
-	).name
+	return (
+		frappe.get_doc({"doctype": "Project", "project_name": project_name})
+		.insert(ignore_permissions=True)
+		.name
+	)
 
 
 class TestSheetCuttingLayoutExport(SheetCuttingLayoutTestCase):

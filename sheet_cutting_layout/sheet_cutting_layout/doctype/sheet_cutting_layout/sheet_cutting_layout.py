@@ -18,6 +18,7 @@ from sheet_cutting_layout.services.export_service import (
 	render_workbook_bytes,
 )
 from sheet_cutting_layout.services.release_service import (
+	cancel_descendant_layouts,
 	release_layout,
 	retire_layout,
 )
@@ -54,12 +55,14 @@ class SheetCuttingLayout(Document):
 		release_layout(self)
 
 	def before_cancel(self) -> None:
+		self.ignore_linked_doctypes = ["BOM", "Sheet Cutting Layout"]
 		if getattr(self, "status", None) != "Superseded":
 			frappe.throw(_("Sheet Cutting Layout can be cancelled only through Supersede"))
 		_validate_workflow_approval_access(self, action=SUPERSEDE_ACTION)
 		_record_workflow_snapshot(self, action=SUPERSEDE_ACTION)
 
 	def on_cancel(self) -> None:
+		cancel_descendant_layouts(self)
 		retire_layout(self)
 
 	def on_trash(self) -> None:

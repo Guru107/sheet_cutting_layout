@@ -11,9 +11,16 @@ from sheet_cutting_layout.services.bom_service import (
 	BomItemRow,
 	build_bom_from_layout,
 )
+from sheet_cutting_layout.services.cascade_graph import CascadeCycleError, collect_descendant_layouts
 from sheet_cutting_layout.services.end_piece_item_service import (
 	derive_end_piece_item_code,
+	derive_end_piece_item_code_from_row,
 	format_code_number,
+)
+from sheet_cutting_layout.services.recursive_end_piece import (
+	child_raw_material_matches_end_piece_item,
+	child_release_blocked_until_parent_item_exists,
+	end_piece_has_child_layout,
 )
 
 _ = frappe._
@@ -26,6 +33,7 @@ class EndPieceRow(Protocol):
 	weight_kg: float | None
 	disposition: str | None
 	used_for_finished_part: str | None
+	child_layout: str | None
 	bom_quantity: float | None
 	net_weight_per_part_kg: float | None
 	gross_weight_per_part_kg: float | None
@@ -91,6 +99,9 @@ def validate_sheet_cutting_layout(layout: SheetCuttingLayoutDocument) -> None:
 	for end_piece in end_pieces:
 		_validate_end_piece_item_code_is_locked(end_piece)
 		_validate_end_piece_required_fields(layout, end_piece)
+
+	_validate_child_layouts(layout, end_pieces)
+	_validate_child_release_order(layout)
 
 	if end_pieces:
 		_validate_end_piece_distribution(layout, end_pieces)
@@ -346,6 +357,87 @@ def _validate_non_scrap_end_piece_fields_are_empty(end_piece: EndPieceRow) -> No
 		return
 	if not _is_missing(getattr(end_piece, "scrap_item", None)):
 		frappe.throw(_("Scrap item is allowed only for scrap end pieces"))
+
+
+def _validate_child_layouts(
+	layout: SheetCuttingLayoutDocument,
+	end_pieces: Sequence[EndPieceRow],
+) -> None:
+	layout_name = str(getattr(layout, "name", "") or "").strip()
+	for end_piece in end_pieces:
+		child_layout = getattr(end_piece, "child_layout", None)
+		if not end_piece_has_child_layout(child_layout):
+			continue
+		child_layout = str(child_layout).strip()
+		if not _is_reuse_end_piece(end_piece):
+			frappe.throw(_("A child layout can only be linked on a reuse end piece"))
+		if layout_name and child_layout == layout_name:
+			frappe.throw(_("A layout cannot be its own child layout"))
+		_validate_child_raw_material(layout, end_piece, child_layout)
+		_validate_no_child_layout_cycle(layout_name, child_layout)
+
+
+def _validate_child_raw_material(
+	layout: SheetCuttingLayoutDocument,
+	end_piece: EndPieceRow,
+	child_layout: str,
+) -> None:
+	end_piece_item_code = derive_end_piece_item_code_from_row(layout, end_piece)  # type: ignore[arg-type]
+	child_raw_material_item = frappe.db.get_value(
+		"Sheet Cutting Layout",
+		child_layout,
+		"raw_material_item",
+	)
+	if child_raw_material_matches_end_piece_item(
+		child_raw_material_item=child_raw_material_item,
+		end_piece_item_code=end_piece_item_code,
+	):
+		return
+	frappe.throw(
+		_("Child layout {0} must use the end-piece item {1} as its raw material").format(
+			child_layout,
+			end_piece_item_code,
+		)
+	)
+
+
+def _validate_no_child_layout_cycle(layout_name: str, child_layout: str) -> None:
+	if not layout_name:
+		return
+	try:
+		descendants = collect_descendant_layouts(child_layout, _child_links_provider())
+	except CascadeCycleError:
+		frappe.throw(_("Child layout chain contains a cycle and cannot be saved"))
+	if layout_name in descendants:
+		frappe.throw(_("Linking child layout {0} would create a cycle").format(child_layout))
+
+
+def _child_links_provider():
+	def child_links(layout_name: str) -> list[str]:
+		rows = frappe.get_all(
+			"Layout End Piece",
+			filters={"parent": layout_name, "parenttype": "Sheet Cutting Layout"},
+			pluck="child_layout",
+		)
+		return [str(row).strip() for row in rows if row and str(row).strip()]
+
+	return child_links
+
+
+def _validate_child_release_order(layout: SheetCuttingLayoutDocument) -> None:
+	if str(getattr(layout, "status", "") or "").strip() != "Released":
+		return
+	raw_material_item = getattr(layout, "raw_material_item", None)
+	if child_release_blocked_until_parent_item_exists(
+		raw_material_item=raw_material_item,
+		item_exists=lambda code: bool(frappe.db.exists("Item", code)),
+	):
+		frappe.throw(
+			_(
+				"Raw material item {0} does not exist yet; release the parent layout "
+				"that produces this end-piece item before releasing this child layout"
+			).format(str(raw_material_item).strip())
+		)
 
 
 def _validate_end_piece_distribution(

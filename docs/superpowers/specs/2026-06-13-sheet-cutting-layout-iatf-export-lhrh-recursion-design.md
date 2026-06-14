@@ -394,4 +394,8 @@ cross-checked against the installed Frappe v15 / ERPNext v15.101 source. Finding
 ## 13. Open items
 
 - Curated `FRM/PRD/15` blank template confirmed as the audit-approved page (Phase 2 gate).
-- During Phase 3: whether `end_piece_bom_service` complex-reuse path is superseded by child layouts.
+- ~~During Phase 3: whether `end_piece_bom_service` complex-reuse path is superseded by child
+  layouts.~~ **Resolved (Phase 3):** keep both. End-piece rows without `child_layout` use the simple
+  `end_piece_bom_service` item+BOM path unchanged; rows with `child_layout` route the real BOM to the
+  child layout and are excluded from `_reuse_end_pieces`. The two paths are mutually exclusive per row,
+  so neither is deprecated.

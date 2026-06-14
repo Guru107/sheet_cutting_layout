@@ -13,6 +13,7 @@
   "disposition",
   "scrap_item",
   "used_for_finished_part",
+  "child_layout",
   "bom_quantity",
   "net_weight_per_part_kg",
   "gross_weight_per_part_kg",
@@ -73,6 +74,14 @@
    "fieldtype": "Link",
    "label": "Used For Finished Part",
    "options": "Item"
+  },
+  {
+   "depends_on": "eval:doc.disposition==\"Reuse\"",
+   "fieldname": "child_layout",
+   "fieldtype": "Link",
+   "label": "Child Layout",
+   "no_copy": 1,
+   "options": "Sheet Cutting Layout"
   },
   {
    "depends_on": "eval:doc.disposition==\"Reuse\"",
