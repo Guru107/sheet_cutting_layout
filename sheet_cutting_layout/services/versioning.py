@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from copy import deepcopy
 from typing import Literal, Protocol, TypeVar
 
 LayoutVersionStatus = Literal[
@@ -71,19 +70,13 @@ def finalize_new_revision_release(new_layout: RevisionLayoutDocument) -> Revisio
 
 
 def _copy_layout(old_layout: RevisionLayoutT) -> RevisionLayoutT:
-	try:
-		import frappe
-	except ImportError:
-		return deepcopy(old_layout)
+	import frappe
 
-	copy_doc = getattr(frappe, "copy_doc", None)
-	if callable(copy_doc):
-		return copy_doc(old_layout)
-	return deepcopy(old_layout)
+	return frappe.copy_doc(old_layout)
 
 
 def _reset_child_row(row: object) -> None:
-	for fieldname in ("name", "parent", "parentfield", "parenttype", "end_piece_item_code"):
+	for fieldname in ("end_piece_item_code", "generated_end_piece_bom"):
 		if hasattr(row, fieldname):
 			setattr(row, fieldname, None)
 

@@ -60,6 +60,19 @@ class FinishedPart:
 	scrap_weight_kg: float | None = None
 	raw_material_weight_kg: float | None = None
 
+	def as_dict(self) -> dict[str, object]:
+		return {
+			"doctype": "Layout Finished Part",
+			"finished_part_item": self.finished_part_item,
+			"parts_per_sheet": self.parts_per_sheet,
+			"gross_weight_per_part_kg": self.gross_weight_per_part_kg,
+			"scrap_weight_per_part_kg": self.scrap_weight_per_part_kg,
+			"generated_bom": self.generated_bom,
+			"bom_quantity": self.bom_quantity,
+			"scrap_weight_kg": self.scrap_weight_kg,
+			"raw_material_weight_kg": self.raw_material_weight_kg,
+		}
+
 
 @dataclass
 class EndPiece:
@@ -76,6 +89,26 @@ class EndPiece:
 	gross_weight_per_part_kg: float | None = 0
 	scrap_weight_per_part_kg: float | None = 0
 	bom_scrap_quantity_kg: float | None = 0
+	generated_end_piece_bom: str | None = None
+
+	def as_dict(self) -> dict[str, object]:
+		return {
+			"doctype": "Layout End Piece",
+			"weight_kg": self.weight_kg,
+			"disposition": self.disposition,
+			"scrap_item": self.scrap_item,
+			"end_piece_item_code": self.end_piece_item_code,
+			"used_for_finished_part": self.used_for_finished_part,
+			"width_mm": self.width_mm,
+			"length_mm": self.length_mm,
+			"idx": self.idx,
+			"bom_quantity": self.bom_quantity,
+			"net_weight_per_part_kg": self.net_weight_per_part_kg,
+			"gross_weight_per_part_kg": self.gross_weight_per_part_kg,
+			"scrap_weight_per_part_kg": self.scrap_weight_per_part_kg,
+			"bom_scrap_quantity_kg": self.bom_scrap_quantity_kg,
+			"generated_end_piece_bom": self.generated_end_piece_bom,
+		}
 
 
 @dataclass
@@ -108,6 +141,37 @@ class RevisionLayout:
 			self.gross_weight_per_part_kg = self.finished_parts[0].gross_weight_per_part_kg
 			self.scrap_weight_per_part_kg = self.finished_parts[0].scrap_weight_per_part_kg
 		self.net_weight_per_part_kg = self.gross_weight_per_part_kg - self.scrap_weight_per_part_kg
+
+	def as_dict(self) -> dict[str, object]:
+		return {
+			"doctype": "Sheet Cutting Layout",
+			"name": self.name,
+			"project": self.project,
+			"revision_no": self.revision_no,
+			"status": self.status,
+			"is_active": self.is_active,
+			"layout_code": self.layout_code,
+			"raw_material_item": self.raw_material_item,
+			"process_scrap_item": self.process_scrap_item,
+			"weight_per_sheet_kg": self.weight_per_sheet_kg,
+			"based_on_layout": self.based_on_layout,
+			"approval_snapshot": [
+				{
+					"doctype": "Layout Approval Snapshot",
+					"step_name": str(row),
+				}
+				for row in self.approval_snapshot
+			],
+			"finished_parts": [row.as_dict() for row in self.finished_parts],
+			"end_pieces": [row.as_dict() for row in self.end_pieces],
+			"finished_part_code": self.finished_part_code,
+			"net_weight_per_part_kg": self.net_weight_per_part_kg,
+			"gross_weight_per_part_kg": self.gross_weight_per_part_kg,
+			"scrap_weight_per_part_kg": self.scrap_weight_per_part_kg,
+			"generated_bom": self.generated_bom,
+			"parts_per_sheet": self.parts_per_sheet,
+			"end_piece_bom_status": self.end_piece_bom_status,
+		}
 
 
 @dataclass
@@ -164,8 +228,6 @@ class ReleaseServiceIsolatedTestCase(SheetCuttingLayoutTestCase):
 	def setUp(self) -> None:
 		super().setUp()
 		self.start_patcher(patch.object(release_service, "frappe", new=_SavableBomFrappeStub))
-		# frappe.copy_doc may not exist in this runtime; force the deepcopy fallback in _copy_layout.
-		self.start_patcher(patch.object(frappe, "copy_doc", new=None, create=True))
 
 
 class TestReleaseContracts(SheetCuttingLayoutTestCase):
