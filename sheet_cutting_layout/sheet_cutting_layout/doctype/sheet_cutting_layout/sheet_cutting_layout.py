@@ -102,7 +102,7 @@ def _previous_status(doc: object) -> object:
 
 def _validate_workflow_approval_access(doc: object, *, action: str) -> None:
 	user = _get_session_user()
-	owner = _doc_get(doc, "owner")
+	owner = getattr(doc, "owner", None)
 	if not user or user == "Administrator" or user != owner:
 		return
 	if _workflow_action_allows_self_approval(doc, action=action):
@@ -111,24 +111,13 @@ def _validate_workflow_approval_access(doc: object, *, action: str) -> None:
 
 
 def _workflow_action_allows_self_approval(doc: object, *, action: str) -> bool:
-	workflow = _get_workflow(doc)
+	from frappe.model.workflow import get_workflow
+
+	workflow = get_workflow(getattr(doc, "doctype", None) or "Sheet Cutting Layout")
 	for transition in getattr(workflow, "transitions", []) or []:
 		if getattr(transition, "action", None) == action:
 			return bool(getattr(transition, "allow_self_approval", False))
 	return False
-
-
-def _get_workflow(doc: object) -> object:
-	from frappe.model.workflow import get_workflow
-
-	return get_workflow(_doc_get(doc, "doctype") or "Sheet Cutting Layout")
-
-
-def _doc_get(doc: object, fieldname: str) -> object:
-	get = getattr(doc, "get", None)
-	if callable(get):
-		return get(fieldname)
-	return getattr(doc, fieldname, None)
 
 
 def _clear_rejected_workflow_actions(doc: object) -> None:

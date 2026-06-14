@@ -5,14 +5,6 @@ import frappe
 ITEM_CODE_PREFIX = "SCLTEST"
 
 
-def register_test_doc(doctype: str, name: str | None) -> None:
-	"""No-op kept for call-site compatibility.
-
-	FrappeTestCase rolls back the database after each test, so explicitly
-	created docs do not need to be tracked or swept.
-	"""
-
-
 def insert_if_missing(
 	doc: dict[str, object],
 	name_field: str,
@@ -25,7 +17,6 @@ def insert_if_missing(
 		return str(existing_name)
 
 	inserted = frappe.get_doc(doc).insert(ignore_permissions=True)
-	register_test_doc(str(doc["doctype"]), inserted.name)
 	return inserted.name
 
 
@@ -125,7 +116,6 @@ def make_release_ready_layout(*, finished_part_code: str | None = None, **overri
 		**overrides,
 	)
 	layout.insert()
-	register_test_doc("Sheet Cutting Layout", layout.name)
 	layout.db_set("status", "Approved by Purchase", update_modified=False)
 	# Persist the release-gate weight too, so re-fetching the record by name also
 	# yields a release-ready document (db_set keeps the in-memory value in sync).

@@ -15,7 +15,6 @@ from sheet_cutting_layout.tests.base import SheetCuttingLayoutTestCase
 from sheet_cutting_layout.tests.factories import (
 	make_layout,
 	make_release_ready_layout,
-	register_test_doc,
 )
 
 
@@ -172,10 +171,6 @@ class RevisionLayout:
 			"parts_per_sheet": self.parts_per_sheet,
 			"end_piece_bom_status": self.end_piece_bom_status,
 		}
-
-
-def _revision_layout_doc(layout: RevisionLayout) -> object:
-	return frappe.get_doc(layout.as_dict())
 
 
 @dataclass
@@ -1659,7 +1654,7 @@ class TestRevisioning(ReleaseServiceIsolatedTestCase):
 	def test_revising_released_layout_clones_and_increments_revision(self) -> None:
 		from sheet_cutting_layout.services.versioning import create_revision
 
-		old_layout = _revision_layout_doc(
+		old_layout = frappe.get_doc(
 			RevisionLayout(
 				name="SCL-001",
 				project="FAM-001",
@@ -1667,7 +1662,7 @@ class TestRevisioning(ReleaseServiceIsolatedTestCase):
 				revision_no=2,
 				status="Released",
 				is_active=True,
-			)
+			).as_dict()
 		)
 
 		new_layout = create_revision(old_layout)
@@ -1682,7 +1677,7 @@ class TestRevisioning(ReleaseServiceIsolatedTestCase):
 	def test_revision_resets_approval_snapshot_and_generated_boms(self) -> None:
 		from sheet_cutting_layout.services.versioning import create_revision
 
-		old_layout = _revision_layout_doc(
+		old_layout = frappe.get_doc(
 			RevisionLayout(
 				name="SCL-001",
 				project="FAM-001",
@@ -1697,7 +1692,7 @@ class TestRevisioning(ReleaseServiceIsolatedTestCase):
 				],
 				end_pieces=[EndPiece(weight_kg=2.5, end_piece_item_code="PART001SHR-EP-1x1250x260")],
 				end_piece_bom_status="Generated",
-			)
+			).as_dict()
 		)
 
 		new_layout = create_revision(old_layout)
@@ -1919,8 +1914,6 @@ class TestReleaseServiceIntegration(SheetCuttingLayoutTestCase):
 		from sheet_cutting_layout.services.release_service import release_layout
 
 		result = release_layout(layout)
-		if layout.generated_bom:
-			register_test_doc("BOM", layout.generated_bom)
 		return result
 
 	def test_release_layout_creates_active_bom_with_sheet_weight_raw_row(self) -> None:
@@ -1949,8 +1942,6 @@ class TestReleaseServiceIntegration(SheetCuttingLayoutTestCase):
 		# user-facing workflow with native submit.
 		layout.status = "Released"
 		layout.submit()
-		if layout.generated_bom:
-			register_test_doc("BOM", layout.generated_bom)
 
 		layout.reload()
 		self.assertEqual(layout.status, "Released")
@@ -1964,8 +1955,6 @@ class TestReleaseServiceIntegration(SheetCuttingLayoutTestCase):
 
 		layout.status = "Released"
 		layout.submit()
-		if layout.generated_bom:
-			register_test_doc("BOM", layout.generated_bom)
 		generated_bom = layout.generated_bom
 
 		layout.reload()
@@ -2003,7 +1992,6 @@ class TestReleaseServiceIntegration(SheetCuttingLayoutTestCase):
 		self._release(layout)
 
 		revision_name = create_sheet_cutting_layout_revision(layout.name)
-		register_test_doc("Sheet Cutting Layout", revision_name)
 
 		revision = frappe.get_doc("Sheet Cutting Layout", revision_name)
 		self.assertEqual(revision.status, "Draft")

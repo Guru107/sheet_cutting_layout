@@ -260,23 +260,10 @@ class TestSheetCuttingLayoutController(SheetCuttingLayoutTestCase):
 			]
 		)
 
-		with patch.object(controller, "_get_workflow", return_value=workflow):
+		with patch("frappe.model.workflow.get_workflow", return_value=workflow):
 			self.assertTrue(controller._workflow_action_allows_self_approval(doc, action="MR Release"))
 			self.assertFalse(controller._workflow_action_allows_self_approval(doc, action="Supersede"))
 			self.assertFalse(controller._workflow_action_allows_self_approval(doc, action="Missing"))
-
-	def test_get_workflow_defaults_to_sheet_cutting_layout_doctype(self) -> None:
-		doc = object()
-
-		with patch("frappe.model.workflow.get_workflow", return_value="workflow") as get_workflow:
-			self.assertEqual(controller._get_workflow(doc), "workflow")
-
-		get_workflow.assert_called_once_with("Sheet Cutting Layout")
-
-	def test_doc_get_uses_attribute_when_get_method_is_absent(self) -> None:
-		doc = SimpleNamespace(owner="owner@example.com")
-
-		self.assertEqual(controller._doc_get(doc, "owner"), "owner@example.com")
 
 	def test_on_cancel_retires_layout_without_snapshot(self) -> None:
 		doc = object.__new__(controller.SheetCuttingLayout)

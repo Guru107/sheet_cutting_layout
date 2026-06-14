@@ -4,33 +4,30 @@ import frappe
 from frappe.tests.utils import FrappeTestCase
 
 
-def _permissions_by_role(meta: object) -> dict[str, list[object]]:
-	permissions: dict[str, list[object]] = {}
-	for permission in meta.permissions:
-		permissions.setdefault(permission.role, []).append(permission)
-	return permissions
-
-
-def _has_permission(permissions: dict[str, list[object]], role: str, fieldname: str) -> bool:
-	return any(bool(getattr(permission, fieldname, False)) for permission in permissions.get(role, []))
-
-
 class TestSheetCuttingLayoutPermissions(FrappeTestCase):
 	def test_workflow_roles_can_read_and_write(self) -> None:
-		meta = frappe.get_meta("Sheet Cutting Layout")
-		roles = _permissions_by_role(meta)
+		permissions = frappe.get_meta("Sheet Cutting Layout").permissions
 		for role in ("Project Manager", "Purchase Manager", "MR Coordinator"):
 			with self.subTest(role=role):
-				self.assertIn(role, roles)
-				self.assertTrue(_has_permission(roles, role, "read"))
-				self.assertTrue(_has_permission(roles, role, "write"))
+				self.assertTrue(any(permission.role == role for permission in permissions))
+				self.assertTrue(
+					any(permission.role == role and permission.read for permission in permissions)
+				)
+				self.assertTrue(
+					any(permission.role == role and permission.write for permission in permissions)
+				)
 
 	def test_mr_coordinator_can_submit_and_cancel(self) -> None:
-		meta = frappe.get_meta("Sheet Cutting Layout")
-		roles = _permissions_by_role(meta)
-		self.assertTrue(_has_permission(roles, "MR Coordinator", "submit"))
-		self.assertTrue(_has_permission(roles, "MR Coordinator", "cancel"))
-		self.assertTrue(_has_permission(roles, "System Manager", "cancel"))
+		permissions = frappe.get_meta("Sheet Cutting Layout").permissions
+		self.assertTrue(
+			any(permission.role == "MR Coordinator" and permission.submit for permission in permissions)
+		)
+		self.assertTrue(
+			any(permission.role == "MR Coordinator" and permission.cancel for permission in permissions)
+		)
+		self.assertTrue(
+			any(permission.role == "System Manager" and permission.cancel for permission in permissions)
+		)
 
 	def test_supersede_workflow_is_available_to_mr_coordinator_and_system_manager(self) -> None:
 		workflow = frappe.get_doc("Workflow", "Sheet Cutting Layout Approval Workflow")
