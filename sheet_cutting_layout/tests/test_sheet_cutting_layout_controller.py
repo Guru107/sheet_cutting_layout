@@ -319,6 +319,34 @@ class TestSheetCuttingLayoutController(SheetCuttingLayoutTestCase):
 		self.assertEqual(doc.check_permission_calls, ["write"])
 		generate_end_piece_boms.assert_called_once_with(doc)
 
+	def test_download_checks_child_layout_read_permission_before_export(self) -> None:
+		parent = _FakeLayoutDoc(name="SCL-PARENT")
+		parent.end_pieces = [SimpleNamespace(disposition="Reuse", child_layout="SCL-CHILD")]
+		child = _FakeLayoutDoc(name="SCL-CHILD")
+
+		def deny_read(permission_type: str) -> None:
+			child.check_permission_calls = [permission_type]
+			raise PermissionError("child denied")
+
+		child.check_permission = deny_read
+
+		def get_doc(doctype: str, name: str) -> _FakeLayoutDoc:
+			self.assertEqual(doctype, "Sheet Cutting Layout")
+			return {"SCL-PARENT": parent, "SCL-CHILD": child}[name]
+
+		with (
+			patch.object(controller.frappe, "get_doc", side_effect=get_doc),
+			patch.object(controller, "_export_layout_dict", return_value={"end_pieces": []}) as export,
+			patch.object(controller, "build_multi_sheet_workbook") as build_workbook,
+			self.assertRaisesRegex(PermissionError, "child denied"),
+		):
+			controller.download_sheet_cutting_layout("SCL-PARENT")
+
+		self.assertEqual(parent.check_permission_calls, ["read"])
+		self.assertEqual(child.check_permission_calls, ["read"])
+		export.assert_not_called()
+		build_workbook.assert_not_called()
+
 	def test_create_revision_inserts_new_doc_and_returns_name(self) -> None:
 		old_doc = _FakeLayoutDoc(name="SCL-TEST-003")
 		new_doc = _FakeLayoutDoc(name="SCL-TEST-003-R1")

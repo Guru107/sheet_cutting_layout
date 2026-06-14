@@ -27,9 +27,7 @@ class TestCascadeGraph(SheetCuttingLayoutTestCase):
 		self.assertEqual(collect_descendant_layouts("ROOT", child_links), ["A1", "A", "B"])
 
 	def test_shared_descendant_is_listed_once(self) -> None:
-		child_links = _links_from_map(
-			{"ROOT": ["A", "B"], "A": ["SHARED"], "B": ["SHARED"], "SHARED": []}
-		)
+		child_links = _links_from_map({"ROOT": ["A", "B"], "A": ["SHARED"], "B": ["SHARED"], "SHARED": []})
 		self.assertEqual(collect_descendant_layouts("ROOT", child_links), ["SHARED", "A", "B"])
 
 	def test_direct_self_reference_raises_cycle_error(self) -> None:

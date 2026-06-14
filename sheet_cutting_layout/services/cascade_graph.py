@@ -17,8 +17,7 @@ def collect_descendant_layouts(root: str, child_links: ChildLinks) -> list[str]:
 	def visit(layout_name: str, ancestors: tuple[str, ...]) -> None:
 		if layout_name in ancestors:
 			raise CascadeCycleError(
-				f"child_layout cycle detected at {layout_name}: "
-				f"{' -> '.join((*ancestors, layout_name))}"
+				f"child_layout cycle detected at {layout_name}: " f"{' -> '.join((*ancestors, layout_name))}"
 			)
 		next_ancestors = (*ancestors, layout_name)
 		for child in child_links(layout_name):

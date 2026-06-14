@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from io import BytesIO
 from typing import ClassVar
 
 import erpnext
@@ -14,8 +15,8 @@ from sheet_cutting_layout.services.end_piece_bom_service import (
 	generate_end_piece_boms,
 )
 from sheet_cutting_layout.services.export_service import (
-	default_template_path,
-	render_workbook_bytes,
+	build_multi_sheet_workbook,
+	walk_layout_tree,
 )
 from sheet_cutting_layout.services.release_service import (
 	cancel_descendant_layouts,
@@ -194,9 +195,19 @@ def download_sheet_cutting_layout(name: str) -> None:
 	if callable(check_permission):
 		check_permission("read")
 
-	content = render_workbook_bytes(_export_layout_dict(doc), default_template_path())
+	def fetch_child(child_name: str) -> object:
+		child = frappe.get_doc("Sheet Cutting Layout", child_name)
+		child_check_permission = getattr(child, "check_permission", None)
+		if callable(child_check_permission):
+			child_check_permission("read")
+		return child
+
+	pages = [(layout.name, _export_layout_dict(layout)) for layout in walk_layout_tree(doc, fetch_child)]
+	workbook = build_multi_sheet_workbook(pages)
+	stream = BytesIO()
+	workbook.save(stream)
 	frappe.response["filename"] = f"{doc.name}.xlsx"
-	frappe.response["filecontent"] = content
+	frappe.response["filecontent"] = stream.getvalue()
 	frappe.response["type"] = "binary"
 
 

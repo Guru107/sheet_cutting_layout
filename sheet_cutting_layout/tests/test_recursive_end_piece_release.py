@@ -191,6 +191,7 @@ class TestRecursiveEndPieceLifecycle(SheetCuttingLayoutTestCase):
 		def get_doc_with_blocked_cancel(*args: object, **kwargs: object) -> object:
 			doc = original_get_doc(*args, **kwargs)
 			if args[:2] == ("BOM", blocked_bom):
+
 				def blocked_cancel() -> None:
 					raise frappe.LinkExistsError("linked manufacture stock entry")
 
