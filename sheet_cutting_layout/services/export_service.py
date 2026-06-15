@@ -140,6 +140,11 @@ def _excel_safe_cell(value: object) -> object:
 
 def _clone_template_worksheet(workbook: object, source_worksheet: object, title: str) -> object:
 	worksheet = workbook.create_sheet(title=title)
+	worksheet.sheet_format = _copy(source_worksheet.sheet_format)
+	worksheet.page_margins = _copy(source_worksheet.page_margins)
+	worksheet.page_setup = _copy(source_worksheet.page_setup)
+	worksheet.print_options = _copy(source_worksheet.print_options)
+	worksheet.sheet_properties = _copy(source_worksheet.sheet_properties)
 	for row in source_worksheet.iter_rows():
 		for cell in row:
 			target = worksheet.cell(row=cell.row, column=cell.column, value=cell.value)

@@ -182,8 +182,22 @@ class TestBuildMultiSheetWorkbook(SheetCuttingLayoutTestCase):
 			]
 		)
 
-		self.assertEqual(workbook["L1"]["G5"].value, "Parent Bracket")
-		self.assertEqual(workbook["L2"]["G5"].value, "End Piece Bracket")
+		self.assertEqual(workbook["L1"]["G5"].value, "Part Name:-Parent Bracket")
+		self.assertEqual(workbook["L2"]["G5"].value, "Part Name:-End Piece Bracket")
+
+	def test_cloned_sheets_preserve_approved_template_format(self) -> None:
+		from sheet_cutting_layout.services.export_service import build_multi_sheet_workbook
+
+		workbook = build_multi_sheet_workbook([_base_page("L1"), _base_page("L2")])
+
+		for sheet_name in ("L1", "L2"):
+			worksheet = workbook[sheet_name]
+			merged_ranges = {str(merged_range) for merged_range in worksheet.merged_cells.ranges}
+			self.assertIn("G5:M5", merged_ranges)
+			self.assertIn("N5:Q5", merged_ranges)
+			self.assertIn("R38:U40", merged_ranges)
+			self.assertEqual(worksheet.page_setup.orientation, "landscape")
+			self.assertEqual(worksheet["R38"].value, "Released By    \nManagement Rep")
 
 	def test_empty_page_list_raises(self) -> None:
 		from sheet_cutting_layout.services.export_service import build_multi_sheet_workbook

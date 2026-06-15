@@ -12,6 +12,13 @@ from sheet_cutting_layout.tests.base import SheetCuttingLayoutTestCase
 from sheet_cutting_layout.tests.factories import ensure_item, ensure_project
 
 
+_PART_NUMBER_PREFIX = "Part Number:-"
+
+
+def _part_number(value: object) -> str:
+	return str(value or "").removeprefix(_PART_NUMBER_PREFIX)
+
+
 def _release(layout_name: str) -> None:
 	layout = frappe.get_doc("Sheet Cutting Layout", layout_name)
 	layout.db_set("status", "Approved by Purchase", update_modified=False)
@@ -142,7 +149,7 @@ class TestDownloadRecursiveLayout(_RecursiveExportFixtureMixin, SheetCuttingLayo
 	def test_parent_and_child_sheets_carry_distinct_part_numbers(self) -> None:
 		workbook = self._download_workbook()
 
-		part_numbers = {workbook[name]["N5"].value for name in workbook.sheetnames}
+		part_numbers = {_part_number(workbook[name]["N5"].value) for name in workbook.sheetnames}
 		self.assertIn(self.parent_part, part_numbers)
 		self.assertIn(self.child_part, part_numbers)
 
@@ -167,7 +174,7 @@ class TestDownloadReleasedRecursiveLhRhLayout(_RecursiveExportFixtureMixin, Shee
 	def test_released_parent_sheet_shows_joined_lh_rh_part_number(self) -> None:
 		workbook = self._download_workbook()
 
-		joined = workbook[workbook.sheetnames[0]]["N5"].value
+		joined = _part_number(workbook[workbook.sheetnames[0]]["N5"].value)
 
 		self.assertIn(self.parent_part, joined)
 		self.assertIn(self.twin_part, joined)
@@ -175,7 +182,7 @@ class TestDownloadReleasedRecursiveLhRhLayout(_RecursiveExportFixtureMixin, Shee
 	def test_released_workbook_has_parent_and_child_sheets(self) -> None:
 		workbook = self._download_workbook()
 
-		part_numbers = {workbook[name]["N5"].value for name in workbook.sheetnames}
+		part_numbers = {_part_number(workbook[name]["N5"].value) for name in workbook.sheetnames}
 
 		self.assertEqual(len(workbook.sheetnames), 2)
-		self.assertTrue(any(self.child_part in (value or "") for value in part_numbers))
+		self.assertTrue(any(self.child_part in value for value in part_numbers))
