@@ -225,6 +225,12 @@ def _export_layout_dict(doc: object) -> dict[str, object]:
 
 	project = getattr(doc, "project", None)
 	project_name = frappe.db.get_value("Project", project, "project_name") if project else ""
+	raw_material_item = getattr(doc, "raw_material_item", None)
+	raw_material_item_name = (
+		frappe.get_cached_value("Item", raw_material_item, "item_name") or raw_material_item
+		if raw_material_item
+		else ""
+	)
 
 	raw_material_weight_kg = None
 	for row in getattr(doc, "finished_parts", None) or []:
@@ -233,15 +239,18 @@ def _export_layout_dict(doc: object) -> dict[str, object]:
 
 	return {
 		"company": _default_company(),
+		"layout_code": getattr(doc, "layout_code", None),
 		"part_name": part_name,
 		"part_numbers": part_numbers,
 		"is_lh_rh": bool(getattr(doc, "is_lh_rh", False)),
 		"orientation": getattr(doc, "orientation", None),
 		"project": project,
 		"project_name": project_name or "",
+		"raw_material_item_name": raw_material_item_name,
 		"sheet_thickness_mm": getattr(doc, "sheet_thickness_mm", None),
 		"sheet_width_mm": getattr(doc, "sheet_width_mm", None),
 		"sheet_length_mm": getattr(doc, "sheet_length_mm", None),
+		"weight_per_sheet_kg": getattr(doc, "weight_per_sheet_kg", None),
 		"weight_of_strip_kg": getattr(doc, "weight_of_strip_kg", None),
 		"strip_thickness_mm": getattr(doc, "strip_thickness_mm", None),
 		"strip_width_mm": getattr(doc, "strip_width_mm", None),
@@ -260,6 +269,7 @@ def _export_layout_dict(doc: object) -> dict[str, object]:
 def _export_end_piece_dict(row: object) -> dict[str, object]:
 	return {
 		"end_piece_item_code": getattr(row, "end_piece_item_code", None),
+		"used_for_finished_part": getattr(row, "used_for_finished_part", None),
 		"width_mm": getattr(row, "width_mm", None),
 		"length_mm": getattr(row, "length_mm", None),
 		"weight_kg": getattr(row, "weight_kg", None),

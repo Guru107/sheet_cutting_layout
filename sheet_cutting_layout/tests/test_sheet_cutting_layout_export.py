@@ -42,7 +42,7 @@ class TestSheetCuttingLayoutExport(SheetCuttingLayoutTestCase):
 	def _build_layout(self, *, is_lh_rh: bool = False) -> str:
 		suffix = frappe.generate_hash(length=8).upper()
 		project = _ensure_project(f"SCL Export {suffix}")
-		raw_material = _ensure_item(f"SCLRM{suffix}")
+		raw_material = _ensure_item(f"SCLRM{suffix}", item_name=f"Raw Material {suffix}")
 		scrap = _ensure_item(f"SCLSCRAP{suffix}")
 		finished = _ensure_item(f"SCLPART{suffix}SHR", item_name="Brkt bumper top")
 		twin = _ensure_item(f"SCLTWIN{suffix}SHR", item_name="Brkt bumper top RH")
@@ -94,17 +94,21 @@ class TestSheetCuttingLayoutExport(SheetCuttingLayoutTestCase):
 		self.assertEqual(content[:2], b"PK")
 
 		worksheet = load_workbook(io.BytesIO(content)).active
+		self.assertTrue(str(worksheet["A5"].value).startswith("Sheet Cutting Layout No:- SCL-EXPORT-LAYOUT-"))
+		self.assertIn("Raw Material", str(worksheet["J7"].value))
 		self.assertEqual(worksheet["K9"].value, 2.0)
 		self.assertEqual(worksheet["L9"].value, 1000.0)
 		self.assertEqual(worksheet["M9"].value, 2000.0)
+		self.assertEqual(worksheet["T6"].value, 31.44)
 		self.assertEqual(worksheet["K14"].value, 2)
 		self.assertEqual(worksheet["K15"].value, 15.72)
 		self.assertEqual(worksheet["K16"].value, 15.52)
 		self.assertIn("SCL Export", str(worksheet["C6"].value))
 		self.assertIn("SCLPART", str(worksheet["N5"].value))
-		self.assertEqual(worksheet["G5"].value, "Brkt bumper top")
+		self.assertTrue(str(worksheet["N5"].value).startswith("Part Number:-"))
+		self.assertEqual(worksheet["G5"].value, "Part Name:-Brkt bumper top")
 		self.assertNotEqual(worksheet["G5"].value, worksheet["N5"].value)
-		self.assertIn(worksheet["U8"].value, (None, ""))
+		self.assertEqual(worksheet["U8"].value, 31.44)
 
 	def test_download_uses_persisted_lh_rh_pairing(self) -> None:
 		from sheet_cutting_layout.sheet_cutting_layout.doctype.sheet_cutting_layout.sheet_cutting_layout import (
@@ -117,7 +121,7 @@ class TestSheetCuttingLayoutExport(SheetCuttingLayoutTestCase):
 		download_sheet_cutting_layout(layout_name)
 
 		worksheet = load_workbook(io.BytesIO(frappe.response["filecontent"])).active
-		self.assertEqual(worksheet["G5"].value, "Brkt bumper top LH & RH")
-		self.assertTrue(str(worksheet["N5"].value).startswith("SCLPART"))
+		self.assertEqual(worksheet["G5"].value, "Part Name:-Brkt bumper top LH & RH")
+		self.assertTrue(str(worksheet["N5"].value).startswith("Part Number:-SCLPART"))
 		self.assertIn("_SCLTWIN", str(worksheet["N5"].value))
 		self.assertTrue(str(worksheet["N5"].value).endswith("SHR"))
