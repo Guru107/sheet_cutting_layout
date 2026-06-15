@@ -14,6 +14,7 @@ cypress/videos/
 cypress/downloads/
 cypress/results/
 .playwright-mcp/
+.superpowers/
 /001.png
 /Picture 1.png
 /outputs/
