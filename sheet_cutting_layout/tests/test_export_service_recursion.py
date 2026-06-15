@@ -40,6 +40,10 @@ def _base_page(
 	)
 
 
+def _image_anchor_positions(worksheet: object) -> list[tuple[int, int]]:
+	return [(image.anchor._from.row, image.anchor._from.col) for image in worksheet._images]
+
+
 class TestWalkLayoutTree(SheetCuttingLayoutTestCase):
 	def _registry(self, *layouts: _FakeLayout) -> Callable[[str], _FakeLayout]:
 		registry = {layout.name: layout for layout in layouts}
@@ -191,9 +195,12 @@ class TestBuildMultiSheetWorkbook(SheetCuttingLayoutTestCase):
 		from sheet_cutting_layout.services.export_service import build_multi_sheet_workbook, default_template_path
 
 		workbook = build_multi_sheet_workbook([_base_page("L1"), _base_page("L2")])
-		template_image_count = len(load_workbook(default_template_path()).active._images)
+		template_worksheet = load_workbook(default_template_path()).active
+		template_image_count = len(template_worksheet._images)
+		template_image_anchors = _image_anchor_positions(template_worksheet)
 
 		self.assertGreaterEqual(template_image_count, 2)
+		self.assertEqual(template_image_anchors, [(0, 0), (7, 0)])
 
 		for sheet_name in ("L1", "L2"):
 			worksheet = workbook[sheet_name]
@@ -204,6 +211,7 @@ class TestBuildMultiSheetWorkbook(SheetCuttingLayoutTestCase):
 			self.assertEqual(worksheet.page_setup.orientation, "landscape")
 			self.assertEqual(worksheet["R38"].value, "Released By    \nManagement Rep")
 			self.assertEqual(len(worksheet._images), template_image_count)
+			self.assertEqual(_image_anchor_positions(worksheet), template_image_anchors)
 
 	def test_empty_page_list_raises(self) -> None:
 		from sheet_cutting_layout.services.export_service import build_multi_sheet_workbook
