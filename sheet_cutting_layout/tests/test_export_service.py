@@ -206,6 +206,9 @@ class TestBuildCellMapEndPiecesAndGuards(SheetCuttingLayoutTestCase):
 		self.assertEqual(cells["L18"], 200)
 		self.assertEqual(cells["M18"], 300)
 		self.assertEqual(cells["J23"], "0102AAG06400SHR")
+		self.assertEqual(cells["K22"], 2.0)
+		self.assertEqual(cells["L22"], 200)
+		self.assertEqual(cells["M22"], 300)
 		self.assertEqual(cells["K24"], 2.0)
 		self.assertEqual(cells["L24"], 200)
 		self.assertEqual(cells["M24"], 300)
@@ -247,6 +250,9 @@ class TestBuildCellMapEndPiecesAndGuards(SheetCuttingLayoutTestCase):
 			"K18",
 			"L18",
 			"M18",
+			"K22",
+			"L22",
+			"M22",
 			"J23",
 			"K24",
 			"L24",
@@ -375,6 +381,8 @@ class TestRenderWorkbookBytes(SheetCuttingLayoutTestCase):
 		self.assertIn(worksheet["O9"].value, (None, ""))
 		self.assertIn(worksheet["Q9"].value, (None, ""))
 		self.assertIn(worksheet["U11"].value, (None, ""))
+		for coordinate in ("K22", "L22", "M22"):
+			self.assertIn(worksheet[coordinate].value, (None, ""))
 
 	def test_formula_like_text_cells_are_escaped(self) -> None:
 		import io

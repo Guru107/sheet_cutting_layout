@@ -203,6 +203,7 @@ def _end_piece_detail_cells(layout: Mapping[str, object]) -> dict[str, object]:
 	blocks = (
 		{
 			"size": ("K18", "L18", "M18"),
+			"detail_size": ("K22", "L22", "M22"),
 			"used_for": "J23",
 			"strip": ("K24", "L24", "M24"),
 			"parts": "K25",
@@ -212,6 +213,7 @@ def _end_piece_detail_cells(layout: Mapping[str, object]) -> dict[str, object]:
 		},
 		{
 			"size": ("R12", "S12", "T12"),
+			"detail_size": (),
 			"used_for": "Q13",
 			"strip": ("R14", "S14", "T14"),
 			"parts": "R15",
@@ -221,6 +223,7 @@ def _end_piece_detail_cells(layout: Mapping[str, object]) -> dict[str, object]:
 		},
 		{
 			"size": ("R22", "S22", "T22"),
+			"detail_size": (),
 			"used_for": "Q23",
 			"strip": ("R24", "S24", "T24"),
 			"parts": "R25",
@@ -234,6 +237,7 @@ def _end_piece_detail_cells(layout: Mapping[str, object]) -> dict[str, object]:
 		for block in blocks
 		for coordinate in (
 			*block["size"],
+			*block["detail_size"],
 			block["used_for"],
 			*block["strip"],
 			block["parts"],
@@ -247,10 +251,16 @@ def _end_piece_detail_cells(layout: Mapping[str, object]) -> dict[str, object]:
 	end_pieces: Sequence[Mapping[str, object]] = layout.get("end_pieces") or []
 	for end_piece, block in zip(end_pieces, blocks, strict=False):
 		size_thickness, size_width, size_length = block["size"]
+		detail_size_cells = block["detail_size"]
 		strip_thickness, strip_width, strip_length = block["strip"]
 		cells[size_thickness] = _num(sheet_thickness)
 		cells[size_width] = _num(end_piece.get("width_mm"))
 		cells[size_length] = _num(end_piece.get("length_mm"))
+		if detail_size_cells:
+			detail_thickness, detail_width, detail_length = detail_size_cells
+			cells[detail_thickness] = _num(sheet_thickness)
+			cells[detail_width] = _num(end_piece.get("width_mm"))
+			cells[detail_length] = _num(end_piece.get("length_mm"))
 		cells[block["used_for"]] = _text(end_piece.get("used_for_finished_part"))
 		cells[strip_thickness] = _num(sheet_thickness)
 		cells[strip_width] = _num(end_piece.get("width_mm"))
