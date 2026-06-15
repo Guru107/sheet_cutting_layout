@@ -11,7 +11,6 @@ from sheet_cutting_layout.sheet_cutting_layout.doctype.sheet_cutting_layout.shee
 from sheet_cutting_layout.tests.base import SheetCuttingLayoutTestCase
 from sheet_cutting_layout.tests.factories import ensure_item, ensure_project
 
-
 _PART_NUMBER_PREFIX = "Part Number:-"
 
 

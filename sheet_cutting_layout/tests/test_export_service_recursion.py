@@ -192,7 +192,10 @@ class TestBuildMultiSheetWorkbook(SheetCuttingLayoutTestCase):
 		self.assertEqual(workbook["L2"]["G5"].value, "Part Name:-End Piece Bracket")
 
 	def test_cloned_sheets_preserve_approved_template_format(self) -> None:
-		from sheet_cutting_layout.services.export_service import build_multi_sheet_workbook, default_template_path
+		from sheet_cutting_layout.services.export_service import (
+			build_multi_sheet_workbook,
+			default_template_path,
+		)
 
 		workbook = build_multi_sheet_workbook([_base_page("L1"), _base_page("L2")])
 		template_worksheet = load_workbook(default_template_path()).active
