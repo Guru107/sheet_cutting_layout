@@ -29,6 +29,31 @@ def _base_layout() -> dict[str, object]:
 	}
 
 
+class TestApprovedIatfTemplate(SheetCuttingLayoutTestCase):
+	def test_committed_template_matches_approved_visual_anchors(self) -> None:
+		from openpyxl import load_workbook
+
+		from sheet_cutting_layout.services.export_service import default_template_path
+
+		workbook = load_workbook(default_template_path())
+		self.assertEqual(len(workbook.worksheets), 1)
+		worksheet = workbook.active
+
+		self.assertEqual(worksheet.page_setup.orientation, "landscape")
+		self.assertEqual(str(worksheet.page_setup.paperSize), "9")
+		self.assertIn("A1:A4", {str(item) for item in worksheet.merged_cells.ranges})
+		self.assertIn("E1:P4", {str(item) for item in worksheet.merged_cells.ranges})
+		self.assertIn("G5:M5", {str(item) for item in worksheet.merged_cells.ranges})
+		self.assertIn("N5:Q5", {str(item) for item in worksheet.merged_cells.ranges})
+		self.assertIn("R38:U40", {str(item) for item in worksheet.merged_cells.ranges})
+		self.assertEqual(worksheet["Q1"].value, "DOC. NO.:  FRM/PRD/15")
+		self.assertEqual(worksheet["O7"].value, "BOM")
+		self.assertEqual(worksheet["Q7"].value, "Gross Wt")
+		self.assertEqual(worksheet["R7"].value, "F.g Wt")
+		self.assertEqual(worksheet["S7"].value, "Scrap Wt")
+		self.assertEqual(worksheet["R38"].value, "Released By    \nManagement Rep")
+
+
 class TestBuildCellMapHeaderAndStrip(SheetCuttingLayoutTestCase):
 	def test_header_strip_and_per_part_cells(self) -> None:
 		from sheet_cutting_layout.services.export_service import build_cell_map
