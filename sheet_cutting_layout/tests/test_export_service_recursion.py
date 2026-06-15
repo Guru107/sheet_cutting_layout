@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
+from openpyxl import load_workbook
+
 from sheet_cutting_layout.tests.base import SheetCuttingLayoutTestCase
 
 
@@ -186,9 +188,12 @@ class TestBuildMultiSheetWorkbook(SheetCuttingLayoutTestCase):
 		self.assertEqual(workbook["L2"]["G5"].value, "Part Name:-End Piece Bracket")
 
 	def test_cloned_sheets_preserve_approved_template_format(self) -> None:
-		from sheet_cutting_layout.services.export_service import build_multi_sheet_workbook
+		from sheet_cutting_layout.services.export_service import build_multi_sheet_workbook, default_template_path
 
 		workbook = build_multi_sheet_workbook([_base_page("L1"), _base_page("L2")])
+		template_image_count = len(load_workbook(default_template_path()).active._images)
+
+		self.assertGreaterEqual(template_image_count, 2)
 
 		for sheet_name in ("L1", "L2"):
 			worksheet = workbook[sheet_name]
@@ -198,6 +203,7 @@ class TestBuildMultiSheetWorkbook(SheetCuttingLayoutTestCase):
 			self.assertIn("R38:U40", merged_ranges)
 			self.assertEqual(worksheet.page_setup.orientation, "landscape")
 			self.assertEqual(worksheet["R38"].value, "Released By    \nManagement Rep")
+			self.assertEqual(len(worksheet._images), template_image_count)
 
 	def test_empty_page_list_raises(self) -> None:
 		from sheet_cutting_layout.services.export_service import build_multi_sheet_workbook

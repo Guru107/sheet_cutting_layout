@@ -161,6 +161,10 @@ def _clone_template_worksheet(workbook: object, source_worksheet: object, title:
 		worksheet.column_dimensions[column_letter].width = dimension.width
 	for row_index, dimension in source_worksheet.row_dimensions.items():
 		worksheet.row_dimensions[row_index].height = dimension.height
+	for image in getattr(source_worksheet, "_images", []):
+		cloned_image = _copy(image)
+		cloned_image.anchor = _copy(image.anchor)
+		worksheet.add_image(cloned_image)
 	return worksheet
 
 
