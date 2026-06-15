@@ -16,14 +16,17 @@ def build_cell_map(layout: Mapping[str, object]) -> dict[str, object]:
 	"""Map a Sheet Cutting Layout dict to FRM/PRD/15 worksheet cells."""
 	cells: dict[str, object] = {
 		"B1": _text(layout.get("company")),
+		"A5": f"Sheet Cutting Layout No:- {_text(layout.get('layout_code'))}",
 		"G5": _part_name_label(layout),
-		"N5": _joined_part_numbers(layout),
+		"N5": f"Part Number:-{_joined_part_numbers(layout)}",
 		"B6": _text(layout.get("project")),
 		"C6": _text(layout.get("project_name")),
+		"J7": _text(layout.get("raw_material_item_name")),
 		"K8": _num(layout.get("sheet_thickness_mm")),
 		"K9": _num(layout.get("sheet_thickness_mm")),
 		"L9": _num(layout.get("sheet_width_mm")),
 		"M9": _num(layout.get("sheet_length_mm")),
+		"T6": _num(layout.get("weight_per_sheet_kg")),
 		"K10": _num(layout.get("weight_of_strip_kg")),
 		"K11": _num(layout.get("strip_thickness_mm")),
 		"L11": _num(layout.get("strip_width_mm")),
@@ -36,6 +39,7 @@ def build_cell_map(layout: Mapping[str, object]) -> dict[str, object]:
 		"K17": _num(layout.get("scrap_weight_per_part_kg")),
 	}
 	cells.update(_bom_table_cells(layout))
+	cells.update(_end_piece_detail_cells(layout))
 	return cells
 
 
@@ -160,27 +164,89 @@ def _bom_table_cells(layout: Mapping[str, object]) -> dict[str, object]:
 	gross = layout.get("gross_weight_per_part_kg")
 	nos = layout.get("parts_per_sheet")
 	cells["O8"] = _joined_part_numbers(layout)
-	cells["P8"] = _num(gross)
-	cells["Q8"] = _num(layout.get("net_weight_per_part_kg"))
-	cells["R8"] = _num(layout.get("scrap_weight_per_part_kg"))
-	cells["S8"] = _num(nos)
-	cells["T8"] = _num(_product(gross, nos))
-	cells["U8"] = _num(layout.get("raw_material_weight_kg"))
+	cells["Q8"] = _num(gross)
+	cells["R8"] = _num(layout.get("net_weight_per_part_kg"))
+	cells["S8"] = _num(layout.get("scrap_weight_per_part_kg"))
+	cells["T8"] = _num(nos)
+	cells["U8"] = _num(_product(gross, nos))
 
 	end_pieces: Sequence[Mapping[str, object]] = layout.get("end_pieces") or []
 	for offset, end_piece in enumerate(end_pieces):
 		row = 9 + offset
-		if row > 11:
+		if row > 10:
 			break
 		ep_gross = end_piece.get("gross_weight_per_part_kg")
 		ep_nos = end_piece.get("bom_quantity")
 		cells[f"O{row}"] = _end_piece_label(end_piece)
-		cells[f"P{row}"] = _num(ep_gross)
-		cells[f"Q{row}"] = _num(end_piece.get("net_weight_per_part_kg"))
-		cells[f"R{row}"] = _num(end_piece.get("scrap_weight_per_part_kg"))
-		cells[f"S{row}"] = _num(ep_nos)
-		cells[f"T{row}"] = _num(_product(ep_gross, ep_nos))
-		cells[f"U{row}"] = _num(end_piece.get("weight_kg"))
+		cells[f"Q{row}"] = _num(ep_gross)
+		cells[f"R{row}"] = _num(end_piece.get("net_weight_per_part_kg"))
+		cells[f"S{row}"] = _num(end_piece.get("scrap_weight_per_part_kg"))
+		cells[f"T{row}"] = _num(ep_nos)
+		cells[f"U{row}"] = _num(_product(ep_gross, ep_nos))
+	return cells
+
+
+def _end_piece_detail_cells(layout: Mapping[str, object]) -> dict[str, object]:
+	blocks = (
+		{
+			"size": ("K18", "L18", "M18"),
+			"used_for": "J23",
+			"strip": ("K24", "L24", "M24"),
+			"parts": "K25",
+			"gross": "K26",
+			"net": "K27",
+			"scrap": "K28",
+		},
+		{
+			"size": ("R12", "S12", "T12"),
+			"used_for": "Q13",
+			"strip": ("R14", "S14", "T14"),
+			"parts": "R15",
+			"gross": "R16",
+			"net": "R17",
+			"scrap": "R18",
+		},
+		{
+			"size": ("R22", "S22", "T22"),
+			"used_for": "Q23",
+			"strip": ("R24", "S24", "T24"),
+			"parts": "R25",
+			"gross": "R26",
+			"net": "R27",
+			"scrap": "R28",
+		},
+	)
+	cells = {
+		coordinate: ""
+		for block in blocks
+		for coordinate in (
+			*block["size"],
+			block["used_for"],
+			*block["strip"],
+			block["parts"],
+			block["gross"],
+			block["net"],
+			block["scrap"],
+		)
+	}
+
+	sheet_thickness = layout.get("sheet_thickness_mm")
+	end_pieces: Sequence[Mapping[str, object]] = layout.get("end_pieces") or []
+	for end_piece, block in zip(end_pieces, blocks, strict=False):
+		size_thickness, size_width, size_length = block["size"]
+		strip_thickness, strip_width, strip_length = block["strip"]
+		cells[size_thickness] = _num(sheet_thickness)
+		cells[size_width] = _num(end_piece.get("width_mm"))
+		cells[size_length] = _num(end_piece.get("length_mm"))
+		cells[block["used_for"]] = _text(end_piece.get("used_for_finished_part"))
+		cells[strip_thickness] = _num(sheet_thickness)
+		cells[strip_width] = _num(end_piece.get("strip_width_mm"))
+		cells[strip_length] = _num(end_piece.get("strip_length_mm"))
+		cells[block["parts"]] = _num(end_piece.get("parts_per_strip"))
+		cells[block["gross"]] = _num(end_piece.get("gross_weight_per_part_kg"))
+		cells[block["net"]] = _num(end_piece.get("net_weight_per_part_kg"))
+		cells[block["scrap"]] = _num(end_piece.get("scrap_weight_per_part_kg"))
+
 	return cells
 
 
@@ -189,8 +255,8 @@ def _part_name_label(layout: Mapping[str, object]) -> str:
 	if not base:
 		return ""
 	if layout.get("is_lh_rh"):
-		return f"{base} LH & RH"
-	return base
+		return f"Part Name:-{base} LH & RH"
+	return f"Part Name:-{base}"
 
 
 def _joined_part_numbers(layout: Mapping[str, object]) -> str:
