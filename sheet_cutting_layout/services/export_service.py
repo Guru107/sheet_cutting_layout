@@ -169,7 +169,11 @@ def _clone_template_worksheet(workbook: object, source_worksheet: object, title:
 
 
 def _bom_table_cells(layout: Mapping[str, object]) -> dict[str, object]:
-	cells: dict[str, object] = {}
+	cells: dict[str, object] = {
+		coordinate: ""
+		for row in (9, 10, 11)
+		for coordinate in (f"O{row}", f"Q{row}", f"R{row}", f"S{row}", f"T{row}", f"U{row}")
+	}
 	gross = layout.get("gross_weight_per_part_kg")
 	nos = layout.get("parts_per_sheet")
 	cells["O8"] = _joined_part_numbers(layout)
@@ -249,9 +253,9 @@ def _end_piece_detail_cells(layout: Mapping[str, object]) -> dict[str, object]:
 		cells[size_length] = _num(end_piece.get("length_mm"))
 		cells[block["used_for"]] = _text(end_piece.get("used_for_finished_part"))
 		cells[strip_thickness] = _num(sheet_thickness)
-		cells[strip_width] = _num(end_piece.get("strip_width_mm"))
-		cells[strip_length] = _num(end_piece.get("strip_length_mm"))
-		cells[block["parts"]] = _num(end_piece.get("parts_per_strip"))
+		cells[strip_width] = _num(end_piece.get("width_mm"))
+		cells[strip_length] = _num(end_piece.get("length_mm"))
+		cells[block["parts"]] = _num(end_piece.get("bom_quantity"))
 		cells[block["gross"]] = _num(end_piece.get("gross_weight_per_part_kg"))
 		cells[block["net"]] = _num(end_piece.get("net_weight_per_part_kg"))
 		cells[block["scrap"]] = _num(end_piece.get("scrap_weight_per_part_kg"))

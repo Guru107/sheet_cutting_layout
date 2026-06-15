@@ -39,7 +39,7 @@ def _ensure_project(project_name: str) -> str:
 
 
 class TestSheetCuttingLayoutExport(SheetCuttingLayoutTestCase):
-	def _build_layout(self, *, is_lh_rh: bool = False) -> str:
+	def _build_layout(self, *, is_lh_rh: bool = False, with_end_piece: bool = False) -> str:
 		suffix = frappe.generate_hash(length=8).upper()
 		project = _ensure_project(f"SCL Export {suffix}")
 		raw_material = _ensure_item(f"SCLRM{suffix}", item_name=f"Raw Material {suffix}")
@@ -71,6 +71,26 @@ class TestSheetCuttingLayoutExport(SheetCuttingLayoutTestCase):
 			"gross_weight_per_part_kg": 15.72,
 			"scrap_weight_per_part_kg": 0.2,
 		}
+		if with_end_piece:
+			layout.update(
+				{
+					"net_weight_per_part_kg": 15.0485,
+					"strip_length_mm": 970.005,
+				}
+			)
+			layout["end_pieces"] = [
+				{
+					"doctype": "Layout End Piece",
+					"width_mm": 200.0,
+					"length_mm": 300.0,
+					"weight_kg": 0.943,
+					"disposition": "Reuse",
+					"used_for_finished_part": finished,
+					"scrap_item": scrap,
+					"bom_quantity": 2,
+					"net_weight_per_part_kg": 0.4,
+				}
+			]
 		if is_lh_rh:
 			layout.update({"is_lh_rh": 1, "orientation": "LH", "twin_finished_part": twin})
 		doc = frappe.get_doc(layout)
@@ -109,6 +129,39 @@ class TestSheetCuttingLayoutExport(SheetCuttingLayoutTestCase):
 		self.assertEqual(worksheet["G5"].value, "Part Name:-Brkt bumper top")
 		self.assertNotEqual(worksheet["G5"].value, worksheet["N5"].value)
 		self.assertEqual(worksheet["U8"].value, 31.44)
+		self.assertIn(worksheet["O9"].value, (None, ""))
+		self.assertIn(worksheet["Q9"].value, (None, ""))
+		self.assertIn(worksheet["U11"].value, (None, ""))
+
+	def test_download_populates_end_piece_detail_from_system_snapshot(self) -> None:
+		from sheet_cutting_layout.sheet_cutting_layout.doctype.sheet_cutting_layout.sheet_cutting_layout import (
+			download_sheet_cutting_layout,
+		)
+
+		layout_name = self._build_layout(with_end_piece=True)
+		frappe.response.clear()
+
+		download_sheet_cutting_layout(layout_name)
+
+		worksheet = load_workbook(io.BytesIO(frappe.response["filecontent"])).active
+		self.assertAlmostEqual(float(worksheet["Q9"].value), 0.4716, places=4)
+		self.assertEqual(worksheet["R9"].value, 0.4)
+		self.assertAlmostEqual(float(worksheet["S9"].value), 0.0716, places=4)
+		self.assertEqual(worksheet["T9"].value, 2)
+		self.assertAlmostEqual(float(worksheet["U9"].value), 0.943, places=3)
+		self.assertEqual(worksheet["K18"].value, 2.0)
+		self.assertEqual(worksheet["L18"].value, 200.0)
+		self.assertEqual(worksheet["M18"].value, 300.0)
+		self.assertTrue(str(worksheet["J23"].value).startswith("SCLPART"))
+		self.assertEqual(worksheet["K24"].value, 2.0)
+		self.assertEqual(worksheet["L24"].value, 200.0)
+		self.assertEqual(worksheet["M24"].value, 300.0)
+		self.assertEqual(worksheet["K25"].value, 2)
+		self.assertAlmostEqual(float(worksheet["K26"].value), 0.4716, places=4)
+		self.assertEqual(worksheet["K27"].value, 0.4)
+		self.assertAlmostEqual(float(worksheet["K28"].value), 0.0716, places=4)
+		self.assertIn(worksheet["O10"].value, (None, ""))
+		self.assertIn(worksheet["U10"].value, (None, ""))
 
 	def test_download_uses_persisted_lh_rh_pairing(self) -> None:
 		from sheet_cutting_layout.sheet_cutting_layout.doctype.sheet_cutting_layout.sheet_cutting_layout import (

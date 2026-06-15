@@ -163,6 +163,10 @@ class TestBuildCellMapEndPiecesAndGuards(SheetCuttingLayoutTestCase):
 		self.assertEqual(cells["S9"], 0.07)
 		self.assertEqual(cells["T9"], 2)
 		self.assertAlmostEqual(float(cells["U9"]), 0.94, places=6)
+		self.assertEqual(cells["O10"], "")
+		self.assertEqual(cells["U10"], "")
+		self.assertEqual(cells["O11"], "")
+		self.assertEqual(cells["U11"], "")
 
 	def test_end_piece_without_item_code_uses_size_label(self) -> None:
 		from sheet_cutting_layout.services.export_service import build_cell_map
@@ -183,9 +187,6 @@ class TestBuildCellMapEndPiecesAndGuards(SheetCuttingLayoutTestCase):
 				"end_piece_item_code": f"EP-{index}",
 				"width_mm": 200 + index,
 				"length_mm": 300 + index,
-				"strip_width_mm": 50 + index,
-				"strip_length_mm": 60 + index,
-				"parts_per_strip": index + 1,
 				"gross_weight_per_part_kg": 0.4 + index,
 				"net_weight_per_part_kg": 0.3 + index,
 				"scrap_weight_per_part_kg": 0.1 + index,
@@ -199,16 +200,16 @@ class TestBuildCellMapEndPiecesAndGuards(SheetCuttingLayoutTestCase):
 
 		self.assertEqual(cells["O9"], "EP-0")
 		self.assertEqual(cells["O10"], "EP-1")
-		self.assertNotIn("O11", cells)
+		self.assertEqual(cells["O11"], "")
 		self.assertNotIn("P10", cells)
 		self.assertEqual(cells["K18"], 2.0)
 		self.assertEqual(cells["L18"], 200)
 		self.assertEqual(cells["M18"], 300)
 		self.assertEqual(cells["J23"], "0102AAG06400SHR")
 		self.assertEqual(cells["K24"], 2.0)
-		self.assertEqual(cells["L24"], 50)
-		self.assertEqual(cells["M24"], 60)
-		self.assertEqual(cells["K25"], 1)
+		self.assertEqual(cells["L24"], 200)
+		self.assertEqual(cells["M24"], 300)
+		self.assertEqual(cells["K25"], 2)
 		self.assertEqual(cells["K26"], 0.4)
 		self.assertEqual(cells["K27"], 0.3)
 		self.assertEqual(cells["K28"], 0.1)
@@ -217,9 +218,9 @@ class TestBuildCellMapEndPiecesAndGuards(SheetCuttingLayoutTestCase):
 		self.assertEqual(cells["T12"], 301)
 		self.assertEqual(cells["Q13"], "0102AAG06401SHR")
 		self.assertEqual(cells["R14"], 2.0)
-		self.assertEqual(cells["S14"], 51)
-		self.assertEqual(cells["T14"], 61)
-		self.assertEqual(cells["R15"], 2)
+		self.assertEqual(cells["S14"], 201)
+		self.assertEqual(cells["T14"], 301)
+		self.assertEqual(cells["R15"], 3)
 		self.assertEqual(cells["R16"], 1.4)
 		self.assertEqual(cells["R17"], 1.3)
 		self.assertEqual(cells["R18"], 1.1)
@@ -228,9 +229,9 @@ class TestBuildCellMapEndPiecesAndGuards(SheetCuttingLayoutTestCase):
 		self.assertEqual(cells["T22"], 302)
 		self.assertEqual(cells["Q23"], "0102AAG06402SHR")
 		self.assertEqual(cells["R24"], 2.0)
-		self.assertEqual(cells["S24"], 52)
-		self.assertEqual(cells["T24"], 62)
-		self.assertEqual(cells["R25"], 3)
+		self.assertEqual(cells["S24"], 202)
+		self.assertEqual(cells["T24"], 302)
+		self.assertEqual(cells["R25"], 4)
 		self.assertEqual(cells["R26"], 2.4)
 		self.assertEqual(cells["R27"], 2.3)
 		self.assertEqual(cells["R28"], 2.1)
@@ -278,6 +279,15 @@ class TestBuildCellMapEndPiecesAndGuards(SheetCuttingLayoutTestCase):
 			"R28",
 		):
 			self.assertEqual(cells[coordinate], "")
+
+	def test_unused_bom_rows_clear_template_placeholders(self) -> None:
+		from sheet_cutting_layout.services.export_service import build_cell_map
+
+		cells = build_cell_map(_base_layout())
+
+		for row in (9, 10, 11):
+			for column in ("O", "Q", "R", "S", "T", "U"):
+				self.assertEqual(cells[f"{column}{row}"], "")
 
 	def test_missing_numeric_inputs_render_as_empty_string(self) -> None:
 		from sheet_cutting_layout.services.export_service import build_cell_map
@@ -362,6 +372,9 @@ class TestRenderWorkbookBytes(SheetCuttingLayoutTestCase):
 		workbook = load_workbook(io.BytesIO(content))
 		worksheet = workbook.active
 		self.assertIn(worksheet["K8"].value, (None, ""))
+		self.assertIn(worksheet["O9"].value, (None, ""))
+		self.assertIn(worksheet["Q9"].value, (None, ""))
+		self.assertIn(worksheet["U11"].value, (None, ""))
 
 	def test_formula_like_text_cells_are_escaped(self) -> None:
 		import io
