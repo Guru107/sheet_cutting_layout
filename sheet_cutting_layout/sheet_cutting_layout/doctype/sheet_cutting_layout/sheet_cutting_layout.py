@@ -220,8 +220,14 @@ def _export_layout_dict(doc: object) -> dict[str, object]:
 		part_numbers.append(twin_finished_part)
 
 	part_name = ""
+	part_names = []
 	if finished_part_code:
 		part_name = frappe.get_cached_value("Item", finished_part_code, "item_name") or finished_part_code
+		part_names.append(part_name)
+	if getattr(doc, "is_lh_rh", None) and twin_finished_part:
+		part_names.append(
+			frappe.get_cached_value("Item", twin_finished_part, "item_name") or twin_finished_part
+		)
 
 	project = getattr(doc, "project", None)
 	project_name = frappe.db.get_value("Project", project, "project_name") if project else ""
@@ -241,6 +247,7 @@ def _export_layout_dict(doc: object) -> dict[str, object]:
 		"company": _default_company(),
 		"layout_code": getattr(doc, "layout_code", None),
 		"part_name": part_name,
+		"part_names": part_names,
 		"part_numbers": part_numbers,
 		"is_lh_rh": bool(getattr(doc, "is_lh_rh", False)),
 		"orientation": getattr(doc, "orientation", None),

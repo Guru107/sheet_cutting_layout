@@ -18,7 +18,7 @@ def build_cell_map(layout: Mapping[str, object]) -> dict[str, object]:
 		"B1": _text(layout.get("company")),
 		"A5": f"Sheet Cutting Layout No:- {_text(layout.get('layout_code'))}",
 		"G5": _part_name_label(layout),
-		"N5": f"Part Number:-{_joined_part_numbers(layout)}",
+		"N5": f"Part Number:-{_display_part_numbers(layout)}",
 		"B6": _text(layout.get("project")),
 		"C6": _text(layout.get("project_name")),
 		"J7": _text(layout.get("raw_material_item_name")),
@@ -176,7 +176,7 @@ def _bom_table_cells(layout: Mapping[str, object]) -> dict[str, object]:
 	}
 	gross = layout.get("gross_weight_per_part_kg")
 	nos = layout.get("parts_per_sheet")
-	cells["O8"] = _joined_part_numbers(layout)
+	cells["O8"] = _primary_part_number(layout)
 	cells["Q8"] = _num(gross)
 	cells["R8"] = _num(layout.get("net_weight_per_part_kg"))
 	cells["S8"] = _num(layout.get("scrap_weight_per_part_kg"))
@@ -275,17 +275,28 @@ def _end_piece_detail_cells(layout: Mapping[str, object]) -> dict[str, object]:
 
 def _part_name_label(layout: Mapping[str, object]) -> str:
 	base = _text(layout.get("part_name")).strip()
+	if layout.get("is_lh_rh"):
+		part_names = _clean_strings(layout.get("part_names") or [])
+		if part_names:
+			return f"Part Name:-{' & '.join(part_names)}"
+		if base:
+			return f"Part Name:-{base} LH & RH"
 	if not base:
 		return ""
-	if layout.get("is_lh_rh"):
-		return f"Part Name:-{base} LH & RH"
 	return f"Part Name:-{base}"
 
 
-def _joined_part_numbers(layout: Mapping[str, object]) -> str:
-	part_numbers = layout.get("part_numbers") or []
-	cleaned = [str(part).strip() for part in part_numbers if str(part or "").strip()]
-	return "_".join(cleaned)
+def _display_part_numbers(layout: Mapping[str, object]) -> str:
+	return "/".join(_clean_strings(layout.get("part_numbers") or []))
+
+
+def _primary_part_number(layout: Mapping[str, object]) -> str:
+	part_numbers = _clean_strings(layout.get("part_numbers") or [])
+	return part_numbers[0] if part_numbers else ""
+
+
+def _clean_strings(values: Sequence[object]) -> list[str]:
+	return [str(value).strip() for value in values if str(value or "").strip()]
 
 
 def _end_piece_label(end_piece: Mapping[str, object]) -> str:

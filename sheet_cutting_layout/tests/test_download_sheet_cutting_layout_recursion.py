@@ -177,6 +177,8 @@ class TestDownloadReleasedRecursiveLhRhLayout(_RecursiveExportFixtureMixin, Shee
 
 		self.assertIn(self.parent_part, joined)
 		self.assertIn(self.twin_part, joined)
+		self.assertIn("/", joined)
+		self.assertNotIn("_", joined)
 
 	def test_released_workbook_has_parent_and_child_sheets(self) -> None:
 		workbook = self._download_workbook()

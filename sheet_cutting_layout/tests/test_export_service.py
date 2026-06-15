@@ -102,6 +102,7 @@ class TestBuildCellMapLhRhLabels(SheetCuttingLayoutTestCase):
 		layout.update(
 			{
 				"part_name": "Brkt bumper top",
+				"part_names": ["Brkt bumper top", "Brkt bumper top RH"],
 				"is_lh_rh": True,
 				"orientation": "LH",
 				"part_numbers": ["0102AAG06400SHR", "0102AAG06410SHR"],
@@ -110,9 +111,9 @@ class TestBuildCellMapLhRhLabels(SheetCuttingLayoutTestCase):
 
 		cells = build_cell_map(layout)
 
-		self.assertEqual(cells["G5"], "Part Name:-Brkt bumper top LH & RH")
-		self.assertEqual(cells["N5"], "Part Number:-0102AAG06400SHR_0102AAG06410SHR")
-		self.assertEqual(cells["O8"], "0102AAG06400SHR_0102AAG06410SHR")
+		self.assertEqual(cells["G5"], "Part Name:-Brkt bumper top & Brkt bumper top RH")
+		self.assertEqual(cells["N5"], "Part Number:-0102AAG06400SHR/0102AAG06410SHR")
+		self.assertEqual(cells["O8"], "0102AAG06400SHR")
 
 	def test_single_part_number_is_not_joined(self) -> None:
 		from sheet_cutting_layout.services.export_service import build_cell_map
@@ -340,6 +341,7 @@ class TestRenderWorkbookBytes(SheetCuttingLayoutTestCase):
 		layout.update(
 			{
 				"is_lh_rh": True,
+				"part_names": ["Brkt bumper top", "Brkt bumper top RH"],
 				"part_numbers": ["0102AAG06400SHR", "0102AAG06410SHR"],
 			}
 		)
@@ -354,8 +356,8 @@ class TestRenderWorkbookBytes(SheetCuttingLayoutTestCase):
 		worksheet = workbook.active
 		self.assertEqual(worksheet["B1"].value, "Acme Press Parts")
 		self.assertEqual(worksheet["A5"].value, "Sheet Cutting Layout No:- SCL-EXPORT-LAYOUT-001")
-		self.assertEqual(worksheet["G5"].value, "Part Name:-Brkt bumper top LH & RH")
-		self.assertEqual(worksheet["N5"].value, "Part Number:-0102AAG06400SHR_0102AAG06410SHR")
+		self.assertEqual(worksheet["G5"].value, "Part Name:-Brkt bumper top & Brkt bumper top RH")
+		self.assertEqual(worksheet["N5"].value, "Part Number:-0102AAG06400SHR/0102AAG06410SHR")
 		self.assertEqual(worksheet["T6"].value, 31.44)
 		self.assertEqual(worksheet["K10"].value, 15.72)
 		self.assertEqual(worksheet["K14"].value, 2)

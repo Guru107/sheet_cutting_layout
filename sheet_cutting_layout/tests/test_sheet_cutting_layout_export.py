@@ -177,7 +177,8 @@ class TestSheetCuttingLayoutExport(SheetCuttingLayoutTestCase):
 		download_sheet_cutting_layout(layout_name)
 
 		worksheet = load_workbook(io.BytesIO(frappe.response["filecontent"])).active
-		self.assertEqual(worksheet["G5"].value, "Part Name:-Brkt bumper top LH & RH")
+		self.assertEqual(worksheet["G5"].value, "Part Name:-Brkt bumper top & Brkt bumper top RH")
 		self.assertTrue(str(worksheet["N5"].value).startswith("Part Number:-SCLPART"))
-		self.assertIn("_SCLTWIN", str(worksheet["N5"].value))
+		self.assertIn("/SCLTWIN", str(worksheet["N5"].value))
+		self.assertNotIn("_SCLTWIN", str(worksheet["N5"].value))
 		self.assertTrue(str(worksheet["N5"].value).endswith("SHR"))
