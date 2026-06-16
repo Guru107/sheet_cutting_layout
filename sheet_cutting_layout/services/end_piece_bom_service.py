@@ -35,6 +35,7 @@ class LayoutDocument(Protocol):
 	name: str
 	status: str | None
 	company: str | None
+	finished_part_code: str | None
 	raw_material_item: str | None
 	sheet_thickness_mm: float | None
 	process_scrap_item: str | None
@@ -55,7 +56,11 @@ def generate_end_piece_boms(layout: LayoutDocument) -> dict[str, list[str]]:
 		_validate_pending_row(layout, row)
 		item_code = _clean(getattr(row, "end_piece_item_code", None))
 		if not item_code:
-			item_code = ensure_end_piece_item(layout, row)
+			item_code = ensure_end_piece_item(
+				layout,
+				row,
+				source_finished_part=getattr(layout, "finished_part_code", None),
+			)
 			row.end_piece_item_code = item_code
 			generated_items.append(item_code)
 		bom_name = _create_end_piece_bom(layout, row, item_code)

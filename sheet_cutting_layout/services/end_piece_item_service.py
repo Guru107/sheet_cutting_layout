@@ -60,10 +60,15 @@ def derive_end_piece_item_code(
 	)
 
 
-def derive_end_piece_item_code_from_row(layout: LayoutDocument, row: EndPieceRow) -> str:
+def derive_end_piece_item_code_from_row(
+	layout: LayoutDocument,
+	row: EndPieceRow,
+	*,
+	source_finished_part: str | None = None,
+) -> str:
 	try:
 		item_code = derive_end_piece_item_code(
-			used_for_finished_part=getattr(row, "used_for_finished_part", None),
+			used_for_finished_part=source_finished_part or getattr(row, "used_for_finished_part", None),
 			thickness_mm=getattr(layout, "sheet_thickness_mm", None),
 			width_mm=getattr(row, "width_mm", None),
 			length_mm=getattr(row, "length_mm", None),
@@ -83,8 +88,17 @@ def derive_end_piece_item_code_from_row(layout: LayoutDocument, row: EndPieceRow
 	return item_code
 
 
-def ensure_end_piece_item(layout: LayoutDocument, row: EndPieceRow) -> str:
-	item_code = derive_end_piece_item_code_from_row(layout, row)
+def ensure_end_piece_item(
+	layout: LayoutDocument,
+	row: EndPieceRow,
+	*,
+	source_finished_part: str | None = None,
+) -> str:
+	item_code = derive_end_piece_item_code_from_row(
+		layout,
+		row,
+		source_finished_part=source_finished_part,
+	)
 	if _item_exists(item_code):
 		_ensure_existing_item_valuation_rate(item_code, layout)
 		return item_code
