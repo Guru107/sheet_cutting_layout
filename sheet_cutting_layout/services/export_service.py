@@ -20,7 +20,6 @@ def build_cell_map(layout: Mapping[str, object]) -> dict[str, object]:
 		"G5": _part_name_label(layout),
 		"N5": f"Part Number:-{_display_part_numbers(layout)}",
 		"B6": _text(layout.get("project_name")),
-		"C6": "",
 		"J7": _text(layout.get("raw_material_item_name")),
 		"K8": _num(layout.get("sheet_thickness_mm")),
 		"K9": _num(layout.get("sheet_thickness_mm")),

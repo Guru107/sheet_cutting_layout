@@ -68,7 +68,7 @@ class TestBuildCellMapHeaderAndStrip(SheetCuttingLayoutTestCase):
 		self.assertEqual(cells["G5"], "Part Name:-Brkt bumper top")
 		self.assertEqual(cells["N5"], "Part Number:-0102AAG06400SHR")
 		self.assertEqual(cells["B6"], "Bumper Program")
-		self.assertEqual(cells["C6"], "")
+		self.assertNotIn("C6", cells)
 		self.assertEqual(cells["J7"], "HSLA-340")
 		self.assertEqual(cells["K8"], 2.0)
 		self.assertEqual(cells["K9"], 2.0)
