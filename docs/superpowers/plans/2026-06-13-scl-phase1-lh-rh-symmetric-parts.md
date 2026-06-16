@@ -242,6 +242,12 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 
 ### Task 2: Add the joined part-number + LH/RH label helpers
 
+> **SUPERSEDED (decision 2026-06-16).** The short-form `joined_part_number_label` /
+> `_common_prefix_length` helpers below were **not** built. The export part-number cell uses the
+> **full item codes joined with `/`** (e.g. `0102AAG06400SHR/0102AAG06410SHR`), not the common-prefix
+> short form (`0102AAG06400_6410N`). Only the `lh_rh_part_name_suffix` ("LH & RH") portion shipped.
+> Kept below for historical context; see spec §8.4.
+
 These pure helpers are consumed by the Phase 2 exporter (§8.4) but are defined and tested now so the labeling contract is fixed in Phase 1.
 
 **Files:**

@@ -16,7 +16,8 @@ framework-conformance debt:
 - **A1 — Excel/IATF export.** Produce the approved `FRM/PRD/15` workbook from a layout (hard audit
   requirement; currently absent).
 - **A2 — LH/RH symmetric parts.** One layout produces identical BOMs for each of its LH/RH item
-  codes (the Excel pairs them, e.g. `0102AAG06400_6410N`); currently one layout → one BOM.
+  codes (the export pairs them as full codes joined with `/`, e.g.
+  `0102AAG06400SHR/0102AAG06410SHR` — decision 2026-06-16; see §8.4); currently one layout → one BOM.
 - **A3 — Recursive end-piece layouts (hybrid).** A reused end piece may carry its own full cutting
   layout (its own strip + its own end pieces), modeling the Excel's nesting; currently flat,
   single-level reuse only.
@@ -38,7 +39,7 @@ A single-page-per-part layout:
   it has a "used for part number", its own strip, parts/strip, gross/net/scrap, and *its own*
   sub-end-pieces (the Excel's `End Piece 2 → 2-A, 2-B`). This is the recursive structure.
 - **LH/RH twins:** symmetric parts share an identical layout; the page names both part numbers
-  ("Part Name: Brkt bumper top LH&RH", "Part Number: 0102AAG06400_6410N").
+  ("Part Name: Brkt bumper top LH & RH", "Part Number: 0102AAG06400SHR/0102AAG06410SHR" — full codes, `/`-joined; see §8.4).
 - **BOM table (right side):** main part row + end-piece rows (gross / f.g. / scrap / nos / total wt).
 - **Signatures:** Prepared By (Engg/Prod), Checked by Production Manager, BOM Updated by Purchase,
   Released by Management Rep.
@@ -254,8 +255,13 @@ ends `SHR`, distinct from the primary and from the raw material. Net/gross/scrap
 pair.
 
 ### 8.4 Export interaction
-The part-number cell joins the pair (e.g. `0102AAG06400_6410N`); the part-name/label uses the
-orientations (e.g. "… LH & RH").
+The part-number cell joins the pair as **full item codes, `/`-joined** (e.g.
+`0102AAG06400SHR/0102AAG06410SHR`); the part-name/label uses the orientations (e.g. "… LH & RH").
+The generated BOM keeps the **primary** item code only.
+
+> **Decision 2026-06-16:** the part-number cell uses the full item codes joined with `/`, NOT a
+> common-prefix short form (`0102AAG06400_6410N`). The short-form `joined_part_number_label`
+> /`_common_prefix_length` helpers proposed in the Phase 1 plan are superseded and were not built.
 
 ### 8.5 Tests
 - Unit: pair expansion (`is_lh_rh` → `[primary, twin]`; unchecked → `[primary]`); orientation/twin
