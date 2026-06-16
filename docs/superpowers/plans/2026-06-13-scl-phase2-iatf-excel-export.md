@@ -37,8 +37,7 @@ All test modules subclass `sheet_cutting_layout.tests.base.SheetCuttingLayoutTes
 | `B1` | `company` | company name |
 | `G5` | `part_name` | **human** part-name label (NOT an item code) — the controller resolves it from `Item.item_name` of `finished_part_code` (see Task 6 `_export_layout_dict`); LH/RH → `"<base> LH & RH"` (e.g. `"Brkt bumper top LH & RH"`, see Task 1) |
 | `N5` | `part_numbers` (list) | joined part numbers, `"_"`-joined (e.g. `0102AAG06400_6410N`) |
-| `B6` | `project` | project code (document name of the Project) |
-| `C6` | `project_name` | project display name |
+| `B6` | `project_name` | project **name** only — decision 2026-06-16: no project code; `B6:F6` is a single merged cell so `C6` is not written |
 | `K8` | `sheet_thickness_mm` | sheet thickness |
 | `K9` / `L9` / `M9` | `sheet_thickness_mm` / `sheet_width_mm` / `sheet_length_mm` | sheet T / W / L |
 | `K10` | `weight_of_strip_kg` | strip weight |
@@ -111,8 +110,8 @@ class TestBuildCellMapHeaderAndStrip(SheetCuttingLayoutTestCase):
 		self.assertEqual(cells["B1"], "Acme Press Parts")
 		self.assertEqual(cells["G5"], "Brkt bumper top")
 		self.assertEqual(cells["N5"], "0102AAG06400SHR")
-		self.assertEqual(cells["B6"], "PRJ-0001")
-		self.assertEqual(cells["C6"], "Bumper Program")
+		self.assertEqual(cells["B6"], "Bumper Program")  # project name only (decision 2026-06-16); B6:F6 merged, C6 not written
+		self.assertNotIn("C6", cells)
 		self.assertEqual(cells["K8"], 2.0)
 		self.assertEqual(cells["K9"], 2.0)
 		self.assertEqual(cells["L9"], 1000.0)
@@ -183,8 +182,7 @@ def build_cell_map(layout: Mapping[str, object]) -> dict[str, object]:
 		"B1": _text(layout.get("company")),
 		"G5": _part_name_label(layout),
 		"N5": _joined_part_numbers(layout),
-		"B6": _text(layout.get("project")),
-		"C6": _text(layout.get("project_name")),
+		"B6": _text(layout.get("project_name")),  # project name only (decision 2026-06-16); B6:F6 merged, C6 not written
 		"K8": _num(layout.get("sheet_thickness_mm")),
 		"K9": _num(layout.get("sheet_thickness_mm")),
 		"L9": _num(layout.get("sheet_width_mm")),
@@ -817,8 +815,8 @@ class TestSheetCuttingLayoutExport(SheetCuttingLayoutTestCase):
 		self.assertEqual(worksheet["K14"].value, 2)
 		self.assertEqual(worksheet["K15"].value, 15.72)
 		self.assertEqual(worksheet["K16"].value, 15.52)
-		self.assertEqual(worksheet["B6"].value, f"{TEST_PREFIX}EXPORT")
-		self.assertEqual(worksheet["C6"].value, "Export Program")
+		self.assertEqual(worksheet["B6"].value, "Export Program")  # project name only (decision 2026-06-16); B6:F6 merged
+		self.assertIsNone(worksheet["C6"].value)
 		self.assertIn(f"{ITEM_CODE_PREFIX}PART01SHR", str(worksheet["N5"].value))
 		# G5 is the HUMAN label resolved from Item.item_name, NOT the item code.
 		self.assertEqual(worksheet["G5"].value, "Brkt bumper top")

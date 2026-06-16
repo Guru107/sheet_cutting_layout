@@ -43,8 +43,7 @@ Required mappings:
 - `A5`: `Sheet Cutting Layout No:- <layout_code>`
 - `G5`: `Part Name:-<finished part item_name>`, using the existing LH/RH label behavior
 - `N5`: `Part Number:-<finished_part_code>` or joined LH/RH part numbers
-- `B6`: project code
-- `C6`: project name
+- `B6`: project name (decision 2026-06-16: the Project field shows the name only, not the project code; `B6:F6` is a single merged cell, so `C6` is not written)
 - `J7`: raw material `Item.item_name`
 - `K8`: sheet thickness
 - `K9`, `L9`, `M9`: sheet thickness, width, length

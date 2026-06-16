@@ -171,8 +171,8 @@ def test_header_strip_and_per_part_cells(self) -> None:
 	self.assertEqual(cells["A5"], "Sheet Cutting Layout No:- SCL-EXPORT-LAYOUT-001")
 	self.assertEqual(cells["G5"], "Part Name:-Brkt bumper top")
 	self.assertEqual(cells["N5"], "Part Number:-0102AAG06400SHR")
-	self.assertEqual(cells["B6"], "PRJ-0001")
-	self.assertEqual(cells["C6"], "Bumper Program")
+	self.assertEqual(cells["B6"], "Bumper Program")  # project name only (decision 2026-06-16); B6:F6 merged, C6 not written
+	self.assertNotIn("C6", cells)
 	self.assertEqual(cells["J7"], "HSLA-340")
 	self.assertEqual(cells["K8"], 2.0)
 	self.assertEqual(cells["K9"], 2.0)
@@ -338,8 +338,7 @@ def build_cell_map(layout: Mapping[str, object]) -> dict[str, object]:
 		"A5": f"Sheet Cutting Layout No:- {_text(layout.get('layout_code')).strip()}".rstrip(),
 		"G5": _part_name_label(layout),
 		"N5": f"Part Number:-{_joined_part_numbers(layout)}",
-		"B6": _text(layout.get("project")),
-		"C6": _text(layout.get("project_name")),
+		"B6": _text(layout.get("project_name")),  # project name only (decision 2026-06-16); B6:F6 merged, C6 not written
 		"J7": _text(layout.get("raw_material_item_name")),
 		"K8": _num(layout.get("sheet_thickness_mm")),
 		"K9": _num(layout.get("sheet_thickness_mm")),
@@ -538,7 +537,7 @@ self.assertEqual(worksheet["T6"].value, 31.44)
 self.assertEqual(worksheet["K14"].value, 2)
 self.assertEqual(worksheet["K15"].value, 15.72)
 self.assertEqual(worksheet["K16"].value, 15.52)
-self.assertIn("SCL Export", str(worksheet["C6"].value))
+self.assertIn("SCL Export", str(worksheet["B6"].value))  # project name in merged B6:F6 (decision 2026-06-16)
 self.assertIn("SCLPART", str(worksheet["N5"].value))
 self.assertTrue(str(worksheet["N5"].value).startswith("Part Number:-"))
 self.assertEqual(worksheet["G5"].value, "Part Name:-Brkt bumper top")

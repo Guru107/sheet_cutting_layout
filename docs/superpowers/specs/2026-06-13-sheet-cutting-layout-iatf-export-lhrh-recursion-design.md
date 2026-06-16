@@ -318,7 +318,7 @@ the curated template must be confirmed as the audit-approved one before Phase 2 
 ### 10.3 Cell map (codified, from the approved sheet)
 Representative (finalized in the implementation plan against the curated template):
 
-- `B1` company · `G5` part name · `N5` joined part numbers (LH_RH) · `B6/C6` project code/name
+- `B1` company · `G5` part name · `N5` joined part numbers (LH_RH) · `B6` project name (merged `B6:F6`; name only — decision 2026-06-16, no project code)
 - `K8` thickness · `K9/L9/M9` sheet T/W/L · `K10` strip weight · `K11/L11/M11` strip T/W/L ·
   `K12` parts/strip · `K13` no. strips · `K14` parts/sheet · `K15/K16/K17` gross/net/scrap per part
 - Right-side BOM table `O7:U11` and the end-piece detail blocks from `end_pieces`
