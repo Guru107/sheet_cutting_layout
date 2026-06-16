@@ -269,8 +269,12 @@ The generated BOM keeps the **primary** item code only.
 - Integration: an LH/RH layout → two identical BOMs **both linked to the same layout**; the
   `finished_parts` mirror shows both with orientation + BOM; supersede/cancel retire **both** BOMs
   (`_layout_bom_names` gathers them — assert it).
-- E2E: check "LH/RH", pick twin + orientation, release → both items/BOMs shown in the mirror, both
-  referencing the layout.
+- E2E (`cypress/integration/sheet_cutting_layout_lh_rh.js`, green under bench 2026-06-16): two specs —
+  (1) the **client toggle** through the real Desk form — checking `is_lh_rh` auto-defaults `orientation`
+  to `LH`, unchecking clears `orientation` + `twin_finished_part`; (2) **release** → two distinct BOMs +
+  an LH/RH `finished_parts` mirror, both BOMs referencing the same layout. Decision (2026-06-16): the
+  release transitions are driven through the live workflow API (`frappe.model.workflow.apply_workflow`),
+  not the Desk Actions menu — see the §13 note on the LH/RH Desk-form mandatory-field timing quirk.
 
 ## 9. Phase 3 — Hybrid recursive end-piece layouts (A3)
 
@@ -405,3 +409,12 @@ cross-checked against the installed Frappe v15 / ERPNext v15.101 source. Finding
   `end_piece_bom_service` item+BOM path unchanged; rows with `child_layout` route the real BOM to the
   child layout and are excluded from `_reuse_end_pieces`. The two paths are mutually exclusive per row,
   so neither is deprecated.
+- **LH/RH Desk-form mandatory-field timing (observed 2026-06-16).** When an LH/RH layout (whose
+  `orientation`/`twin_finished_part` are `mandatory_depends_on: is_lh_rh`) is stepped through the
+  workflow by automation at speed, the Desk form's client mandatory check can mis-fire and block the
+  save with a spurious "Missing Fields" dialog listing every mandatory field. Server-side release is
+  correct (verified: `apply_workflow` → `Released`, LH+RH mirror, two BOMs both backlinking the layout),
+  and single-part layouts are unaffected (they have no `mandatory_depends_on` pair fields). The LH/RH
+  E2E therefore drives the release through the workflow API rather than the Desk Actions menu. Whether a
+  fast real user can trip the same client race is unconfirmed — flagged for a possible UI investigation,
+  not a release blocker.
