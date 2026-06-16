@@ -3,6 +3,7 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 import frappe
+from frappe.model.workflow import apply_workflow
 
 from sheet_cutting_layout.services.release_service import _parent_finished_part_rows
 from sheet_cutting_layout.tests.base import SheetCuttingLayoutTestCase
@@ -88,8 +89,11 @@ class TestLhRhReleaseIntegration(SheetCuttingLayoutTestCase):
 		self.assertEqual(len(set(bom_names)), 2)
 		self.assertTrue(all(bom_names))
 		self.assertEqual(layout.generated_bom, bom_names[0])
+		for bom_name in bom_names:
+			self.assertEqual(frappe.db.get_value("BOM", bom_name, "sheet_cutting_layout"), layout.name)
 
-		layout.status = "Superseded"
-		layout.cancel()
+		apply_workflow(layout, "Supersede")
+		layout.reload()
+		self.assertEqual(layout.status, "Superseded")
 		for bom_name in bom_names:
 			self.assertEqual(frappe.db.get_value("BOM", bom_name, "is_active"), 0)

@@ -238,11 +238,6 @@ def _export_layout_dict(doc: object) -> dict[str, object]:
 		else ""
 	)
 
-	raw_material_weight_kg = None
-	for row in getattr(doc, "finished_parts", None) or []:
-		raw_material_weight_kg = getattr(row, "raw_material_weight_kg", None)
-		break
-
 	return {
 		"company": _default_company(),
 		"layout_code": getattr(doc, "layout_code", None),
@@ -250,7 +245,6 @@ def _export_layout_dict(doc: object) -> dict[str, object]:
 		"part_names": part_names,
 		"part_numbers": part_numbers,
 		"is_lh_rh": bool(getattr(doc, "is_lh_rh", False)),
-		"orientation": getattr(doc, "orientation", None),
 		"project": project,
 		"project_name": project_name or "",
 		"raw_material_item_name": raw_material_item_name,
@@ -268,7 +262,6 @@ def _export_layout_dict(doc: object) -> dict[str, object]:
 		"gross_weight_per_part_kg": getattr(doc, "gross_weight_per_part_kg", None),
 		"net_weight_per_part_kg": getattr(doc, "net_weight_per_part_kg", None),
 		"scrap_weight_per_part_kg": getattr(doc, "scrap_weight_per_part_kg", None),
-		"raw_material_weight_kg": raw_material_weight_kg,
 		"end_pieces": [_export_end_piece_dict(row) for row in getattr(doc, "end_pieces", None) or []],
 	}
 
