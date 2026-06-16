@@ -151,12 +151,18 @@ describe("Sheet Cutting Layout LH/RH symmetric parts", () => {
 			// mandatory_depends_on LH/RH fields when the workflow is automated at speed;
 			// the workflow API is the same server transition a user triggers, without
 			// that UI race. The client toggle behaviour is covered by the test above.
-			const docRef = JSON.stringify({ doctype: "Sheet Cutting Layout", name: releaseLayoutCode });
-			["Submit for Check", "Project Manager Approves", "Purchase Approves", "MR Release"].forEach(
-				(action) => {
-					cy.call("frappe.model.workflow.apply_workflow", { doc: docRef, action });
-				}
-			);
+			const docRef = JSON.stringify({
+				doctype: "Sheet Cutting Layout",
+				name: releaseLayoutCode,
+			});
+			[
+				"Submit for Check",
+				"Project Manager Approves",
+				"Purchase Approves",
+				"MR Release",
+			].forEach((action) => {
+				cy.call("frappe.model.workflow.apply_workflow", { doc: docRef, action });
+			});
 
 			fetchReleasedLhRhLayout().then((layout) => {
 				expect(layout.status).to.equal("Released");
@@ -172,7 +178,9 @@ describe("Sheet Cutting Layout LH/RH symmetric parts", () => {
 				bomNames.forEach((bomName, index) => {
 					cy.request(
 						"GET",
-						`/api/method/frappe.client.get?doctype=BOM&name=${encodeURIComponent(bomName)}`
+						`/api/method/frappe.client.get?doctype=BOM&name=${encodeURIComponent(
+							bomName
+						)}`
 					).then(({ body: bomBody }) => {
 						const bom = bomBody.message;
 						// Both twin BOMs must reference the same Sheet Cutting Layout (spec §8.5).

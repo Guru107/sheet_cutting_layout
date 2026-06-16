@@ -27,9 +27,21 @@ from sheet_cutting_layout.services.validators import apply_end_piece_bom_status,
 from sheet_cutting_layout.services.versioning import create_revision
 from sheet_cutting_layout.services.workflow import (
 	MR_RELEASE_ACTION,
+	PROJECT_MANAGER_APPROVAL_ACTION,
+	PURCHASE_APPROVAL_ACTION,
+	REJECT_ACTION,
+	SUBMIT_FOR_CHECK_ACTION,
 	SUPERSEDE_ACTION,
+	approval_snapshot_row,
 	record_approval_snapshot,
 )
+
+_DRAFT_STATUS_SNAPSHOT_ACTIONS = {
+	"Submitted for Check": SUBMIT_FOR_CHECK_ACTION,
+	"PM Approved": PROJECT_MANAGER_APPROVAL_ACTION,
+	"Approved by Purchase": PURCHASE_APPROVAL_ACTION,
+	"Rejected": REJECT_ACTION,
+}
 
 
 class SheetCuttingLayout(Document):
@@ -40,6 +52,9 @@ class SheetCuttingLayout(Document):
 
 	def validate(self) -> None:
 		validate_sheet_cutting_layout(self)
+
+	def on_update(self) -> None:
+		_record_draft_workflow_snapshot(self)
 
 	def before_submit(self) -> None:
 		if getattr(self, "status", None) != "Released":
@@ -93,16 +108,105 @@ def _clear_copied_release_artifacts(doc: object) -> None:
 
 
 def _record_workflow_snapshot(doc: object, *, action: str) -> None:
-	record_approval_snapshot(
-		doc,
+	row = approval_snapshot_row(
 		action=action,
 		approver=_get_session_user(),
 		decision_time=_get_now_datetime(),
 	)
+	if row is None:
+		return
+	if getattr(doc, "name", None):
+		_insert_approval_snapshot_row(doc, row=row)
+		return
+
+	record_approval_snapshot(
+		doc,
+		action=action,
+		approver=row["approver"],
+		decision_time=row["decision_time"],
+	)
+
+
+def _record_draft_workflow_snapshot(doc: object) -> None:
+	status = getattr(doc, "status", None)
+	action = _DRAFT_STATUS_SNAPSHOT_ACTIONS.get(status)
+	if not action:
+		return
+
+	previous_status = _previous_status(doc)
+	if previous_status in {None, status}:
+		return
+
+	row = approval_snapshot_row(
+		action=action,
+		approver=_get_session_user(),
+		decision_time=_get_now_datetime(),
+	)
+	if row is None or _has_approval_snapshot(doc, step_name=str(row["step_name"])):
+		return
+
+	_insert_approval_snapshot_row(doc, row=row)
+
+
+def _insert_approval_snapshot_row(doc: object, *, row: dict[str, object]) -> None:
+	if _has_approval_snapshot(doc, step_name=str(row["step_name"])):
+		return
+
+	frappe.get_doc(
+		{
+			"doctype": "Layout Approval Snapshot",
+			"parent": doc.name,
+			"parenttype": "Sheet Cutting Layout",
+			"parentfield": "approval_snapshot",
+			"idx": _next_approval_snapshot_idx(doc.name),
+			**row,
+		}
+	).insert(ignore_permissions=True)
+	if hasattr(doc, "append"):
+		doc.append("approval_snapshot", row)
+
+
+def _has_approval_snapshot(doc: object, *, step_name: str) -> bool:
+	if any(
+		getattr(row, "step_name", None) == step_name for row in getattr(doc, "approval_snapshot", []) or []
+	):
+		return True
+	return bool(
+		frappe.db.exists(
+			"Layout Approval Snapshot",
+			{
+				"parent": getattr(doc, "name", None),
+				"parenttype": "Sheet Cutting Layout",
+				"parentfield": "approval_snapshot",
+				"step_name": step_name,
+			},
+		)
+	)
+
+
+def _next_approval_snapshot_idx(parent: str) -> int:
+	rows = frappe.get_all(
+		"Layout Approval Snapshot",
+		filters={
+			"parent": parent,
+			"parenttype": "Sheet Cutting Layout",
+			"parentfield": "approval_snapshot",
+		},
+		fields=["idx"],
+		order_by="idx desc",
+		limit=1,
+	)
+	if not rows:
+		return 1
+	return int(rows[0].idx or 0) + 1
 
 
 def _previous_status(doc: object) -> object:
 	previous = getattr(doc, "_doc_before_save", None)
+	if previous is None:
+		get_doc_before_save = getattr(doc, "get_doc_before_save", None)
+		if callable(get_doc_before_save):
+			previous = get_doc_before_save()
 	get = getattr(previous, "get", None)
 	if callable(get):
 		return get("status")

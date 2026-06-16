@@ -92,11 +92,12 @@ class TestSheetCuttingLayoutController(SheetCuttingLayoutTestCase):
 	def test_on_submit_releases_and_snapshots_when_status_released(self) -> None:
 		doc = object.__new__(controller.SheetCuttingLayout)
 		doc.doctype = "Sheet Cutting Layout"
+		doc.name = "SCL-TEST-RELEASE"
 		doc.status = "Released"
 
 		with (
 			patch.object(controller, "release_layout") as release,
-			patch.object(controller, "record_approval_snapshot") as snapshot,
+			patch.object(controller, "_insert_approval_snapshot_row") as snapshot,
 			patch.object(controller, "_get_session_user", return_value="Administrator"),
 			patch.object(controller, "_get_now_datetime", return_value=datetime(2026, 6, 13, 12, 0, 0)),
 		):
@@ -105,9 +106,12 @@ class TestSheetCuttingLayoutController(SheetCuttingLayoutTestCase):
 		release.assert_called_once_with(doc)
 		snapshot.assert_called_once_with(
 			doc,
-			action="MR Release",
-			approver="Administrator",
-			decision_time=datetime(2026, 6, 13, 12, 0, 0),
+			row={
+				"step_name": "MR Approval",
+				"approver": "Administrator",
+				"decision": "Approved",
+				"decision_time": datetime(2026, 6, 13, 12, 0, 0),
+			},
 		)
 
 	def test_on_submit_does_not_snapshot_or_release_when_not_released(self) -> None:
@@ -117,7 +121,7 @@ class TestSheetCuttingLayoutController(SheetCuttingLayoutTestCase):
 
 		with (
 			patch.object(controller, "release_layout") as release,
-			patch.object(controller, "record_approval_snapshot") as snapshot,
+			patch.object(controller, "_insert_approval_snapshot_row") as snapshot,
 		):
 			doc.on_submit()
 
@@ -242,10 +246,11 @@ class TestSheetCuttingLayoutController(SheetCuttingLayoutTestCase):
 	def test_before_cancel_snapshots_supersede(self) -> None:
 		doc = object.__new__(controller.SheetCuttingLayout)
 		doc.doctype = "Sheet Cutting Layout"
+		doc.name = "SCL-TEST-SUPERSEDE"
 		doc.status = "Superseded"
 
 		with (
-			patch.object(controller, "record_approval_snapshot") as snapshot,
+			patch.object(controller, "_insert_approval_snapshot_row") as snapshot,
 			patch.object(controller, "_get_session_user", return_value="Administrator"),
 			patch.object(controller, "_get_now_datetime", return_value=datetime(2026, 6, 13, 12, 0, 0)),
 		):
@@ -253,9 +258,12 @@ class TestSheetCuttingLayoutController(SheetCuttingLayoutTestCase):
 
 		snapshot.assert_called_once_with(
 			doc,
-			action="Supersede",
-			approver="Administrator",
-			decision_time=datetime(2026, 6, 13, 12, 0, 0),
+			row={
+				"step_name": "Supersession",
+				"approver": "Administrator",
+				"decision": "Approved",
+				"decision_time": datetime(2026, 6, 13, 12, 0, 0),
+			},
 		)
 
 	def test_before_cancel_rejects_owner_self_approval_on_native_cancel(self) -> None:
@@ -269,7 +277,7 @@ class TestSheetCuttingLayoutController(SheetCuttingLayoutTestCase):
 			patch.object(
 				controller, "_workflow_action_allows_self_approval", return_value=False
 			) as allows_self,
-			patch.object(controller, "record_approval_snapshot") as snapshot,
+			patch.object(controller, "_insert_approval_snapshot_row") as snapshot,
 			patch.object(controller.frappe, "throw", side_effect=Exception("self approval blocked")),
 			self.assertRaisesRegex(Exception, "self approval blocked"),
 		):
@@ -309,7 +317,7 @@ class TestSheetCuttingLayoutController(SheetCuttingLayoutTestCase):
 
 		with (
 			patch.object(controller, "retire_layout") as retire,
-			patch.object(controller, "record_approval_snapshot") as snapshot,
+			patch.object(controller, "_insert_approval_snapshot_row") as snapshot,
 		):
 			doc.on_cancel()
 
@@ -554,6 +562,29 @@ class TestSheetCuttingLayoutController(SheetCuttingLayoutTestCase):
 		self.assertEqual(len(layout.approval_snapshot), 1)
 		self.assertEqual(layout.approval_snapshot[0].step_name, "MR Approval")
 		self.assertEqual(layout.approval_snapshot[0].decision, "Approved")
+
+	def test_draft_workflow_actions_persist_approval_snapshots_after_reload(self) -> None:
+		from frappe.model.workflow import apply_workflow
+
+		layout = make_layout(
+			finished_part_code=f"SCLTESTFG{frappe.generate_hash(length=5).upper()}SHR",
+			parts_per_strip=1,
+			no_of_strips=1,
+			strip_length_mm=2500,
+		).insert()
+
+		layout = apply_workflow(layout, "Submit for Check")
+		layout = apply_workflow(layout, "Reject")
+		layout.reload()
+
+		snapshots = [(row.step_name, row.decision) for row in layout.approval_snapshot]
+		self.assertEqual(
+			snapshots,
+			[
+				("Submit for Check", "Submitted"),
+				("Rejection", "Rejected"),
+			],
+		)
 
 	def test_native_cancel_persists_supersession_snapshot_after_reload(self) -> None:
 		layout = make_release_ready_layout()

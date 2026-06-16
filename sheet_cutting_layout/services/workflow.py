@@ -39,9 +39,29 @@ def record_approval_snapshot(
 	approver: str | None,
 	decision_time: datetime,
 ) -> bool:
+	row = approval_snapshot_row(action=action, approver=approver, decision_time=decision_time)
+	if row is None:
+		return False
+
+	if hasattr(doc, "append"):
+		doc.append("approval_snapshot", row)
+		return True
+
+	snapshot_rows = list(getattr(doc, "approval_snapshot", []) or [])
+	snapshot_rows.append(row)
+	doc.approval_snapshot = snapshot_rows
+	return True
+
+
+def approval_snapshot_row(
+	*,
+	action: str,
+	approver: str | None,
+	decision_time: datetime,
+) -> dict[str, object] | None:
 	step_name = APPROVAL_SNAPSHOT_ACTIONS.get(action)
 	if not step_name:
-		return False
+		return None
 
 	decision = (
 		"Submitted"
@@ -56,14 +76,7 @@ def record_approval_snapshot(
 		"decision": decision,
 		"decision_time": decision_time,
 	}
-	if hasattr(doc, "append"):
-		doc.append("approval_snapshot", row)
-		return True
-
-	snapshot_rows = list(getattr(doc, "approval_snapshot", []) or [])
-	snapshot_rows.append(row)
-	doc.approval_snapshot = snapshot_rows
-	return True
+	return row
 
 
 @dataclass
