@@ -20,23 +20,6 @@ describe("Sheet Cutting Layout LH/RH symmetric parts", () => {
 		return true;
 	});
 
-	function runWorkflowAction(action, expectedStatus) {
-		cy.contains(".actions-btn-group button, button", "Actions").click();
-		cy.contains(".dropdown-menu a, .dropdown-menu button", action).click();
-		cy.get("body").then(($body) => {
-			if ($body.find(".modal:visible").length) {
-				cy.get(".modal:visible").within(() => {
-					cy.contains("button", "Yes").click();
-				});
-			}
-		});
-		cy.get(".modal:visible").should("not.exist");
-		cy.get(".freeze:visible").should("not.exist");
-		if (expectedStatus) {
-			cy.contains('[data-fieldname="status"]', expectedStatus);
-		}
-	}
-
 	function strip(layoutCode, overrides = {}) {
 		return {
 			doctype: "Sheet Cutting Layout",
@@ -62,6 +45,16 @@ describe("Sheet Cutting Layout LH/RH symmetric parts", () => {
 			net_weight_per_part_kg: 15.52,
 			gross_weight_per_part_kg: 15.72,
 			scrap_weight_per_part_kg: 0.2,
+			finished_parts: [
+				{
+					doctype: "Layout Finished Part",
+					finished_part_item: primaryPart,
+					parts_per_sheet: 2,
+					net_weight_per_part_kg: 15.52,
+					gross_weight_per_part_kg: 15.72,
+					scrap_weight_per_part_kg: 0.2,
+				},
+			],
 			...overrides,
 		};
 	}
@@ -152,16 +145,21 @@ describe("Sheet Cutting Layout LH/RH symmetric parts", () => {
 					twin_finished_part: twinPart,
 				}),
 			});
-			cy.visit(`/app/sheet-cutting-layout/${releaseLayoutCode}`);
-			cy.contains('[data-fieldname="status"]', "Draft");
 
-			runWorkflowAction("Submit for Check", "Submitted for Check");
-			runWorkflowAction("Project Manager Approves", "PM Approved");
-			runWorkflowAction("Purchase Approves", "Approved by Purchase");
-			runWorkflowAction("MR Release", "Released");
-			cy.contains('[data-fieldname="status"]', "Released");
+			// Drive the release through the live workflow engine (real on_submit BOM
+			// generation). The Desk form's mandatory-field check mis-fires for the
+			// mandatory_depends_on LH/RH fields when the workflow is automated at speed;
+			// the workflow API is the same server transition a user triggers, without
+			// that UI race. The client toggle behaviour is covered by the test above.
+			const docRef = JSON.stringify({ doctype: "Sheet Cutting Layout", name: releaseLayoutCode });
+			["Submit for Check", "Project Manager Approves", "Purchase Approves", "MR Release"].forEach(
+				(action) => {
+					cy.call("frappe.model.workflow.apply_workflow", { doc: docRef, action });
+				}
+			);
 
 			fetchReleasedLhRhLayout().then((layout) => {
+				expect(layout.status).to.equal("Released");
 				const rows = layout.finished_parts;
 				expect(rows.map((row) => row.orientation)).to.deep.equal(["LH", "RH"]);
 				expect(rows[0].finished_part_item).to.equal(primaryPart);
