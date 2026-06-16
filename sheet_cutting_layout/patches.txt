@@ -4,4 +4,3 @@
 
 [post_model_sync]
 # Patches added in this section will be executed after doctypes are migrated
-sheet_cutting_layout.patches.v1_0_backfill_approval_snapshots_from_workflow_comments
