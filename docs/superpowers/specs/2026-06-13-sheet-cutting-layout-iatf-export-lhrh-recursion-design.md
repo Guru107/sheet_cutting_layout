@@ -113,9 +113,12 @@ Resulting lifecycle, all native:
      the BOM ends **deactivated**.
   3. The layout cancels cleanly via native **`ignore_linked_doctypes = ["BOM"]`** on the doctype — no
      manual `db_set` / backlink-unlink / savepoint juggling.
-- **Delete** is purely framework-gated: attempt `doc.delete()`; Frappe blocks via `on_trash` link
-  checks if anything still links (submitted BOM, Work Order, Stock Entry). Success ⇒ genuinely unused.
-  No custom "is it used?" query.
+- **Delete** is framework-gated, with one app-owned cleanup first. `on_trash` clears the layout's own
+  residue — the `sheet_cutting_layout` backlink on its **cancelled** (`docstatus=2`) BOMs, plus any stale
+  `Workflow Action` rows (added 2026-06-16) — so those app-created links don't block the delete. Genuine
+  usage still blocks natively: `doc.delete()` is refused by Frappe's `on_trash` link checks if anything
+  *else* links (active/submitted BOM, Work Order, Stock Entry). Success ⇒ genuinely unused. No custom
+  "is it used?" query.
 
 The no-cycle guard on `child_layout` (§9.3) guarantees the cascade terminates.
 
@@ -200,7 +203,11 @@ the native direction:
    docstatus-1 dead-end (see §4.2); `approval_snapshot` partially duplicates native workflow audit.
    → Make `Superseded` `doc_status: 2` so Supersede drives `doc.cancel()`, remove the unreachable
    `Cancel` state, and **keep `approval_snapshot`** for the IATF signature trail (justified), noting the
-   overlap. (Findings 17, 35.)
+   overlap. (Findings 17, 35.) **Refined 2026-06-16:** snapshots are recorded **live on every workflow
+   transition** — draft approvals (Submitted for Check / PM Approved / Approved by Purchase / Rejected)
+   via `on_update`, release/supersede via the existing `on_submit`/`on_cancel` calls — persisted as
+   `Layout Approval Snapshot` child rows, idempotent by `step_name`. The migration-backfill patch was
+   removed in favour of this live persistence.
 8. **frappe-less test mode + pytest emulation (low, pervasive).** `try: import frappe` shims in
    production services/controllers; `unittest_adapter.py` reimplements pytest
    (`approx/raises/parametrize/fixtures`); `factories.py` hand-rolls cleanup vs `FrappeTestCase`
@@ -247,7 +254,9 @@ has no such field, a latent mismatch this closes — plus an `orientation` colum
 `sheet_cutting_layout = this layout`** (already done in `_insert_frappe_bom`), so both reference the same
 Sheet Cutting Layout. `_sync_finished_part_reference_rows` fills the `finished_parts` mirror with both
 rows (item, orientation, generated BOM, quantities). With the Phase-0 fix, the parent `generated_bom`
-holds the primary's BOM; the mirror holds both.
+holds the primary's BOM; the mirror holds both. Each BOM's end-piece **byproduct** items derive from
+that BOM's own finished part (primary vs twin), so the twin's BOM carries twin-derived end-piece item
+codes (2026-06-16; see §9.2).
 
 ### 8.3 Validation
 When `is_lh_rh`: `orientation` and `twin_finished_part` are required; the twin code is alphanumeric +
@@ -291,6 +300,12 @@ Add optional **`child_layout`** (Link → Sheet Cutting Layout) to `Layout End P
   the real BOM. The parent BOM still carries the end piece as a byproduct row (consumed by the child as
   raw material — no double counting; the existing weight-balance validator already accounts for
   byproducts).
+
+> **End-piece item-code source (refined 2026-06-16).** The generated end-piece **item code** derives
+> from the **layout's main finished part** (`finished_part_code` for the simple end-piece BOM), and from
+> **that BOM's specific part** (primary/twin) for a main-BOM byproduct row — threaded as
+> `source_finished_part` through `derive_end_piece_item_code_from_row` / `ensure_end_piece_item`. It is
+> no longer taken from the end-piece row's `used_for_finished_part`, which stays the row's reuse target.
 
 ### 9.3 Guards (native validation)
 - Child `raw_material_item` must equal the parent end-piece item.
@@ -398,7 +413,7 @@ cross-checked against the installed Frappe v15 / ERPNext v15.101 source. Finding
 | 32 | low | release_service.py:378-439 (`_insert_frappe_bom`) | Set only input fields; let `validate()` compute rate/status |
 | 33 | low | versioning.py:73-89 (`_reset_child_row`) | Let `copy_doc` localize children; clear only app fields |
 | 34 | low | controllers (`try: import frappe` + stub Document) | Bench-native tests; remove stub Document/whitelist |
-| 35 | low | workflow.py:33-64 (`record_approval_snapshot`) | Keep for IATF trail; note overlap with native workflow audit |
+| 35 | low | workflow.py (`record_approval_snapshot` / `approval_snapshot_row`) | Keep for IATF trail. **Recorded live per workflow transition** (draft approvals via `on_update`) as idempotent `Layout Approval Snapshot` rows; backfill patch removed (2026-06-16). |
 | 36 | low | ~~tests/base.py (FrappeTestCase fallback)~~ — **DONE (develop merge 2026-06-13)**: `base.py` now a 26-line bench-native v16-first/v15-fallback `FrappeTestCase` probe (`SheetCuttingLayoutTestCase`) | — |
 
 ## 13. Open items
