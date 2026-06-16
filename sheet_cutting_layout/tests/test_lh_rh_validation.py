@@ -74,6 +74,8 @@ class TestLhRhValidation(SheetCuttingLayoutTestCase):
 		self.assertEqual(layout.consumption_status, "Balanced")
 
 	def test_non_lh_rh_ignores_stale_pair_fields(self) -> None:
-		layout = _layout(is_lh_rh=0, orientation=None, twin_finished_part="")
+		layout = _layout(is_lh_rh=0, orientation="LH", twin_finished_part="SCLTESTFG002SHR")
 		validate_sheet_cutting_layout(layout)
 		self.assertEqual(layout.consumption_status, "Balanced")
+		self.assertIsNone(layout.orientation)
+		self.assertIsNone(layout.twin_finished_part)

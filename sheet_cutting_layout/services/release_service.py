@@ -335,8 +335,7 @@ def _append_frappe_bom_scrap_row(bom_doc: object, row: BomItemRow) -> None:
 			{
 				"item_code": row.item_code,
 				"stock_qty": row.qty,
-				"qty": row.qty,
-				"uom": row.uom,
+				"stock_uom": row.uom,
 			},
 		)
 		return

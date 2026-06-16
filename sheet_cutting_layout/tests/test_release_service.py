@@ -1389,7 +1389,7 @@ class TestFrappeBomInsertAndEndPieces(ReleaseServiceIsolatedTestCase):
 
 		self.assertEqual(
 			created_boms[0].scrap_items,
-			[{"item_code": "SCRAP-ITEM", "stock_qty": 1.0, "qty": 1.0, "uom": "Kg"}],
+			[{"item_code": "SCRAP-ITEM", "stock_qty": 1.0, "stock_uom": "Kg"}],
 		)
 
 	def test_frappe_bom_insert_appends_scrap_to_secondary_items_when_required(self) -> None:
@@ -1539,14 +1539,12 @@ class TestFrappeBomInsertAndEndPieces(ReleaseServiceIsolatedTestCase):
 			{
 				"item_code": "PROCESSSCRAP001",
 				"stock_qty": 14.233142,
-				"qty": 14.233142,
-				"uom": "Kg",
+				"stock_uom": "Kg",
 			},
 			{
 				"item_code": "FG002SHR-EP-1.6x1250x179",
 				"stock_qty": 2.81388,
-				"qty": 2.81388,
-				"uom": "Kg",
+				"stock_uom": "Kg",
 			},
 		]
 		assert round(layout.finished_parts[0].scrap_weight_kg, 6) == 17.047022

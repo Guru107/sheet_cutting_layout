@@ -286,6 +286,8 @@ def _validate_parent_finished_part_fields(layout: SheetCuttingLayoutDocument) ->
 
 def _validate_lh_rh_fields(layout: SheetCuttingLayoutDocument) -> None:
 	if not getattr(layout, "is_lh_rh", None):
+		layout.orientation = None
+		layout.twin_finished_part = None
 		return
 
 	orientation = str(getattr(layout, "orientation", "") or "").strip()

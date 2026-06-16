@@ -220,3 +220,49 @@ class TestRecursiveEndPieceLifecycle(SheetCuttingLayoutTestCase):
 		grandchild.reload()
 		with self.assertRaises(frappe.LinkExistsError):
 			grandchild.delete()
+
+	def test_live_child_layout_provider_rejects_indirect_cycle(self) -> None:
+		first = self._layout_doc(
+			code=f"SCL-RECUR-FIRST-{self.suffix}",
+			raw_material_item=self.child_end_piece_item,
+			width=500,
+			length=1000,
+			strip_width=500,
+			strip_length=1000,
+			net_weight=7.86,
+		).insert(ignore_permissions=True)
+		second = self._layout_doc(
+			code=f"SCL-RECUR-SECOND-{self.suffix}",
+			raw_material_item=self.parent_end_piece_item,
+			width=500,
+			length=500,
+			strip_width=250,
+			strip_length=500,
+			net_weight=1.965,
+			end_piece={
+				"width_mm": 250,
+				"length_mm": 500,
+				"disposition": "Reuse",
+				"used_for_finished_part": self.finished_part,
+				"scrap_item": self.scrap_item,
+				"child_layout": first.name,
+				"bom_quantity": 1,
+				"net_weight_per_part_kg": 1.965,
+			},
+		).insert(ignore_permissions=True)
+
+		first.append(
+			"end_pieces",
+			{
+				"width_mm": 500,
+				"length_mm": 1000,
+				"disposition": "Reuse",
+				"used_for_finished_part": self.finished_part,
+				"scrap_item": self.scrap_item,
+				"child_layout": second.name,
+				"bom_quantity": 1,
+				"net_weight_per_part_kg": 7.86,
+			},
+		)
+		with self.assertRaisesRegex(frappe.ValidationError, "create a cycle"):
+			first.save(ignore_permissions=True)
