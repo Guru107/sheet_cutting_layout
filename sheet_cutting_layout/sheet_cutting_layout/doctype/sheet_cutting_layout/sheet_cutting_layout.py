@@ -82,6 +82,7 @@ class SheetCuttingLayout(Document):
 		retire_layout(self)
 
 	def on_trash(self) -> None:
+		_clear_cancelled_bom_links(self)
 		_clear_rejected_workflow_actions(self)
 
 
@@ -234,9 +235,6 @@ def _workflow_action_allows_self_approval(doc: object, *, action: str) -> bool:
 
 
 def _clear_rejected_workflow_actions(doc: object) -> None:
-	if getattr(doc, "status", None) != "Rejected":
-		return
-
 	doctype = getattr(doc, "doctype", "Sheet Cutting Layout")
 	workflow_action_names = frappe.db.get_all(
 		"Workflow Action",
@@ -253,6 +251,16 @@ def _clear_rejected_workflow_actions(doc: object) -> None:
 	frappe.db.delete(
 		"Workflow Action",
 		{"reference_doctype": doctype, "reference_name": doc.name},
+	)
+
+
+def _clear_cancelled_bom_links(doc: object) -> None:
+	frappe.db.set_value(
+		"BOM",
+		{"sheet_cutting_layout": doc.name, "docstatus": 2},
+		"sheet_cutting_layout",
+		None,
+		update_modified=False,
 	)
 
 

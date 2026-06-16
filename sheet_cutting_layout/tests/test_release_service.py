@@ -1001,6 +1001,7 @@ class TestControllerWorkflow(ReleaseServiceIsolatedTestCase):
 		)
 
 		deletions: list[tuple[str, dict[str, str]]] = []
+		unlinked_bom_filters: list[dict[str, object]] = []
 
 		class DbStub:
 			@staticmethod
@@ -1019,6 +1020,20 @@ class TestControllerWorkflow(ReleaseServiceIsolatedTestCase):
 			def delete(doctype: str, filters: dict[str, str]) -> None:
 				deletions.append((doctype, filters))
 
+			@staticmethod
+			def set_value(
+				doctype: str,
+				filters: dict[str, object],
+				fieldname: str,
+				value: object,
+				**kwargs: object,
+			) -> None:
+				assert doctype == "BOM"
+				assert fieldname == "sheet_cutting_layout"
+				assert value is None
+				assert kwargs == {"update_modified": False}
+				unlinked_bom_filters.append(filters)
+
 		class FrappeStub:
 			db = DbStub()
 
@@ -1030,6 +1045,7 @@ class TestControllerWorkflow(ReleaseServiceIsolatedTestCase):
 
 		doc.on_trash()
 
+		assert unlinked_bom_filters == [{"sheet_cutting_layout": "SCL-REJECTED", "docstatus": 2}]
 		assert deletions == [
 			(
 				"Workflow Action Permitted Role",
@@ -1041,21 +1057,44 @@ class TestControllerWorkflow(ReleaseServiceIsolatedTestCase):
 			),
 		]
 
-	def test_non_rejected_layout_on_trash_keeps_workflow_action_links(self) -> None:
+	def test_non_rejected_layout_on_trash_removes_workflow_action_links(self) -> None:
 		from sheet_cutting_layout.sheet_cutting_layout.doctype.sheet_cutting_layout import (
 			sheet_cutting_layout,
 		)
 
 		deletions: list[object] = []
+		unlinked_bom_filters: list[dict[str, object]] = []
 
 		class DbStub:
 			@staticmethod
 			def get_all(doctype: str, **kwargs: object) -> list[str]:
-				raise AssertionError("non-rejected layouts must not query workflow actions")
+				assert doctype == "Workflow Action"
+				assert kwargs == {
+					"filters": {
+						"reference_doctype": "Sheet Cutting Layout",
+						"reference_name": "SCL-RELEASED",
+					},
+					"pluck": "name",
+				}
+				return ["WF-ACTION-1"]
 
 			@staticmethod
 			def delete(doctype: str, filters: dict[str, str]) -> None:
 				deletions.append((doctype, filters))
+
+			@staticmethod
+			def set_value(
+				doctype: str,
+				filters: dict[str, object],
+				fieldname: str,
+				value: object,
+				**kwargs: object,
+			) -> None:
+				assert doctype == "BOM"
+				assert fieldname == "sheet_cutting_layout"
+				assert value is None
+				assert kwargs == {"update_modified": False}
+				unlinked_bom_filters.append(filters)
 
 		class FrappeStub:
 			db = DbStub()
@@ -1068,7 +1107,17 @@ class TestControllerWorkflow(ReleaseServiceIsolatedTestCase):
 
 		doc.on_trash()
 
-		assert deletions == []
+		assert unlinked_bom_filters == [{"sheet_cutting_layout": "SCL-RELEASED", "docstatus": 2}]
+		assert deletions == [
+			(
+				"Workflow Action Permitted Role",
+				{"parenttype": "Workflow Action", "parent": ["in", ["WF-ACTION-1"]]},
+			),
+			(
+				"Workflow Action",
+				{"reference_doctype": "Sheet Cutting Layout", "reference_name": "SCL-RELEASED"},
+			),
+		]
 
 	def test_controller_before_cancel_records_supersede_snapshot(self) -> None:
 		from sheet_cutting_layout.sheet_cutting_layout.doctype.sheet_cutting_layout import (
