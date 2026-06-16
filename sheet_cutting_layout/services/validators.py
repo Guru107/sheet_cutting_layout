@@ -11,16 +11,10 @@ from sheet_cutting_layout.services.bom_service import (
 	BomItemRow,
 	build_bom_from_layout,
 )
-from sheet_cutting_layout.services.cascade_graph import CascadeCycleError, collect_descendant_layouts
 from sheet_cutting_layout.services.end_piece_item_service import (
 	derive_end_piece_item_code,
 	derive_end_piece_item_code_from_row,
 	format_code_number,
-)
-from sheet_cutting_layout.services.recursive_end_piece import (
-	child_raw_material_matches_end_piece_item,
-	child_release_blocked_until_parent_item_exists,
-	end_piece_has_child_layout,
 )
 
 _ = frappe._
@@ -75,6 +69,32 @@ ALNUM_RE = re.compile(r"^[A-Za-z0-9]+$")
 DEFAULT_FLOAT_PRECISION = 6
 SHEET_CONSUMPTION_PRECISION = 3
 SHEET_CONSUMPTION_TOLERANCE_KG = 0.005
+
+
+class CascadeCycleError(Exception):
+	"""Raised when a child_layout chain forms a cycle."""
+
+
+def collect_descendant_layouts(root: str, child_links: Callable[[str], Sequence[str]]) -> list[str]:
+	"""Return layouts reachable from root through child links, leaves first."""
+	ordered: list[str] = []
+	seen: set[str] = set()
+
+	def visit(layout_name: str, ancestors: tuple[str, ...]) -> None:
+		if layout_name in ancestors:
+			raise CascadeCycleError(
+				f"child_layout cycle detected at {layout_name}: {' -> '.join((*ancestors, layout_name))}"
+			)
+		next_ancestors = (*ancestors, layout_name)
+		for child in child_links(layout_name):
+			if not child or child in seen:
+				continue
+			visit(child, next_ancestors)
+			seen.add(child)
+			ordered.append(child)
+
+	visit(root, ())
+	return ordered
 
 
 def validate_finished_part_code(code: str) -> None:
@@ -370,9 +390,9 @@ def _validate_child_layouts(
 	layout_name = str(getattr(layout, "name", "") or "").strip()
 	for end_piece in end_pieces:
 		child_layout = getattr(end_piece, "child_layout", None)
-		if not end_piece_has_child_layout(child_layout):
+		child_layout = str(child_layout or "").strip()
+		if not child_layout:
 			continue
-		child_layout = str(child_layout).strip()
 		if not _is_reuse_end_piece(end_piece):
 			frappe.throw(_("A child layout can only be linked on a reuse end piece"))
 		if layout_name and child_layout == layout_name:
@@ -392,9 +412,12 @@ def _validate_child_raw_material(
 		child_layout,
 		"raw_material_item",
 	)
-	if child_raw_material_matches_end_piece_item(
-		child_raw_material_item=child_raw_material_item,
-		end_piece_item_code=end_piece_item_code,
+	child_raw_material_item = str(child_raw_material_item or "").strip()
+	end_piece_item_code = str(end_piece_item_code or "").strip()
+	if (
+		child_raw_material_item
+		and end_piece_item_code
+		and child_raw_material_item.casefold() == end_piece_item_code.casefold()
 	):
 		return
 	frappe.throw(
@@ -409,38 +432,32 @@ def _validate_no_child_layout_cycle(layout_name: str, child_layout: str) -> None
 	if not layout_name:
 		return
 	try:
-		descendants = collect_descendant_layouts(child_layout, _child_links_provider())
+		descendants = collect_descendant_layouts(child_layout, _child_layout_links_from_db)
 	except CascadeCycleError:
 		frappe.throw(_("Child layout chain contains a cycle and cannot be saved"))
 	if layout_name in descendants:
 		frappe.throw(_("Linking child layout {0} would create a cycle").format(child_layout))
 
 
-def _child_links_provider() -> Callable[[str], list[str]]:
-	def child_links(layout_name: str) -> list[str]:
-		rows = frappe.get_all(
-			"Layout End Piece",
-			filters={"parent": layout_name, "parenttype": "Sheet Cutting Layout"},
-			pluck="child_layout",
-		)
-		return [str(row).strip() for row in rows if row and str(row).strip()]
-
-	return child_links
+def _child_layout_links_from_db(layout_name: str) -> list[str]:
+	rows = frappe.get_all(
+		"Layout End Piece",
+		filters={"parent": layout_name, "parenttype": "Sheet Cutting Layout"},
+		pluck="child_layout",
+	)
+	return [str(row).strip() for row in rows if row and str(row).strip()]
 
 
 def _validate_child_release_order(layout: SheetCuttingLayoutDocument) -> None:
 	if str(getattr(layout, "status", "") or "").strip() != "Released":
 		return
-	raw_material_item = getattr(layout, "raw_material_item", None)
-	if child_release_blocked_until_parent_item_exists(
-		raw_material_item=raw_material_item,
-		item_exists=lambda code: bool(frappe.db.exists("Item", code)),
-	):
+	raw_material_item = str(getattr(layout, "raw_material_item", None) or "").strip()
+	if raw_material_item and not frappe.db.exists("Item", raw_material_item):
 		frappe.throw(
 			_(
 				"Raw material item {0} does not exist yet; release the parent layout "
 				"that produces this end-piece item before releasing this child layout"
-			).format(str(raw_material_item).strip())
+			).format(raw_material_item)
 		)
 
 

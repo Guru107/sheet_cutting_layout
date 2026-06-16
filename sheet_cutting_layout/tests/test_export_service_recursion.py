@@ -4,6 +4,12 @@ from collections.abc import Callable
 
 from openpyxl import load_workbook
 
+from sheet_cutting_layout.services.export_service import (
+	build_multi_sheet_workbook,
+	default_template_path,
+	unique_sheet_title,
+	walk_layout_tree,
+)
 from sheet_cutting_layout.tests.base import SheetCuttingLayoutTestCase
 
 
@@ -58,8 +64,6 @@ class TestWalkLayoutTree(SheetCuttingLayoutTestCase):
 			],
 		)
 
-		from sheet_cutting_layout.services.export_service import walk_layout_tree
-
 		pages = walk_layout_tree(parent, self._registry(parent))
 
 		self.assertEqual([page.name for page in pages], ["L1"])
@@ -67,8 +71,6 @@ class TestWalkLayoutTree(SheetCuttingLayoutTestCase):
 	def test_single_child_layout_appended_after_parent(self) -> None:
 		child = _FakeLayout("L2")
 		parent = _FakeLayout("L1", end_pieces=[_FakeEndPiece("Reuse", "L2")])
-
-		from sheet_cutting_layout.services.export_service import walk_layout_tree
 
 		pages = walk_layout_tree(parent, self._registry(parent, child))
 
@@ -78,8 +80,6 @@ class TestWalkLayoutTree(SheetCuttingLayoutTestCase):
 		grandchild = _FakeLayout("L3")
 		child = _FakeLayout("L2", end_pieces=[_FakeEndPiece("Reuse", "L3")])
 		parent = _FakeLayout("L1", end_pieces=[_FakeEndPiece("Reuse", "L2")])
-
-		from sheet_cutting_layout.services.export_service import walk_layout_tree
 
 		pages = walk_layout_tree(parent, self._registry(parent, child, grandchild))
 
@@ -96,8 +96,6 @@ class TestWalkLayoutTree(SheetCuttingLayoutTestCase):
 			],
 		)
 
-		from sheet_cutting_layout.services.export_service import walk_layout_tree
-
 		pages = walk_layout_tree(parent, self._registry(parent, child_a, child_b))
 
 		self.assertEqual([page.name for page in pages], ["L1", "L2A", "L2B"])
@@ -107,8 +105,6 @@ class TestWalkLayoutTree(SheetCuttingLayoutTestCase):
 		child = _FakeLayout("L2", end_pieces=[_FakeEndPiece("Reuse", "L1")])
 		parent.end_pieces = [_FakeEndPiece("Reuse", "L2")]
 
-		from sheet_cutting_layout.services.export_service import walk_layout_tree
-
 		pages = walk_layout_tree(parent, self._registry(parent, child))
 
 		self.assertEqual([page.name for page in pages], ["L1", "L2"])
@@ -116,34 +112,24 @@ class TestWalkLayoutTree(SheetCuttingLayoutTestCase):
 
 class TestUniqueSheetTitle(SheetCuttingLayoutTestCase):
 	def test_plain_title_passes_through(self) -> None:
-		from sheet_cutting_layout.services.export_service import unique_sheet_title
-
 		self.assertEqual(unique_sheet_title("L1", set()), "L1")
 
 	def test_invalid_characters_are_replaced_with_underscore(self) -> None:
-		from sheet_cutting_layout.services.export_service import unique_sheet_title
-
 		title = unique_sheet_title(r"SCL/0102:AAG[06400]\X*?", set())
 
 		for forbidden in "\\/*?:[]":
 			self.assertNotIn(forbidden, title)
 
 	def test_title_is_truncated_to_31_characters(self) -> None:
-		from sheet_cutting_layout.services.export_service import unique_sheet_title
-
 		title = unique_sheet_title("A" * 50, set())
 
 		self.assertLessEqual(len(title), 31)
 		self.assertEqual(title, "A" * 31)
 
 	def test_duplicate_titles_get_a_numeric_suffix(self) -> None:
-		from sheet_cutting_layout.services.export_service import unique_sheet_title
-
 		self.assertEqual(unique_sheet_title("L1", {"L1"}), "L1 (2)")
 
 	def test_suffix_keeps_title_within_31_characters(self) -> None:
-		from sheet_cutting_layout.services.export_service import unique_sheet_title
-
 		title = unique_sheet_title("A" * 31, {"A" * 31})
 
 		self.assertLessEqual(len(title), 31)
@@ -151,36 +137,26 @@ class TestUniqueSheetTitle(SheetCuttingLayoutTestCase):
 		self.assertTrue(title.endswith("(2)"))
 
 	def test_empty_base_falls_back_to_sheet(self) -> None:
-		from sheet_cutting_layout.services.export_service import unique_sheet_title
-
 		self.assertEqual(unique_sheet_title("", set()), "Sheet")
 
 
 class TestBuildMultiSheetWorkbook(SheetCuttingLayoutTestCase):
 	def test_single_page_workbook_has_one_sheet(self) -> None:
-		from sheet_cutting_layout.services.export_service import build_multi_sheet_workbook
-
 		workbook = build_multi_sheet_workbook([_base_page("L1")])
 
 		self.assertEqual(workbook.sheetnames, ["L1"])
 
 	def test_one_worksheet_per_page_in_order(self) -> None:
-		from sheet_cutting_layout.services.export_service import build_multi_sheet_workbook
-
 		workbook = build_multi_sheet_workbook([_base_page("L1"), _base_page("L2"), _base_page("L3")])
 
 		self.assertEqual(workbook.sheetnames, ["L1", "L2", "L3"])
 
 	def test_duplicate_page_titles_are_made_unique(self) -> None:
-		from sheet_cutting_layout.services.export_service import build_multi_sheet_workbook
-
 		workbook = build_multi_sheet_workbook([_base_page("DUP"), _base_page("DUP")])
 
 		self.assertEqual(workbook.sheetnames, ["DUP", "DUP (2)"])
 
 	def test_each_sheet_carries_its_own_part_name(self) -> None:
-		from sheet_cutting_layout.services.export_service import build_multi_sheet_workbook
-
 		workbook = build_multi_sheet_workbook(
 			[
 				_base_page("L1", part_name="Parent Bracket"),
@@ -192,11 +168,6 @@ class TestBuildMultiSheetWorkbook(SheetCuttingLayoutTestCase):
 		self.assertEqual(workbook["L2"]["G5"].value, "Part Name:-End Piece Bracket")
 
 	def test_cloned_sheets_preserve_approved_template_format(self) -> None:
-		from sheet_cutting_layout.services.export_service import (
-			build_multi_sheet_workbook,
-			default_template_path,
-		)
-
 		workbook = build_multi_sheet_workbook([_base_page("L1"), _base_page("L2")])
 		template_worksheet = load_workbook(default_template_path()).active
 		template_image_count = len(template_worksheet._images)
@@ -217,7 +188,5 @@ class TestBuildMultiSheetWorkbook(SheetCuttingLayoutTestCase):
 			self.assertEqual(_image_anchor_positions(worksheet), template_image_anchors)
 
 	def test_empty_page_list_raises(self) -> None:
-		from sheet_cutting_layout.services.export_service import build_multi_sheet_workbook
-
 		with self.assertRaises(ValueError):
 			build_multi_sheet_workbook([])

@@ -2,11 +2,6 @@ from __future__ import annotations
 
 import frappe
 
-from sheet_cutting_layout.services.recursive_end_piece import (
-	child_raw_material_matches_end_piece_item,
-	child_release_blocked_until_parent_item_exists,
-	end_piece_has_child_layout,
-)
 from sheet_cutting_layout.tests.base import SheetCuttingLayoutTestCase
 from sheet_cutting_layout.tests.factories import ensure_item, ensure_project
 
@@ -20,48 +15,6 @@ class TestLayoutEndPieceChildLayoutField(SheetCuttingLayoutTestCase):
 		self.assertEqual(field.options, "Sheet Cutting Layout")
 		self.assertEqual(field.depends_on, 'eval:doc.disposition=="Reuse"')
 		self.assertEqual(field.no_copy, 1)
-
-
-class TestRecursiveEndPieceGuards(SheetCuttingLayoutTestCase):
-	def test_end_piece_has_child_layout_uses_non_blank_links(self) -> None:
-		self.assertTrue(end_piece_has_child_layout("SCL-CHILD-001"))
-		self.assertFalse(end_piece_has_child_layout(None))
-		self.assertFalse(end_piece_has_child_layout("   "))
-
-	def test_raw_material_match_is_trimmed_and_case_insensitive(self) -> None:
-		self.assertTrue(
-			child_raw_material_matches_end_piece_item(
-				child_raw_material_item=" part001shr-ep-2x1250x179 ",
-				end_piece_item_code="PART001SHR-EP-2x1250x179",
-			)
-		)
-		self.assertFalse(
-			child_raw_material_matches_end_piece_item(
-				child_raw_material_item="OTHER",
-				end_piece_item_code="PART001SHR-EP-2x1250x179",
-			)
-		)
-
-	def test_release_order_guard_checks_item_existence(self) -> None:
-		seen: list[str] = []
-
-		def item_exists(code: str) -> bool:
-			seen.append(code)
-			return True
-
-		self.assertFalse(
-			child_release_blocked_until_parent_item_exists(
-				raw_material_item="  PART001SHR-EP-2x1250x179  ",
-				item_exists=item_exists,
-			)
-		)
-		self.assertEqual(seen, ["PART001SHR-EP-2x1250x179"])
-		self.assertTrue(
-			child_release_blocked_until_parent_item_exists(
-				raw_material_item="PART001SHR-EP-2x1250x179",
-				item_exists=lambda _code: False,
-			)
-		)
 
 
 class TestChildLayoutValidation(SheetCuttingLayoutTestCase):

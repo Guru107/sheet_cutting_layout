@@ -15,9 +15,8 @@ from sheet_cutting_layout.services.bom_service import (
 	parent_finished_part_row,
 	twin_finished_part_row,
 )
-from sheet_cutting_layout.services.cascade_graph import collect_descendant_layouts
 from sheet_cutting_layout.services.end_piece_item_service import ensure_end_piece_item
-from sheet_cutting_layout.services.validators import validate_sheet_cutting_layout
+from sheet_cutting_layout.services.validators import collect_descendant_layouts, validate_sheet_cutting_layout
 from sheet_cutting_layout.services.versioning import finalize_new_revision_release
 
 _ = frappe._

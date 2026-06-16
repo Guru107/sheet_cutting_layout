@@ -1,6 +1,18 @@
 from __future__ import annotations
 
+import io
+
+from openpyxl import load_workbook
+
 from sheet_cutting_layout.tests.base import SheetCuttingLayoutTestCase
+
+
+def _render_workbook_content(layout: dict[str, object]) -> bytes:
+	from sheet_cutting_layout.services.export_service import build_multi_sheet_workbook
+
+	stream = io.BytesIO()
+	build_multi_sheet_workbook([("Sheet", layout)]).save(stream)
+	return stream.getvalue()
 
 
 def _base_layout() -> dict[str, object]:
@@ -370,17 +382,8 @@ class TestBuildCellMapEndPiecesAndGuards(SheetCuttingLayoutTestCase):
 			self.assertNotEqual(value, "None")
 
 
-class TestRenderWorkbookBytes(SheetCuttingLayoutTestCase):
+class TestWorkbookRendering(SheetCuttingLayoutTestCase):
 	def test_renders_cells_into_template_and_returns_xlsx_bytes(self) -> None:
-		import io
-
-		from openpyxl import load_workbook
-
-		from sheet_cutting_layout.services.export_service import (
-			default_template_path,
-			render_workbook_bytes,
-		)
-
 		layout = _base_layout()
 		layout.update(
 			{
@@ -390,7 +393,7 @@ class TestRenderWorkbookBytes(SheetCuttingLayoutTestCase):
 			}
 		)
 
-		content = render_workbook_bytes(layout, default_template_path())
+		content = _render_workbook_content(layout)
 
 		self.assertIsInstance(content, bytes)
 		self.assertGreater(len(content), 0)
@@ -408,19 +411,10 @@ class TestRenderWorkbookBytes(SheetCuttingLayoutTestCase):
 		self.assertEqual(worksheet["Q1"].value, "DOC. NO.:  FRM/PRD/15")
 
 	def test_empty_string_cells_clear_the_target_cell(self) -> None:
-		import io
-
-		from openpyxl import load_workbook
-
-		from sheet_cutting_layout.services.export_service import (
-			default_template_path,
-			render_workbook_bytes,
-		)
-
 		layout = _base_layout()
 		layout["sheet_thickness_mm"] = None
 
-		content = render_workbook_bytes(layout, default_template_path())
+		content = _render_workbook_content(layout)
 		workbook = load_workbook(io.BytesIO(content))
 		worksheet = workbook.active
 		self.assertIn(worksheet["K8"].value, (None, ""))
@@ -431,15 +425,6 @@ class TestRenderWorkbookBytes(SheetCuttingLayoutTestCase):
 			self.assertIn(worksheet[coordinate].value, (None, ""))
 
 	def test_formula_like_text_cells_are_escaped(self) -> None:
-		import io
-
-		from openpyxl import load_workbook
-
-		from sheet_cutting_layout.services.export_service import (
-			default_template_path,
-			render_workbook_bytes,
-		)
-
 		layout = _base_layout()
 		layout.update(
 			{
@@ -451,7 +436,7 @@ class TestRenderWorkbookBytes(SheetCuttingLayoutTestCase):
 			}
 		)
 
-		content = render_workbook_bytes(layout, default_template_path())
+		content = _render_workbook_content(layout)
 		workbook = load_workbook(io.BytesIO(content))
 		worksheet = workbook.active
 

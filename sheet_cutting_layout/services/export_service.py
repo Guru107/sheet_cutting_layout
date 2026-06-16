@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import io
 import os
 import re
 from collections.abc import Callable, Mapping, Sequence
@@ -53,16 +52,6 @@ def default_template_path() -> str:
 		"iatf",
 		"sheet_cutting_layout.xlsx",
 	)
-
-
-def render_workbook_bytes(layout: Mapping[str, object], template_path: str) -> bytes:
-	"""Open the FRM/PRD/15 template, apply the cell map, return .xlsx bytes."""
-	workbook = load_workbook(template_path)
-	worksheet = workbook.active
-	_apply_cell_map(worksheet, layout)
-	buffer = io.BytesIO()
-	workbook.save(buffer)
-	return buffer.getvalue()
 
 
 def walk_layout_tree(layout: object, fetch_child: Callable[[str], object]) -> list[object]:
@@ -262,16 +251,14 @@ def _end_piece_detail_cells(layout: Mapping[str, object]) -> dict[str, object]:
 	end_pieces: Sequence[Mapping[str, object]] = layout.get("end_pieces") or []
 	for end_piece, block in zip(end_pieces, blocks, strict=False):
 		size_thickness, size_width, size_length = block["size"]
-		detail_size_cells = block["detail_size"]
+		detail_thickness, detail_width, detail_length = block["detail_size"]
 		strip_thickness, strip_width, strip_length = block["strip"]
 		cells[size_thickness] = _num(sheet_thickness)
 		cells[size_width] = _num(end_piece.get("width_mm"))
 		cells[size_length] = _num(end_piece.get("length_mm"))
-		if detail_size_cells:
-			detail_thickness, detail_width, detail_length = detail_size_cells
-			cells[detail_thickness] = _num(sheet_thickness)
-			cells[detail_width] = _num(end_piece.get("width_mm"))
-			cells[detail_length] = _num(end_piece.get("length_mm"))
+		cells[detail_thickness] = _num(sheet_thickness)
+		cells[detail_width] = _num(end_piece.get("width_mm"))
+		cells[detail_length] = _num(end_piece.get("length_mm"))
 		cells[block["used_for"]] = _text(end_piece.get("used_for_finished_part"))
 		cells[strip_thickness] = _num(sheet_thickness)
 		cells[strip_width] = _num(end_piece.get("width_mm"))
