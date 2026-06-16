@@ -289,8 +289,14 @@ def _default_bom_document_factory(
 	return _insert_frappe_bom(bom)
 
 
-def _ensure_and_link_end_piece_item(layout: ReleaseLayoutDocument, row: object) -> str:
-	item_code = ensure_end_piece_item(layout, row)  # type: ignore[arg-type]
+def _ensure_and_link_end_piece_item(
+	layout: ReleaseLayoutDocument, row: object, finished_part: FinishedPartRow
+) -> str:
+	item_code = ensure_end_piece_item(
+		layout,
+		row,
+		source_finished_part=finished_part.finished_part_item,
+	)  # type: ignore[arg-type]
 	if hasattr(row, "end_piece_item_code"):
 		row.end_piece_item_code = item_code
 	return item_code

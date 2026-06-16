@@ -864,7 +864,7 @@ class TestSaveTimeAudit(ReleaseServiceIsolatedTestCase):
 				"frappe",
 				_audit_frappe_stub(
 					bom_quantity=77,
-					end_piece_item_code="FG002SHR-EP-1.6x1250x179",
+					end_piece_item_code="FG01SHR-EP-1.6x1250x179",
 					use_secondary_items=True,
 				),
 			),
@@ -1520,8 +1520,8 @@ class TestFrappeBomInsertAndEndPieces(ReleaseServiceIsolatedTestCase):
 		layout.company = "Test Company"
 		layout.sheet_thickness_mm = 1.6
 
-		def fake_ensure(_layout: object, _row: object) -> str:
-			return "FG002SHR-EP-1.6x1250x179"
+		def fake_ensure(_layout: object, _row: object, *, source_finished_part: str | None = None) -> str:
+			return f"{source_finished_part}-EP-1.6x1250x179"
 
 		self.start_patcher(patch.object(release_service, "frappe", FrappeStub))
 		self.start_patcher(patch.object(release_service, "ensure_end_piece_item", fake_ensure))
@@ -1533,7 +1533,7 @@ class TestFrappeBomInsertAndEndPieces(ReleaseServiceIsolatedTestCase):
 		)
 
 		assert result.generated_boms[0].name == "BOM-002-R2-001-FG01SHR"
-		assert layout.end_pieces[0].end_piece_item_code == "FG002SHR-EP-1.6x1250x179"
+		assert layout.end_pieces[0].end_piece_item_code == "FG01SHR-EP-1.6x1250x179"
 		assert len(created_boms) == 1
 		assert created_boms[0].scrap_items == [
 			{
@@ -1542,7 +1542,7 @@ class TestFrappeBomInsertAndEndPieces(ReleaseServiceIsolatedTestCase):
 				"stock_uom": "Kg",
 			},
 			{
-				"item_code": "FG002SHR-EP-1.6x1250x179",
+				"item_code": "FG01SHR-EP-1.6x1250x179",
 				"stock_qty": 2.81388,
 				"stock_uom": "Kg",
 			},
@@ -1634,8 +1634,8 @@ class TestFrappeBomInsertAndEndPieces(ReleaseServiceIsolatedTestCase):
 		)
 		assert persisted_layout is not layout
 
-		def fake_ensure(_layout: object, _row: object) -> str:
-			return "FG002SHR-EP-1.6x1250x179"
+		def fake_ensure(_layout: object, _row: object, *, source_finished_part: str | None = None) -> str:
+			return f"{source_finished_part}-EP-1.6x1250x179"
 
 		self.start_patcher(patch.object(release_service, "frappe", FrappeStub))
 		self.start_patcher(patch.object(release_service, "ensure_end_piece_item", fake_ensure))
@@ -1646,7 +1646,7 @@ class TestFrappeBomInsertAndEndPieces(ReleaseServiceIsolatedTestCase):
 			release_context=release_service.ReleaseContext(layouts=(persisted_layout,), boms=[]),
 		)
 
-		assert layout.end_pieces[0].end_piece_item_code == "FG002SHR-EP-1.6x1250x179"
+		assert layout.end_pieces[0].end_piece_item_code == "FG01SHR-EP-1.6x1250x179"
 		# The in-memory layout being released is the record that gets persisted; the
 		# re-fetched context copy must not be saved (it would write stale state back).
 		assert layout.save_calls == 1

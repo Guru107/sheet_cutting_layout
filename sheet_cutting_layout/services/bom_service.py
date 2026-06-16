@@ -87,7 +87,7 @@ class ExpectedBomWeightBalance:
 
 
 BomDocumentFactory = Callable[[str], BomDocument]
-EndPieceItemCodeResolver = Callable[[LayoutDocument, EndPieceRow], str]
+EndPieceItemCodeResolver = Callable[[LayoutDocument, EndPieceRow, FinishedPartRow], str]
 
 
 def build_weight_split_bom_rows(
@@ -152,6 +152,7 @@ def build_bom_from_layout_row(
 		if _is_reuse_end_piece(end_piece):
 			item_code = _end_piece_byproduct_item_code(
 				layout_doc,
+				finished_part_row,
 				end_piece,
 				end_piece_item_code_resolver,
 			)
@@ -254,6 +255,7 @@ def _is_reuse_end_piece(end_piece: EndPieceRow) -> bool:
 
 def _end_piece_byproduct_item_code(
 	layout_doc: LayoutDocument,
+	finished_part_row: FinishedPartRow,
 	end_piece: EndPieceRow,
 	end_piece_item_code_resolver: EndPieceItemCodeResolver | None,
 ) -> str:
@@ -261,13 +263,19 @@ def _end_piece_byproduct_item_code(
 	if existing_item_code:
 		return existing_item_code
 	if end_piece_item_code_resolver is not None:
-		resolved_item_code = str(end_piece_item_code_resolver(layout_doc, end_piece) or "").strip()
+		resolved_item_code = str(
+			end_piece_item_code_resolver(layout_doc, end_piece, finished_part_row) or ""
+		).strip()
 		if not resolved_item_code:
 			raise ValueError(
 				"Reusable end piece requires generated item code before creating BOM byproduct row"
 			)
 		return resolved_item_code
-	return derive_end_piece_item_code_from_row(layout_doc, end_piece)
+	return derive_end_piece_item_code_from_row(
+		layout_doc,
+		end_piece,
+		source_finished_part=finished_part_row.finished_part_item,
+	)
 
 
 def _required_scrap_item(end_piece: EndPieceRow) -> str:
