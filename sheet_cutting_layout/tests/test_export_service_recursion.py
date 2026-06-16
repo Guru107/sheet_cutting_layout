@@ -202,17 +202,17 @@ class TestBuildMultiSheetWorkbook(SheetCuttingLayoutTestCase):
 		template_image_count = len(template_worksheet._images)
 		template_image_anchors = _image_anchor_positions(template_worksheet)
 
-		self.assertGreaterEqual(template_image_count, 2)
-		self.assertEqual(template_image_anchors, [(0, 0), (7, 0)])
+		self.assertEqual(template_image_count, 1)
+		self.assertEqual(template_image_anchors, [(0, 0)])
 
 		for sheet_name in ("L1", "L2"):
 			worksheet = workbook[sheet_name]
 			merged_ranges = {str(merged_range) for merged_range in worksheet.merged_cells.ranges}
 			self.assertIn("G5:M5", merged_ranges)
 			self.assertIn("N5:Q5", merged_ranges)
-			self.assertIn("R38:U40", merged_ranges)
+			self.assertIn("R39:U41", merged_ranges)
 			self.assertEqual(worksheet.page_setup.orientation, "landscape")
-			self.assertEqual(worksheet["R38"].value, "Released By    \nManagement Rep")
+			self.assertEqual(worksheet["R39"].value, "Released By    \nManagement Rep")
 			self.assertEqual(len(worksheet._images), template_image_count)
 			self.assertEqual(_image_anchor_positions(worksheet), template_image_anchors)
 

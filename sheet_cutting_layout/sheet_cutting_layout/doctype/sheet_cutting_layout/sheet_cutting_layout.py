@@ -276,6 +276,7 @@ def _export_layout_dict(doc: object) -> dict[str, object]:
 def _export_end_piece_dict(row: object) -> dict[str, object]:
 	return {
 		"end_piece_item_code": getattr(row, "end_piece_item_code", None),
+		"disposition": getattr(row, "disposition", None),
 		"used_for_finished_part": getattr(row, "used_for_finished_part", None),
 		"width_mm": getattr(row, "width_mm", None),
 		"length_mm": getattr(row, "length_mm", None),

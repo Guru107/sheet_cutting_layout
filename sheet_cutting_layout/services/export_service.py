@@ -19,8 +19,8 @@ def build_cell_map(layout: Mapping[str, object]) -> dict[str, object]:
 		"A5": f"Sheet Cutting Layout No:- {_text(layout.get('layout_code'))}",
 		"G5": _part_name_label(layout),
 		"N5": f"Part Number:-{_display_part_numbers(layout)}",
-		"B6": _text(layout.get("project")),
-		"C6": _text(layout.get("project_name")),
+		"B6": _text(layout.get("project_name")),
+		"C6": "",
 		"J7": _text(layout.get("raw_material_item_name")),
 		"K8": _num(layout.get("sheet_thickness_mm")),
 		"K9": _num(layout.get("sheet_thickness_mm")),
@@ -186,11 +186,20 @@ def _bom_table_cells(layout: Mapping[str, object]) -> dict[str, object]:
 	end_pieces: Sequence[Mapping[str, object]] = layout.get("end_pieces") or []
 	for offset, end_piece in enumerate(end_pieces):
 		row = 9 + offset
-		if row > 10:
+		if row > 11:
 			break
+		if _text(end_piece.get("disposition")).strip().lower() == "scrap":
+			weight = _num(end_piece.get("weight_kg"))
+			cells[f"O{row}"] = _bom_end_piece_label(end_piece)
+			cells[f"Q{row}"] = weight
+			cells[f"R{row}"] = 0
+			cells[f"S{row}"] = weight
+			cells[f"T{row}"] = 1
+			cells[f"U{row}"] = weight
+			continue
 		ep_gross = end_piece.get("gross_weight_per_part_kg")
 		ep_nos = end_piece.get("bom_quantity")
-		cells[f"O{row}"] = _end_piece_label(end_piece)
+		cells[f"O{row}"] = _bom_end_piece_label(end_piece)
 		cells[f"Q{row}"] = _num(ep_gross)
 		cells[f"R{row}"] = _num(end_piece.get("net_weight_per_part_kg"))
 		cells[f"S{row}"] = _num(end_piece.get("scrap_weight_per_part_kg"))
@@ -203,33 +212,33 @@ def _end_piece_detail_cells(layout: Mapping[str, object]) -> dict[str, object]:
 	blocks = (
 		{
 			"size": ("K18", "L18", "M18"),
-			"detail_size": ("K22", "L22", "M22"),
-			"used_for": "J23",
-			"strip": ("K24", "L24", "M24"),
-			"parts": "K25",
-			"gross": "K26",
-			"net": "K27",
-			"scrap": "K28",
+			"detail_size": ("K23", "L23", "M23"),
+			"used_for": "J24",
+			"strip": ("K25", "L25", "M25"),
+			"parts": "K26",
+			"gross": "K27",
+			"net": "K28",
+			"scrap": "K29",
 		},
 		{
-			"size": ("R12", "S12", "T12"),
-			"detail_size": (),
-			"used_for": "Q13",
-			"strip": ("R14", "S14", "T14"),
-			"parts": "R15",
-			"gross": "R16",
-			"net": "R17",
-			"scrap": "R18",
+			"size": ("K19", "L19", "M19"),
+			"detail_size": ("R13", "S13", "T13"),
+			"used_for": "Q14",
+			"strip": ("R15", "S15", "T15"),
+			"parts": "R16",
+			"gross": "R17",
+			"net": "R18",
+			"scrap": "R19",
 		},
 		{
-			"size": ("R22", "S22", "T22"),
-			"detail_size": (),
-			"used_for": "Q23",
-			"strip": ("R24", "S24", "T24"),
-			"parts": "R25",
-			"gross": "R26",
-			"net": "R27",
-			"scrap": "R28",
+			"size": ("K20", "L20", "M20"),
+			"detail_size": ("R23", "S23", "T23"),
+			"used_for": "Q24",
+			"strip": ("R25", "S25", "T25"),
+			"parts": "R26",
+			"gross": "R27",
+			"net": "R28",
+			"scrap": "R29",
 		},
 	)
 	cells = {
@@ -299,15 +308,10 @@ def _clean_strings(values: Sequence[object]) -> list[str]:
 	return [str(value).strip() for value in values if str(value or "").strip()]
 
 
-def _end_piece_label(end_piece: Mapping[str, object]) -> str:
-	item_code = _text(end_piece.get("end_piece_item_code")).strip()
-	if item_code:
-		return item_code
-	width = end_piece.get("width_mm")
-	length = end_piece.get("length_mm")
-	if width and length:
-		return f"{width} x {length}"
-	return ""
+def _bom_end_piece_label(end_piece: Mapping[str, object]) -> str:
+	if _text(end_piece.get("disposition")).strip().lower() == "reuse":
+		return _text(end_piece.get("used_for_finished_part")).strip() or "ENDPIECE"
+	return "ENDPIECE"
 
 
 def _num(value: object) -> object:

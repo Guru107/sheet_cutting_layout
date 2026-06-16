@@ -48,13 +48,13 @@ class TestApprovedIatfTemplate(SheetCuttingLayoutTestCase):
 		self.assertIn("E1:P4", {str(item) for item in worksheet.merged_cells.ranges})
 		self.assertIn("G5:M5", {str(item) for item in worksheet.merged_cells.ranges})
 		self.assertIn("N5:Q5", {str(item) for item in worksheet.merged_cells.ranges})
-		self.assertIn("R38:U40", {str(item) for item in worksheet.merged_cells.ranges})
+		self.assertIn("R39:U41", {str(item) for item in worksheet.merged_cells.ranges})
 		self.assertEqual(worksheet["Q1"].value, "DOC. NO.:  FRM/PRD/15")
 		self.assertEqual(worksheet["O7"].value, "BOM")
 		self.assertEqual(worksheet["Q7"].value, "Gross Wt")
 		self.assertEqual(worksheet["R7"].value, "F.g Wt")
 		self.assertEqual(worksheet["S7"].value, "Scrap Wt")
-		self.assertEqual(worksheet["R38"].value, "Released By    \nManagement Rep")
+		self.assertEqual(worksheet["R39"].value, "Released By    \nManagement Rep")
 
 
 class TestBuildCellMapHeaderAndStrip(SheetCuttingLayoutTestCase):
@@ -67,8 +67,8 @@ class TestBuildCellMapHeaderAndStrip(SheetCuttingLayoutTestCase):
 		self.assertEqual(cells["A5"], "Sheet Cutting Layout No:- SCL-EXPORT-LAYOUT-001")
 		self.assertEqual(cells["G5"], "Part Name:-Brkt bumper top")
 		self.assertEqual(cells["N5"], "Part Number:-0102AAG06400SHR")
-		self.assertEqual(cells["B6"], "PRJ-0001")
-		self.assertEqual(cells["C6"], "Bumper Program")
+		self.assertEqual(cells["B6"], "Bumper Program")
+		self.assertEqual(cells["C6"], "")
 		self.assertEqual(cells["J7"], "HSLA-340")
 		self.assertEqual(cells["K8"], 2.0)
 		self.assertEqual(cells["K9"], 2.0)
@@ -144,7 +144,9 @@ class TestBuildCellMapEndPiecesAndGuards(SheetCuttingLayoutTestCase):
 		layout = _base_layout()
 		layout["end_pieces"] = [
 			{
+				"disposition": "Reuse",
 				"end_piece_item_code": "EP-0102AAG06400-1",
+				"used_for_finished_part": "0102AAG06400SHR",
 				"width_mm": 200.0,
 				"length_mm": 300.0,
 				"weight_kg": 0.94,
@@ -157,7 +159,7 @@ class TestBuildCellMapEndPiecesAndGuards(SheetCuttingLayoutTestCase):
 
 		cells = build_cell_map(layout)
 
-		self.assertEqual(cells["O9"], "EP-0102AAG06400-1")
+		self.assertEqual(cells["O9"], "0102AAG06400SHR")
 		self.assertNotIn("P9", cells)
 		self.assertEqual(cells["Q9"], 0.47)
 		self.assertEqual(cells["R9"], 0.4)
@@ -169,7 +171,45 @@ class TestBuildCellMapEndPiecesAndGuards(SheetCuttingLayoutTestCase):
 		self.assertEqual(cells["O11"], "")
 		self.assertEqual(cells["U11"], "")
 
-	def test_end_piece_without_item_code_uses_size_label(self) -> None:
+	def test_scrap_end_piece_rows_populate_bom_table_with_weight(self) -> None:
+		from sheet_cutting_layout.services.export_service import build_cell_map
+
+		layout = _base_layout()
+		layout["end_pieces"] = [
+			{
+				"disposition": "Scrap",
+				"width_mm": 200.0,
+				"length_mm": 300.0,
+				"weight_kg": 0.94,
+			},
+			{
+				"disposition": "Scrap",
+				"width_mm": 100.0,
+				"length_mm": 300.0,
+				"weight_kg": 0.47,
+			},
+			{
+				"disposition": "Scrap",
+				"width_mm": 50.0,
+				"length_mm": 300.0,
+				"weight_kg": 0.235,
+			},
+		]
+
+		cells = build_cell_map(layout)
+
+		self.assertEqual(cells["O9"], "ENDPIECE")
+		self.assertEqual(cells["Q9"], 0.94)
+		self.assertEqual(cells["R9"], 0)
+		self.assertEqual(cells["S9"], 0.94)
+		self.assertEqual(cells["T9"], 1)
+		self.assertEqual(cells["U9"], 0.94)
+		self.assertEqual(cells["O10"], "ENDPIECE")
+		self.assertEqual(cells["U10"], 0.47)
+		self.assertEqual(cells["O11"], "ENDPIECE")
+		self.assertEqual(cells["U11"], 0.235)
+
+	def test_non_reuse_end_piece_uses_generic_label(self) -> None:
 		from sheet_cutting_layout.services.export_service import build_cell_map
 
 		layout = _base_layout()
@@ -177,14 +217,15 @@ class TestBuildCellMapEndPiecesAndGuards(SheetCuttingLayoutTestCase):
 
 		cells = build_cell_map(layout)
 
-		self.assertEqual(cells["O9"], "200.0 x 300.0")
+		self.assertEqual(cells["O9"], "ENDPIECE")
 
-	def test_first_two_end_pieces_render_in_bom_and_first_three_render_in_detail_blocks(self) -> None:
+	def test_first_three_end_pieces_render_in_bom_and_detail_blocks(self) -> None:
 		from sheet_cutting_layout.services.export_service import build_cell_map
 
 		layout = _base_layout()
 		layout["end_pieces"] = [
 			{
+				"disposition": "Reuse",
 				"end_piece_item_code": f"EP-{index}",
 				"width_mm": 200 + index,
 				"length_mm": 300 + index,
@@ -199,46 +240,46 @@ class TestBuildCellMapEndPiecesAndGuards(SheetCuttingLayoutTestCase):
 
 		cells = build_cell_map(layout)
 
-		self.assertEqual(cells["O9"], "EP-0")
-		self.assertEqual(cells["O10"], "EP-1")
-		self.assertEqual(cells["O11"], "")
+		self.assertEqual(cells["O9"], "0102AAG06400SHR")
+		self.assertEqual(cells["O10"], "0102AAG06401SHR")
+		self.assertEqual(cells["O11"], "0102AAG06402SHR")
 		self.assertNotIn("P10", cells)
 		self.assertEqual(cells["K18"], 2.0)
 		self.assertEqual(cells["L18"], 200)
 		self.assertEqual(cells["M18"], 300)
-		self.assertEqual(cells["J23"], "0102AAG06400SHR")
-		self.assertEqual(cells["K22"], 2.0)
-		self.assertEqual(cells["L22"], 200)
-		self.assertEqual(cells["M22"], 300)
-		self.assertEqual(cells["K24"], 2.0)
-		self.assertEqual(cells["L24"], 200)
-		self.assertEqual(cells["M24"], 300)
-		self.assertEqual(cells["K25"], 2)
-		self.assertEqual(cells["K26"], 0.4)
-		self.assertEqual(cells["K27"], 0.3)
-		self.assertEqual(cells["K28"], 0.1)
-		self.assertEqual(cells["R12"], 2.0)
-		self.assertEqual(cells["S12"], 201)
-		self.assertEqual(cells["T12"], 301)
-		self.assertEqual(cells["Q13"], "0102AAG06401SHR")
-		self.assertEqual(cells["R14"], 2.0)
-		self.assertEqual(cells["S14"], 201)
-		self.assertEqual(cells["T14"], 301)
-		self.assertEqual(cells["R15"], 3)
-		self.assertEqual(cells["R16"], 1.4)
-		self.assertEqual(cells["R17"], 1.3)
-		self.assertEqual(cells["R18"], 1.1)
-		self.assertEqual(cells["R22"], 2.0)
-		self.assertEqual(cells["S22"], 202)
-		self.assertEqual(cells["T22"], 302)
-		self.assertEqual(cells["Q23"], "0102AAG06402SHR")
-		self.assertEqual(cells["R24"], 2.0)
-		self.assertEqual(cells["S24"], 202)
-		self.assertEqual(cells["T24"], 302)
-		self.assertEqual(cells["R25"], 4)
-		self.assertEqual(cells["R26"], 2.4)
-		self.assertEqual(cells["R27"], 2.3)
-		self.assertEqual(cells["R28"], 2.1)
+		self.assertEqual(cells["J24"], "0102AAG06400SHR")
+		self.assertEqual(cells["K23"], 2.0)
+		self.assertEqual(cells["L23"], 200)
+		self.assertEqual(cells["M23"], 300)
+		self.assertEqual(cells["K25"], 2.0)
+		self.assertEqual(cells["L25"], 200)
+		self.assertEqual(cells["M25"], 300)
+		self.assertEqual(cells["K26"], 2)
+		self.assertEqual(cells["K27"], 0.4)
+		self.assertEqual(cells["K28"], 0.3)
+		self.assertEqual(cells["K29"], 0.1)
+		self.assertEqual(cells["K19"], 2.0)
+		self.assertEqual(cells["L19"], 201)
+		self.assertEqual(cells["M19"], 301)
+		self.assertEqual(cells["Q14"], "0102AAG06401SHR")
+		self.assertEqual(cells["R15"], 2.0)
+		self.assertEqual(cells["S15"], 201)
+		self.assertEqual(cells["T15"], 301)
+		self.assertEqual(cells["R16"], 3)
+		self.assertEqual(cells["R17"], 1.4)
+		self.assertEqual(cells["R18"], 1.3)
+		self.assertEqual(cells["R19"], 1.1)
+		self.assertEqual(cells["K20"], 2.0)
+		self.assertEqual(cells["L20"], 202)
+		self.assertEqual(cells["M20"], 302)
+		self.assertEqual(cells["Q24"], "0102AAG06402SHR")
+		self.assertEqual(cells["R25"], 2.0)
+		self.assertEqual(cells["S25"], 202)
+		self.assertEqual(cells["T25"], 302)
+		self.assertEqual(cells["R26"], 4)
+		self.assertEqual(cells["R27"], 2.4)
+		self.assertEqual(cells["R28"], 2.3)
+		self.assertEqual(cells["R29"], 2.1)
 		self.assertNotIn("EP-3", cells.values())
 		self.assertNotIn("EP-4", cells.values())
 
@@ -251,39 +292,39 @@ class TestBuildCellMapEndPiecesAndGuards(SheetCuttingLayoutTestCase):
 			"K18",
 			"L18",
 			"M18",
-			"K22",
-			"L22",
-			"M22",
-			"J23",
-			"K24",
-			"L24",
-			"M24",
+			"K23",
+			"L23",
+			"M23",
+			"J24",
 			"K25",
 			"K26",
 			"K27",
 			"K28",
-			"R12",
-			"S12",
-			"T12",
-			"Q13",
-			"R14",
-			"S14",
-			"T14",
+			"K29",
+			"K19",
+			"L19",
+			"M19",
+			"R13",
+			"S13",
+			"T13",
+			"Q14",
 			"R15",
 			"R16",
 			"R17",
 			"R18",
-			"R22",
-			"S22",
-			"T22",
-			"Q23",
-			"R24",
-			"S24",
-			"T24",
+			"R19",
+			"K20",
+			"L20",
+			"M20",
+			"R23",
+			"S23",
+			"T23",
+			"Q24",
 			"R25",
 			"R26",
 			"R27",
 			"R28",
+			"R29",
 		):
 			self.assertEqual(cells[coordinate], "")
 
@@ -402,8 +443,8 @@ class TestRenderWorkbookBytes(SheetCuttingLayoutTestCase):
 				"company": "=2+2",
 				"part_name": "+part",
 				"part_numbers": ["-PART001SHR"],
-				"project": "@project",
-				"end_pieces": [{"end_piece_item_code": "=EP-001"}],
+				"project_name": "@project",
+				"end_pieces": [{"disposition": "Reuse", "used_for_finished_part": "=EP-001"}],
 			}
 		)
 
