@@ -97,6 +97,18 @@ class TestChildLayoutValidation(SheetCuttingLayoutTestCase):
 		parent = self._parent(child.name).insert(ignore_permissions=True)
 		self.assertEqual(parent.end_pieces[0].child_layout, child.name)
 
+	def test_guard_uses_finished_part_code_not_used_for_finished_part(self) -> None:
+		# The generated end-piece item (and so the child's raw material) derives from
+		# the layout's finished_part_code, so the child-raw-material guard must
+		# validate against that — not the end-piece row's used_for_finished_part.
+		# When the two differ, a correctly-configured child must still validate.
+		used_for_item = ensure_item(f"SCLRECURUSED{self.suffix}SHR", stock_uom="Nos")
+		child = self._child(self.end_piece_item).insert(ignore_permissions=True)
+		parent = self._parent(child.name)
+		parent.end_pieces[0].used_for_finished_part = used_for_item
+		parent.insert(ignore_permissions=True)
+		self.assertEqual(parent.end_pieces[0].child_layout, child.name)
+
 	def test_self_reference_is_rejected(self) -> None:
 		parent = self._parent(f"SCL-RECUR-PARENT-{self.suffix}")
 		with self.assertRaises(frappe.ValidationError):

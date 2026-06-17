@@ -406,7 +406,15 @@ def _validate_child_raw_material(
 	end_piece: EndPieceRow,
 	child_layout: str,
 ) -> None:
-	end_piece_item_code = derive_end_piece_item_code_from_row(layout, end_piece)  # type: ignore[arg-type]
+	# Derive the expected end-piece item from the layout's finished part, the same
+	# source ensure_end_piece_item uses when it actually creates the item. Deriving
+	# from the row's used_for_finished_part here would mismatch a valid child layout
+	# whenever finished_part_code != used_for_finished_part.
+	end_piece_item_code = derive_end_piece_item_code_from_row(
+		layout,
+		end_piece,
+		source_finished_part=getattr(layout, "finished_part_code", None),
+	)  # type: ignore[arg-type]
 	child_raw_material_item = frappe.db.get_value(
 		"Sheet Cutting Layout",
 		child_layout,
