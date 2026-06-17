@@ -117,10 +117,11 @@
    "read_only": 1
   },
   {
+   "depends_on": "eval:doc.generated_end_piece_bom",
    "fieldname": "generated_end_piece_bom",
    "fieldtype": "Link",
-   "hidden": 1,
    "label": "Generated End Piece BOM",
+   "in_list_view": 1,
    "no_copy": 1,
    "options": "BOM",
    "read_only": 1
