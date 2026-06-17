@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib
 from dataclasses import dataclass, field
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from sheet_cutting_layout.tests.base import SheetCuttingLayoutTestCase
@@ -856,6 +857,26 @@ class TestValidators(SheetCuttingLayoutTestCase):
 
 		self.validators.validate_sheet_cutting_layout(layout)
 		self.assertEqual(layout.end_piece_bom_status, "Pending")
+
+	def test_child_layout_raw_material_guard_uses_finished_part_code(self) -> None:
+		layout = Layout(finished_part_code="FG01SHR")
+		end_piece = EndPiece(used_for_finished_part="FG02SHR")
+		self.fake_frappe.db = SimpleNamespace(
+			get_value=lambda doctype, name, fieldname: "FG01SHR-EP-1x1250x260"
+		)
+
+		with patch.object(
+			self.validators,
+			"derive_end_piece_item_code_from_row",
+			return_value="FG01SHR-EP-1x1250x260",
+		) as derive:
+			self.validators._validate_child_raw_material(layout, end_piece, "SCL-CHILD")
+
+		derive.assert_called_once_with(
+			layout,
+			end_piece,
+			source_finished_part="FG01SHR",
+		)
 
 	def test_consumption_tracking_uses_gross_plus_end_piece_weight_and_sets_balanced(self) -> None:
 		layout = self._balanced_layout(end_piece=EndPiece(scrap_item="EP-SCRAP"))

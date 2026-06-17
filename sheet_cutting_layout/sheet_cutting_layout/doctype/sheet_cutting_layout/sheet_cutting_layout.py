@@ -155,6 +155,8 @@ def _insert_approval_snapshot_row(doc: object, *, row: dict[str, object]) -> Non
 	if _has_approval_snapshot(doc, step_name=str(row["step_name"])):
 		return
 
+	# The direct child insert is redundant on the save() path, but the db_set()
+	# fallback for submitted docs does not re-persist child tables.
 	frappe.get_doc(
 		{
 			"doctype": "Layout Approval Snapshot",

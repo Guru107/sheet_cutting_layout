@@ -293,6 +293,9 @@ def _default_bom_document_factory(
 def _ensure_and_link_end_piece_item(
 	layout: ReleaseLayoutDocument, row: object, finished_part: FinishedPartRow
 ) -> str:
+	existing_item_code = str(getattr(row, "end_piece_item_code", "") or "").strip()
+	if existing_item_code:
+		return existing_item_code
 	item_code = ensure_end_piece_item(
 		layout,
 		row,

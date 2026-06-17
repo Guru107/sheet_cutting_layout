@@ -1704,6 +1704,77 @@ class TestFrappeBomInsertAndEndPieces(ReleaseServiceIsolatedTestCase):
 		assert layout.save_calls == 1
 		assert persisted_layout.save_calls == 0
 
+	def test_lh_rh_release_keeps_primary_end_piece_item_code_on_shared_row(self) -> None:
+		from sheet_cutting_layout.services import release_service
+
+		created_for: list[str | None] = []
+
+		class FrappeBom:
+			def __init__(self) -> None:
+				self.name = ""
+				self.items: list[dict[str, object]] = []
+				self.scrap_items: list[dict[str, object]] = []
+				self.flags = type("Flags", (), {})()
+
+			def append(self, fieldname: str, row: dict[str, object]) -> None:
+				getattr(self, fieldname).append(row)
+
+			def insert(self) -> None:
+				self.name = self.name or f"BOM-{len(created_for)}"
+
+			def submit(self) -> None:
+				self.docstatus = 1
+
+		class FrappeStub:
+			@staticmethod
+			def new_doc(doctype: str) -> FrappeBom:
+				assert doctype == "BOM"
+				return FrappeBom()
+
+			@staticmethod
+			def throw(message: str) -> None:
+				raise ValueError(message)
+
+		layout = Layout(
+			name="SCL-LHRH",
+			weight_per_sheet_kg=39.3,
+			parts_per_sheet=2,
+			finished_part_code="FG01SHR",
+			gross_weight_per_part_kg=10.0,
+			scrap_weight_per_part_kg=1.0,
+			finished_parts=[],
+			end_pieces=[
+				EndPiece(
+					weight_kg=2.81388,
+					disposition="Reuse",
+					used_for_finished_part="FG002SHR",
+					width_mm=1250,
+					length_mm=179,
+				)
+			],
+		)
+		layout.company = "Test Company"
+		layout.sheet_thickness_mm = 1.6
+		layout.is_lh_rh = 1
+		layout.orientation = "LH"
+		layout.twin_finished_part = "FG01RHSHR"
+
+		def fake_ensure(_layout: object, _row: object, *, source_finished_part: str | None = None) -> str:
+			created_for.append(source_finished_part)
+			return f"{source_finished_part}-EP-1.6x1250x179"
+
+		self.start_patcher(patch.object(release_service, "frappe", FrappeStub))
+		self.start_patcher(patch.object(release_service, "ensure_end_piece_item", fake_ensure))
+
+		release_service.release_layout(
+			layout,
+			validators=[lambda _layout: None],
+			release_context=release_service.ReleaseContext(layouts=(), boms=[]),
+		)
+
+		assert created_for == ["FG01SHR"]
+		assert layout.end_pieces[0].end_piece_item_code == "FG01SHR-EP-1.6x1250x179"
+
 
 class TestReleaseContextAndHelpers(ReleaseServiceIsolatedTestCase):
 	def test_release_context_discovers_layouts_and_boms(self) -> None:
