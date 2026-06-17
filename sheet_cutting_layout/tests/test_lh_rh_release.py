@@ -96,6 +96,7 @@ class TestLhRhReleaseIntegration(SheetCuttingLayoutTestCase):
 		self.assertEqual(len(set(bom_names)), 2)
 		self.assertTrue(all(bom_names))
 		self.assertEqual(layout.generated_bom, bom_names[0])
+		self.assertEqual(layout.twin_generated_bom, bom_names[1])
 		for bom_name in bom_names:
 			self.assertEqual(frappe.db.get_value("BOM", bom_name, "sheet_cutting_layout"), layout.name)
 
@@ -104,3 +105,14 @@ class TestLhRhReleaseIntegration(SheetCuttingLayoutTestCase):
 		self.assertEqual(layout.status, "Superseded")
 		for bom_name in bom_names:
 			self.assertEqual(frappe.db.get_value("BOM", bom_name, "is_active"), 0)
+
+	def test_non_lh_rh_release_leaves_twin_generated_bom_empty(self) -> None:
+		layout = make_release_ready_layout()
+
+		layout.status = "Released"
+		layout.submit()
+		layout.reload()
+
+		self.assertEqual(layout.status, "Released")
+		self.assertTrue(layout.generated_bom)
+		self.assertFalse(layout.twin_generated_bom)

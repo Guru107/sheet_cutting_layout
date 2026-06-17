@@ -256,6 +256,8 @@ def _generate_boms(
 		)
 		if index == 1:
 			_set_frappe_field_if_supported(layout, "generated_bom", bom.name)
+		elif index == 2:
+			_set_frappe_field_if_supported(layout, "twin_generated_bom", bom.name)
 		generated_boms.append(bom)
 
 	return generated_boms
