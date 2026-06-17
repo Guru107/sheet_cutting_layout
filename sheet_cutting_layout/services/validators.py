@@ -559,8 +559,7 @@ def apply_end_piece_bom_status(
 	reuse_end_pieces = [
 		end_piece
 		for end_piece in end_pieces
-		if _is_reuse_end_piece(end_piece)
-		and not str(getattr(end_piece, "child_layout", "") or "").strip()
+		if _is_reuse_end_piece(end_piece) and not str(getattr(end_piece, "child_layout", "") or "").strip()
 	]
 	if not reuse_end_pieces:
 		layout.end_piece_bom_status = "Not Required"
