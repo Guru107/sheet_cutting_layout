@@ -31,6 +31,7 @@ class Layout:
 	gross_weight_per_part_kg: float = 1.0
 	scrap_weight_per_part_kg: float = 0.0
 	generated_bom: str | None = None
+	twin_generated_bom: str | None = None
 	weight_per_sheet_kg: float | None = None
 	consumed_weight_kg: float | None = None
 	leftover_weight_kg: float | None = None
@@ -1810,6 +1811,43 @@ class TestReleaseContextAndHelpers(ReleaseServiceIsolatedTestCase):
 
 		assert doc.enabled == 1
 		assert not hasattr(doc, "missing")
+
+	def test_save_submitted_layout_record_db_set_persists_twin_generated_bom(self) -> None:
+		from sheet_cutting_layout.services import release_service
+
+		calls: list[tuple[dict[str, object], bool, bool]] = []
+
+		class SubmittedLayout:
+			status = "Released"
+			is_active = True
+			generated_bom = "BOM-PRIMARY-001"
+			twin_generated_bom = "BOM-TWIN-002"
+
+			def db_set(
+				self,
+				fieldname: dict[str, object],
+				update_modified: bool = True,
+				notify: bool = True,
+			) -> None:
+				calls.append((fieldname, update_modified, notify))
+
+		release_service._save_submitted_layout_record(SubmittedLayout())
+
+		self.assertEqual(
+			calls,
+			[
+				(
+					{
+						"status": "Released",
+						"is_active": True,
+						"generated_bom": "BOM-PRIMARY-001",
+						"twin_generated_bom": "BOM-TWIN-002",
+					},
+					True,
+					False,
+				)
+			],
+		)
 
 
 class TestRevisioning(ReleaseServiceIsolatedTestCase):

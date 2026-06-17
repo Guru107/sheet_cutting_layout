@@ -506,6 +506,7 @@ def _save_submitted_layout_record(layout: object) -> None:
 			"status": getattr(layout, "status", None),
 			"is_active": getattr(layout, "is_active", None),
 			"generated_bom": getattr(layout, "generated_bom", None),
+			"twin_generated_bom": getattr(layout, "twin_generated_bom", None),
 		},
 	)
 	if state_values:
