@@ -533,7 +533,7 @@ def _validate_scrap_item_is_not_generated_end_piece_item(
 		return
 	try:
 		generated_item_code = derive_end_piece_item_code(
-			used_for_finished_part=getattr(end_piece, "used_for_finished_part", None),
+			used_for_finished_part=getattr(layout, "finished_part_code", None),
 			thickness_mm=getattr(layout, "sheet_thickness_mm", None),
 			width_mm=getattr(end_piece, "width_mm", None),
 			length_mm=getattr(end_piece, "length_mm", None),
@@ -556,7 +556,12 @@ def apply_end_piece_bom_status(
 	layout: SheetCuttingLayoutDocument,
 	end_pieces: Sequence[EndPieceRow],
 ) -> None:
-	reuse_end_pieces = [end_piece for end_piece in end_pieces if _is_reuse_end_piece(end_piece)]
+	reuse_end_pieces = [
+		end_piece
+		for end_piece in end_pieces
+		if _is_reuse_end_piece(end_piece)
+		and not str(getattr(end_piece, "child_layout", "") or "").strip()
+	]
 	if not reuse_end_pieces:
 		layout.end_piece_bom_status = "Not Required"
 		return

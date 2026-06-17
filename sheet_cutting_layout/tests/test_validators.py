@@ -47,6 +47,7 @@ class EndPiece:
 	end_piece_item_code: str | None = None
 	generated_end_piece_item: str | None = None
 	generated_end_piece_bom: str | None = None
+	child_layout: str | None = None
 	weight_kg: float | None = 2.5545
 	width_mm: float | None = 1250
 	length_mm: float | None = 260
@@ -632,8 +633,23 @@ class TestValidators(SheetCuttingLayoutTestCase):
 				weight_kg=2.5545,
 				bom_quantity=3,
 				net_weight_per_part_kg=0.8515,
-				scrap_item="FG01SHR-EP-1x1250x260",
+				scrap_item="AB12SHR-EP-1x1250x260",
 			)
+		)
+
+		with self.assertRaisesRegex(ValidationError, "Scrap item cannot be the generated end-piece item"):
+			self.validators.validate_sheet_cutting_layout(layout)
+
+	def test_reuse_end_piece_rejects_parent_derived_generated_end_piece_scrap_item(self) -> None:
+		layout = self._balanced_layout(
+			finished_part=FinishedPart("PARENTSHR", 2, 11.004, 0),
+			end_piece=EndPiece(
+				used_for_finished_part="CHILDSHR",
+				weight_kg=2.5545,
+				bom_quantity=3,
+				net_weight_per_part_kg=0.8515,
+				scrap_item="PARENTSHR-EP-1x1250x260",
+			),
 		)
 
 		with self.assertRaisesRegex(ValidationError, "Scrap item cannot be the generated end-piece item"):
@@ -799,6 +815,18 @@ class TestValidators(SheetCuttingLayoutTestCase):
 		self.assertEqual(no_reuse.end_piece_bom_status, "Not Required")
 		self.assertEqual(pending.end_piece_bom_status, "Pending")
 		self.assertEqual(generated.end_piece_bom_status, "Generated")
+
+	def test_apply_end_piece_bom_status_ignores_child_layout_reuse_rows(self) -> None:
+		layout = self._balanced_layout(
+			end_piece=EndPiece(
+				end_piece_item_code="FG01SHR-EP-1x1250x260",
+				child_layout="SCL-CHILD",
+			)
+		)
+
+		self.validators.apply_end_piece_bom_status(layout, layout.end_pieces)
+
+		self.assertEqual(layout.end_piece_bom_status, "Not Required")
 
 	def test_end_piece_item_code_cannot_change_after_generation(self) -> None:
 		end_piece = ExistingEndPiece(
