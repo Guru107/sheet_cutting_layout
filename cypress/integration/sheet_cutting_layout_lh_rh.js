@@ -174,6 +174,8 @@ describe("Sheet Cutting Layout LH/RH symmetric parts", () => {
 				const bomNames = rows.map((row) => row.generated_bom);
 				expect(new Set(bomNames).size).to.equal(2);
 				expect(layout.generated_bom).to.equal(bomNames[0]);
+				// The twin part's BOM is surfaced on the parent (spec 2026-06-17).
+				expect(layout.twin_generated_bom).to.equal(bomNames[1]);
 
 				bomNames.forEach((bomName, index) => {
 					cy.request(
