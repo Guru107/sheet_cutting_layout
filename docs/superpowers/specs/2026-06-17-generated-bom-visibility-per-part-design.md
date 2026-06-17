@@ -25,7 +25,7 @@ BOM directly from the form:
   `generated_bom`. The table is gated on `eval:doc.generated_bom`. **Unchanged by this work.**
 - `end_pieces` child table (Layout End Piece) — already has `generated_end_piece_bom`
   (`Link → BOM`, `read_only`), **already populated** by `generate_end_piece_boms`
-  (`end_piece_bom_service`). It currently has no `depends_on`, so it always shows.
+  (`end_piece_bom_service`). It is currently `hidden: 1` (never shown).
 
 So this is largely a **presentation refinement** plus one new denormalized field and its release-time
 population. No change to BOM-generation logic or the `finished_parts` mirror.
@@ -52,8 +52,9 @@ population. No change to BOM-generation logic or the `finished_parts` mirror.
 - Label: "Twin Part BOM".
 
 ### 4.2 Layout End Piece — gate `generated_end_piece_bom`
-- Add `depends_on`: `eval:doc.generated_end_piece_bom` (hide in the row detail until populated).
-- Ensure `in_list_view`: 1 so it reads as a grid column next to the end piece (blank until generated).
+- Remove the existing `hidden: 1` (it currently hides the field unconditionally).
+- Add `depends_on`: `eval:doc.generated_end_piece_bom` (reveal only once populated).
+- Add `in_list_view`: 1 so it reads as a grid column next to the end piece (blank until generated).
 - No fieldtype/population change — it is already `Link → BOM`, `read_only`, and set on generation.
 
 ## 5. Population (release)
