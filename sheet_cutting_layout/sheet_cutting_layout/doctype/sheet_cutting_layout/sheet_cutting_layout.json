@@ -46,6 +46,7 @@
   "net_weight_per_part_kg",
   "scrap_weight_per_part_kg",
   "generated_bom",
+  "twin_generated_bom",
   "workflow_section",
   "status",
   "tables_section",
@@ -294,6 +295,15 @@
    "fieldname": "generated_bom",
    "fieldtype": "Link",
    "label": "Generated BOM",
+   "no_copy": 1,
+   "options": "BOM",
+   "read_only": 1
+  },
+  {
+   "depends_on": "eval:doc.twin_generated_bom",
+   "fieldname": "twin_generated_bom",
+   "fieldtype": "Link",
+   "label": "Twin Part BOM",
    "no_copy": 1,
    "options": "BOM",
    "read_only": 1

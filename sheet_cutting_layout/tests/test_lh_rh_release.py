@@ -36,6 +36,13 @@ class TestLhRhSchema(SheetCuttingLayoutTestCase):
 		self.assertEqual(field.fieldtype, "Select")
 		self.assertEqual(field.options, "\nLH\nRH")
 
+	def test_twin_generated_bom_field_exists_and_is_gated(self) -> None:
+		field = frappe.get_meta("Sheet Cutting Layout").get_field("twin_generated_bom")
+		self.assertEqual(field.fieldtype, "Link")
+		self.assertEqual(field.options, "BOM")
+		self.assertEqual(field.read_only, 1)
+		self.assertEqual(field.depends_on, "eval:doc.twin_generated_bom")
+
 
 class TestParentFinishedPartRows(SheetCuttingLayoutTestCase):
 	def test_non_lh_rh_layout_returns_single_primary_row(self) -> None:
