@@ -401,7 +401,7 @@ class TestSheetCuttingLayoutController(SheetCuttingLayoutTestCase):
 		scrap_item = ensure_item(f"SCLPERMSCRAP{suffix}", stock_uom="Kg")
 		parent_part = ensure_item(f"SCLPERMP{suffix}SHR", stock_uom="Nos")
 		child_part = ensure_item(f"SCLPERMC{suffix}SHR", stock_uom="Nos")
-		end_piece_item = ensure_item(f"{child_part}-EP-2x500x1000", stock_uom="Kg")
+		end_piece_item = ensure_item(f"{parent_part}-EP-2x500x1000", stock_uom="Kg")
 		child = frappe.get_doc(
 			{
 				"doctype": "Sheet Cutting Layout",

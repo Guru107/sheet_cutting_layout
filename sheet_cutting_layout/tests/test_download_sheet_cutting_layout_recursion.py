@@ -57,7 +57,7 @@ class _RecursiveExportFixtureMixin:
 		cls.scrap_item = ensure_item(f"SCLXSCRAP{cls.suffix}", stock_uom="Kg")
 		cls.parent_part = ensure_item(f"SCLXPARENT{cls.suffix}SHR", stock_uom="Nos")
 		cls.child_part = ensure_item(f"SCLXCHILD{cls.suffix}SHR", stock_uom="Nos")
-		cls.end_piece_item = ensure_item(f"{cls.child_part}-EP-2x500x1000", stock_uom="Kg")
+		cls.end_piece_item = ensure_item(f"{cls.parent_part}-EP-2x500x1000", stock_uom="Kg")
 
 	@classmethod
 	def _make_child_layout(cls) -> str:
