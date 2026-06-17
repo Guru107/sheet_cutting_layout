@@ -130,6 +130,7 @@ class RevisionLayout:
 	gross_weight_per_part_kg: float = 1.0
 	scrap_weight_per_part_kg: float = 0.0
 	generated_bom: str | None = None
+	twin_generated_bom: str | None = None
 	parts_per_sheet: int = 1
 	end_piece_bom_status: str = ""
 
@@ -168,6 +169,7 @@ class RevisionLayout:
 			"gross_weight_per_part_kg": self.gross_weight_per_part_kg,
 			"scrap_weight_per_part_kg": self.scrap_weight_per_part_kg,
 			"generated_bom": self.generated_bom,
+			"twin_generated_bom": self.twin_generated_bom,
 			"parts_per_sheet": self.parts_per_sheet,
 			"end_piece_bom_status": self.end_piece_bom_status,
 		}
@@ -1846,6 +1848,7 @@ class TestRevisioning(ReleaseServiceIsolatedTestCase):
 				is_active=True,
 				approval_snapshot=["purchase-approved"],
 				generated_bom="BOM-PARENT-001-001",
+				twin_generated_bom="BOM-PARENT-001-002",
 				finished_parts=[
 					FinishedPart("PART001SHR", generated_bom="BOM-PART-001-001"),
 					FinishedPart("PART002SHR", generated_bom="BOM-PART-002-001"),
@@ -1859,12 +1862,14 @@ class TestRevisioning(ReleaseServiceIsolatedTestCase):
 
 		assert new_layout.approval_snapshot == []
 		assert new_layout.generated_bom is None
+		assert new_layout.twin_generated_bom is None
 		assert new_layout.end_piece_bom_status == "Pending"
 		assert new_layout.finished_parts == []
 		assert new_layout.end_pieces[0].end_piece_item_code is None
 		assert new_layout.finished_part_code == "PART001SHR"
 		assert new_layout.net_weight_per_part_kg == 1.0
 		assert old_layout.generated_bom == "BOM-PARENT-001-001"
+		assert old_layout.twin_generated_bom == "BOM-PARENT-001-002"
 		assert [row.generated_bom for row in old_layout.finished_parts] == [
 			"BOM-PART-001-001",
 			"BOM-PART-002-001",
@@ -2194,6 +2199,7 @@ class TestReleaseServiceIntegration(SheetCuttingLayoutTestCase):
 		self.assertEqual(revision.based_on_layout, layout.name)
 		self.assertEqual(revision.revision_no, layout.revision_no + 1)
 		self.assertFalse(revision.generated_bom)
+		self.assertFalse(revision.twin_generated_bom)
 		self.assertFalse(revision.is_active)
 
 	def test_get_release_context_discovers_real_family_layouts_and_boms(self) -> None:

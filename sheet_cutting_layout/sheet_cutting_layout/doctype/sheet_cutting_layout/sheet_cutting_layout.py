@@ -89,6 +89,8 @@ class SheetCuttingLayout(Document):
 def _clear_copied_release_artifacts(doc: object) -> None:
 	if hasattr(doc, "generated_bom"):
 		doc.generated_bom = None
+	if hasattr(doc, "twin_generated_bom"):
+		doc.twin_generated_bom = None
 	if hasattr(doc, "finished_parts"):
 		doc.finished_parts = []
 	if hasattr(doc, "approval_snapshot"):

@@ -26,6 +26,7 @@ class RevisionLayoutDocument(Protocol):
 	finished_parts: list[FinishedPartRow]
 	finished_part_code: str | None
 	generated_bom: str | None
+	twin_generated_bom: str | None
 
 
 RevisionLayoutT = TypeVar("RevisionLayoutT", bound=RevisionLayoutDocument)
@@ -49,6 +50,8 @@ def create_revision(old_layout: RevisionLayoutT) -> RevisionLayoutT:
 	new_layout.approval_snapshot = []
 	if hasattr(new_layout, "generated_bom"):
 		new_layout.generated_bom = None
+	if hasattr(new_layout, "twin_generated_bom"):
+		new_layout.twin_generated_bom = None
 
 	new_layout.finished_parts = []
 
