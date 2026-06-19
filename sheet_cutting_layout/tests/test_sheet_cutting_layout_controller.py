@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -99,7 +99,11 @@ class TestSheetCuttingLayoutController(SheetCuttingLayoutTestCase):
 			patch.object(controller, "release_layout") as release,
 			patch.object(controller, "_insert_approval_snapshot_row") as snapshot,
 			patch.object(controller, "_get_session_user", return_value="Administrator"),
-			patch.object(controller, "_get_now_datetime", return_value=datetime(2026, 6, 13, 12, 0, 0)),
+			patch.object(
+				controller,
+				"_get_now_datetime",
+				return_value=datetime(2026, 6, 13, 12, 0, 0, tzinfo=timezone.utc),
+			),
 		):
 			doc.on_submit()
 
@@ -110,7 +114,7 @@ class TestSheetCuttingLayoutController(SheetCuttingLayoutTestCase):
 				"step_name": "MR Approval",
 				"approver": "Administrator",
 				"decision": "Approved",
-				"decision_time": datetime(2026, 6, 13, 12, 0, 0),
+				"decision_time": datetime(2026, 6, 13, 12, 0, 0, tzinfo=timezone.utc),
 			},
 		)
 
@@ -252,7 +256,11 @@ class TestSheetCuttingLayoutController(SheetCuttingLayoutTestCase):
 		with (
 			patch.object(controller, "_insert_approval_snapshot_row") as snapshot,
 			patch.object(controller, "_get_session_user", return_value="Administrator"),
-			patch.object(controller, "_get_now_datetime", return_value=datetime(2026, 6, 13, 12, 0, 0)),
+			patch.object(
+				controller,
+				"_get_now_datetime",
+				return_value=datetime(2026, 6, 13, 12, 0, 0, tzinfo=timezone.utc),
+			),
 		):
 			doc.before_cancel()
 
@@ -262,7 +270,7 @@ class TestSheetCuttingLayoutController(SheetCuttingLayoutTestCase):
 				"step_name": "Supersession",
 				"approver": "Administrator",
 				"decision": "Approved",
-				"decision_time": datetime(2026, 6, 13, 12, 0, 0),
+				"decision_time": datetime(2026, 6, 13, 12, 0, 0, tzinfo=timezone.utc),
 			},
 		)
 

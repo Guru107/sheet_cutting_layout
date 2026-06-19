@@ -10,6 +10,8 @@ def validate_shearing_bom_source(doc: object, method: str | None = None) -> None
 		return
 	layout_name = str(getattr(doc, "sheet_cutting_layout", "") or "").strip()
 	if layout_name and method == "before_cancel":
+		if frappe.db.get_value("Sheet Cutting Layout", layout_name, "status") == "Superseded":
+			return
 		frappe.throw(
 			_(
 				"This Shearing BOM is generated from a Sheet Cutting Layout. "

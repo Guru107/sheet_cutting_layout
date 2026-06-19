@@ -9,16 +9,11 @@ describe("Sheet Cutting Layout LH/RH symmetric parts", () => {
 	const releaseLayoutCode = `SCLLHRHREL${suffix}`;
 	let projectName;
 
-	Cypress.on("uncaught:exception", (error) => {
-		if (
-			error.message.includes(
-				"Cannot read properties of undefined (reading 'finished_parts')"
-			)
-		) {
-			return false;
-		}
-		return true;
-	});
+	function ignoreKnownFinishedPartsRace(error) {
+		return !error.message.includes(
+			"Cannot read properties of undefined (reading 'finished_parts')"
+		);
+	}
 
 	function strip(layoutCode, overrides = {}) {
 		return {
@@ -69,7 +64,7 @@ describe("Sheet Cutting Layout LH/RH symmetric parts", () => {
 				const layout = body.message;
 				const rows = layout.finished_parts || [];
 				const ready = rows.length === 2 && rows.every((row) => row.generated_bom);
-				if (!ready && attempt < 10) {
+				if (!ready && attempt < 40) {
 					cy.wait(500);
 					return fetchReleasedLhRhLayout(attempt + 1);
 				}
@@ -113,6 +108,7 @@ describe("Sheet Cutting Layout LH/RH symmetric parts", () => {
 		"toggles LH/RH fields client-side: checking defaults orientation to LH, unchecking clears twin and orientation",
 		{ retries: 0 },
 		() => {
+			cy.on("uncaught:exception", ignoreKnownFinishedPartsRace);
 			cy.call("frappe.client.insert", { doc: strip(toggleLayoutCode) });
 			cy.visit(`/app/sheet-cutting-layout/${toggleLayoutCode}`);
 			cy.contains('[data-fieldname="status"]', "Draft");

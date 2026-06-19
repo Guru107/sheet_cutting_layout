@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from unittest.mock import patch
+
 from sheet_cutting_layout.overrides.bom import frappe, validate_shearing_bom_source
 from sheet_cutting_layout.tests.base import SheetCuttingLayoutTestCase
 
@@ -42,3 +44,9 @@ class TestBomOverrides(SheetCuttingLayoutTestCase):
 			"workflow instead of cancelling or amending this BOM",
 		):
 			validate_shearing_bom_source(_bom("Shearing", "SCL-001"), "before_cancel")
+
+	def test_cancel_is_allowed_when_linked_layout_is_superseded(self) -> None:
+		with patch.object(frappe.db, "get_value", return_value="Superseded") as get_value:
+			validate_shearing_bom_source(_bom("Shearing", "SCL-001"), "before_cancel")
+
+		get_value.assert_called_once_with("Sheet Cutting Layout", "SCL-001", "status")

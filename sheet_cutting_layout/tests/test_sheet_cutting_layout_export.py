@@ -46,6 +46,9 @@ class TestSheetCuttingLayoutExport(SheetCuttingLayoutTestCase):
 		with_end_piece: bool = False,
 		with_scrap_end_piece: bool = False,
 	) -> str:
+		if with_end_piece and with_scrap_end_piece:
+			raise ValueError("Choose either with_end_piece or with_scrap_end_piece")
+
 		suffix = frappe.generate_hash(length=8).upper()
 		project = _ensure_project(f"SCL Export {suffix}")
 		raw_material = _ensure_item(f"SCLRM{suffix}", item_name=f"Raw Material {suffix}")
