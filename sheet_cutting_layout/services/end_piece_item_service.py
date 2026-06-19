@@ -100,7 +100,12 @@ def ensure_end_piece_item(
 		source_finished_part=source_finished_part,
 	)
 	if _item_exists(item_code):
-		_ensure_existing_item_valuation_rate(item_code, layout)
+		_repair_existing_item(
+			item_code,
+			layout,
+			weight_kg=getattr(row, "weight_kg", None),
+			row_idx=getattr(row, "idx", 0),
+		)
 		return item_code
 
 	weight_kg = getattr(row, "weight_kg", None)
@@ -155,29 +160,65 @@ def _coerce_positive_number(
 
 def _append_app_created_item_uoms(item: object, *, stock_uom: str, weight_kg: float) -> None:
 	if stock_uom == "Kg":
-		item.append("uoms", {"uom": "Nos", "conversion_factor": weight_kg})
+		_upsert_uom_row(item, uom="Nos", conversion_factor=weight_kg)
 		return
 	if stock_uom == "Nos":
-		item.append("uoms", {"uom": "Kg", "conversion_factor": 1 / weight_kg})
+		_upsert_uom_row(item, uom="Kg", conversion_factor=1 / weight_kg)
 		return
 	_throw(_("Unsupported stock UOM for app-created Item: {0}").format(stock_uom))
 
 
-def _ensure_existing_item_valuation_rate(item_code: str, layout: LayoutDocument) -> None:
-	if _is_positive_number(_get_value("Item", item_code, "valuation_rate")):
-		return
+def _repair_existing_item(
+	item_code: str,
+	layout: LayoutDocument,
+	*,
+	weight_kg: float | None,
+	row_idx: int,
+) -> None:
+	needs_valuation = not _is_positive_number(_get_value("Item", item_code, "valuation_rate"))
+	item = frappe.get_doc("Item", item_code)
+	changed = False
 
 	raw_material_valuation_rate = _get_value(
 		"Item",
 		getattr(layout, "raw_material_item", None),
 		"valuation_rate",
 	)
-	if not _is_positive_number(raw_material_valuation_rate):
-		return
+	if needs_valuation and _is_positive_number(raw_material_valuation_rate):
+		item.valuation_rate = raw_material_valuation_rate
+		changed = True
 
-	item = frappe.get_doc("Item", item_code)
-	item.valuation_rate = raw_material_valuation_rate
-	item.save(ignore_permissions=True)
+	if _item_needs_required_uom_row(item, stock_uom="Kg"):
+		if weight_kg is None or weight_kg <= 0:
+			_throw(_("Row {0}: End piece weight must be greater than zero").format(row_idx))
+		_append_app_created_item_uoms(item, stock_uom="Kg", weight_kg=weight_kg)
+		changed = True
+
+	if changed:
+		item.save(ignore_permissions=True)
+
+
+def _item_needs_required_uom_row(item: object, *, stock_uom: str) -> bool:
+	required_uom = "Nos" if stock_uom == "Kg" else "Kg" if stock_uom == "Nos" else None
+	if required_uom is None:
+		return True
+	for row in getattr(item, "uoms", []) or []:
+		if _clean(getattr(row, "uom", None) if not isinstance(row, dict) else row.get("uom")) == required_uom:
+			return False
+	return True
+
+
+def _upsert_uom_row(item: object, *, uom: str, conversion_factor: float) -> None:
+	for row in getattr(item, "uoms", []) or []:
+		row_uom = _clean(getattr(row, "uom", None) if not isinstance(row, dict) else row.get("uom"))
+		if row_uom != uom:
+			continue
+		if isinstance(row, dict):
+			row["conversion_factor"] = conversion_factor
+		else:
+			row.conversion_factor = conversion_factor
+		return
+	item.append("uoms", {"uom": uom, "conversion_factor": conversion_factor})
 
 
 def _build_item_description(layout: LayoutDocument, row: EndPieceRow) -> str:
