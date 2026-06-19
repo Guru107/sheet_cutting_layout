@@ -52,7 +52,7 @@
    },
    {
     "action": "Project Manager Approves",
-    "allowed": "Project Manager",
+    "allowed": "Projects Manager",
     "next_state": "PM Approved",
     "state": "Submitted for Check"
    },

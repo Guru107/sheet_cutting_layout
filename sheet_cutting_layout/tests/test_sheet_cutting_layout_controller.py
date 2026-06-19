@@ -53,7 +53,7 @@ class TestSheetCuttingLayoutController(SheetCuttingLayoutTestCase):
 			.name
 		)
 
-	def _ensure_project_manager_user(self, email: str, project: str) -> str:
+	def _ensure_projects_manager_user(self, email: str, project: str) -> str:
 		user = frappe.get_doc(
 			{
 				"doctype": "User",
@@ -66,7 +66,7 @@ class TestSheetCuttingLayoutController(SheetCuttingLayoutTestCase):
 		)
 		user.flags.ignore_password_policy = True
 		user.insert(ignore_permissions=True)
-		user.add_roles("Project Manager")
+		user.add_roles("Projects Manager")
 		frappe.get_doc(
 			{
 				"doctype": "User Permission",
@@ -456,7 +456,9 @@ class TestSheetCuttingLayoutController(SheetCuttingLayoutTestCase):
 				],
 			}
 		).insert(ignore_permissions=True)
-		user = self._ensure_project_manager_user(f"scl-export-{suffix.lower()}@example.com", parent_project)
+		user = self._ensure_projects_manager_user(
+			f"scl-export-{suffix.lower()}@example.com", parent_project
+		)
 
 		frappe.response.clear()
 		self.addCleanup(frappe.set_user, frappe.session.user)

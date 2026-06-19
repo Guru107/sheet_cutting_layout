@@ -259,7 +259,7 @@ class TestReleaseContracts(SheetCuttingLayoutTestCase):
 			},
 			{
 				"dt": "Role",
-				"filters": [["name", "in", ["Project Manager", "MR Coordinator"]]],
+				"filters": [["name", "in", ["Projects Manager", "MR Coordinator"]]],
 			},
 			{
 				"dt": "Custom Field",

@@ -27,7 +27,7 @@ fixtures = [
 	{"dt": "Workflow", "filters": [["name", "=", "Sheet Cutting Layout Approval Workflow"]]},
 	{
 		"dt": "Role",
-		"filters": [["name", "in", ["Project Manager", "MR Coordinator"]]],
+		"filters": [["name", "in", ["Projects Manager", "MR Coordinator"]]],
 	},
 	{"dt": "Custom Field", "filters": [["dt", "=", "BOM"]]},
 ]
