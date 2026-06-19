@@ -6,7 +6,6 @@ from typing import Literal, Protocol
 
 import frappe
 
-from sheet_cutting_layout.overrides.bom import mark_bom_app_controlled
 from sheet_cutting_layout.services.bom_service import (
 	BomDocument,
 	BomItemRow,
@@ -149,13 +148,11 @@ def retire_layout(layout: object) -> None:
 
 		save_point = f"scl_retire_bom_{index}"
 		frappe.db.savepoint(save_point)
-		mark_bom_app_controlled(bom_doc)
 		try:
 			bom_doc.cancel()
 		except frappe.LinkExistsError:
 			frappe.db.rollback(save_point=save_point)
 			bom_doc = frappe.get_doc("BOM", bom_name)
-			mark_bom_app_controlled(bom_doc)
 			bom_doc.db_set("is_active", 0, update_modified=False)
 
 
@@ -317,7 +314,6 @@ def _insert_frappe_bom(bom: BomDocument) -> BomDocument:
 	bom_doc.sheet_cutting_layout = bom.sheet_cutting_layout or getattr(
 		getattr(bom, "_layout", None), "name", None
 	)
-	mark_bom_app_controlled(bom_doc)
 	for row in bom.items:
 		bom_doc.append(
 			"items",
@@ -469,7 +465,6 @@ def _save_bom_records(boms: Sequence[BomRecord]) -> None:
 			continue
 		bom_doc = bom if hasattr(bom, "save") else frappe.get_doc("BOM", bom.name)
 		_set_frappe_field_if_supported(bom_doc, "is_active", 1 if bom.is_active else 0)
-		mark_bom_app_controlled(bom_doc)
 		bom_doc.save(ignore_permissions=True)
 
 

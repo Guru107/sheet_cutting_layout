@@ -331,7 +331,6 @@ class TestEndPieceBomService(SheetCuttingLayoutTestCase):
 		self.assertFalse(hasattr(bom, "is_active"))
 		self.assertFalse(hasattr(bom, "disabled"))
 		self.assertFalse(hasattr(bom, "status"))
-		self.assertTrue(getattr(getattr(bom, "flags", None), "sheet_cutting_layout_allow_bom_update", False))
 		self.assertEqual(
 			bom.items,
 			[

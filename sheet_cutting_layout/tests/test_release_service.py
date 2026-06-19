@@ -2101,23 +2101,17 @@ class TestBomLifecycle(ReleaseServiceIsolatedTestCase):
 		self.assertEqual(cancelled, [("Stock Entry", "BOM", "Sheet Cutting Layout")])
 
 	def test_retire_layout_cancels_unused_bom(self) -> None:
-		from sheet_cutting_layout.overrides.bom import APP_CONTROLLED_BOM_UPDATE_FLAG
 		from sheet_cutting_layout.services import release_service
 
 		cancelled: list[str] = []
-		app_controlled_before_cancel: list[bool] = []
 
 		class BomDoc:
 			def __init__(self, name: str) -> None:
 				self.name = name
 				self.docstatus = 1
 				self.is_active = 1
-				self.flags = type("Flags", (), {})()
 
 			def cancel(self) -> None:
-				app_controlled_before_cancel.append(
-					bool(getattr(self.flags, APP_CONTROLLED_BOM_UPDATE_FLAG, False))
-				)
 				cancelled.append(self.name)
 				self.docstatus = 2
 				self.is_active = 0
@@ -2152,11 +2146,8 @@ class TestBomLifecycle(ReleaseServiceIsolatedTestCase):
 			release_service.retire_layout(layout)
 
 		self.assertEqual(cancelled, ["BOM-X"])
-		self.assertEqual(app_controlled_before_cancel, [True])
 		self.assertEqual(fake_boms["BOM-X"].docstatus, 2)
 		self.assertEqual(fake_boms["BOM-X"].is_active, 0)
-
-		self.assertTrue(getattr(fake_boms["BOM-X"].flags, APP_CONTROLLED_BOM_UPDATE_FLAG))
 
 	def test_retire_layout_deactivates_when_cancel_blocked(self) -> None:
 		from sheet_cutting_layout.services import release_service
