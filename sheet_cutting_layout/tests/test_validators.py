@@ -266,6 +266,19 @@ class TestValidators(SheetCuttingLayoutTestCase):
 			density_precision=validators._float_precision(),
 		)
 
+	def test_strip_thickness_mirror_drives_strip_weight_formula(self) -> None:
+		layout = self._balanced_layout()
+		layout.sheet_thickness_mm = 2
+		layout.strip_thickness_mm = 9
+		layout.strip_width_mm = 1250
+		layout.strip_length_mm = 260
+
+		self.validators.apply_strip_thickness_mirror(layout)
+		self.validators.apply_strip_weight_formula(layout)
+
+		self.assertEqual(layout.strip_thickness_mm, 2)
+		self.assertEqual(layout.weight_of_strip_kg, 5.109)
+
 	def test_validators_parent_gross_weight_delegates_to_geometry(self) -> None:
 		from sheet_cutting_layout.services import validators
 

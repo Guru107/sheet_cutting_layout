@@ -456,9 +456,7 @@ class TestSheetCuttingLayoutController(SheetCuttingLayoutTestCase):
 				],
 			}
 		).insert(ignore_permissions=True)
-		user = self._ensure_projects_manager_user(
-			f"scl-export-{suffix.lower()}@example.com", parent_project
-		)
+		user = self._ensure_projects_manager_user(f"scl-export-{suffix.lower()}@example.com", parent_project)
 
 		frappe.response.clear()
 		self.addCleanup(frappe.set_user, frappe.session.user)

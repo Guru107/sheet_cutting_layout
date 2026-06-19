@@ -75,6 +75,14 @@ frappe.provide("sheet_cutting_layout");
 		return frm.set_value("weight_of_strip_kg", weight);
 	}
 
+	function syncStripThicknessFromSheet(frm) {
+		if (frm.doc.strip_thickness_mm === frm.doc.sheet_thickness_mm) {
+			return Promise.resolve();
+		}
+
+		return frm.set_value("strip_thickness_mm", frm.doc.sheet_thickness_mm);
+	}
+
 	function calculateParentGrossWeightPerPart(frm) {
 		const stripWeight = Number(frm.doc.weight_of_strip_kg);
 		const partsPerStrip = Number(frm.doc.parts_per_strip);
@@ -326,7 +334,11 @@ frappe.provide("sheet_cutting_layout");
 	}
 
 	function updateSheetWeightAndDerivedFields(frm) {
-		return updateSheetWeight(frm)
+		return syncStripThicknessFromSheet(frm)
+			.then(() => updateSheetWeight(frm))
+			.then(() => updateStripWeight(frm))
+			.then(() => updateParentGrossWeightPerPart(frm))
+			.then(() => updateParentScrapWeightPerPart(frm))
 			.then(() => updateEndPieceWeights(frm))
 			.then(() => updateEndPieceReuseWeights(frm))
 			.then(() => updateConsumptionTracking(frm));

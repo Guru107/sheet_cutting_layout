@@ -105,6 +105,7 @@ def validate_finished_part_code(code: str) -> None:
 
 
 def validate_sheet_cutting_layout(layout: SheetCuttingLayoutDocument) -> None:
+	apply_strip_thickness_mirror(layout)
 	apply_sheet_weight_formula(layout)
 	apply_strip_weight_formula(layout)
 	apply_parent_gross_weight_per_part_formula(layout)
@@ -132,6 +133,10 @@ def validate_sheet_cutting_layout(layout: SheetCuttingLayoutDocument) -> None:
 	apply_end_piece_bom_status(layout, end_pieces)
 	_validate_complete_sheet_consumption(layout, end_pieces)
 	_validate_generated_bom_matches_layout(layout)
+
+
+def apply_strip_thickness_mirror(layout: SheetCuttingLayoutDocument) -> None:
+	layout.strip_thickness_mm = getattr(layout, "sheet_thickness_mm", None)
 
 
 def apply_sheet_weight_formula(layout: SheetCuttingLayoutDocument) -> None:

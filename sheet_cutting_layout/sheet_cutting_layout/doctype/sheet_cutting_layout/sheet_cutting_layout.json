@@ -200,6 +200,7 @@
    "fieldname": "strip_thickness_mm",
    "fieldtype": "Float",
    "label": "Strip Thickness Mm",
+   "read_only": 1,
    "reqd": 1
   },
   {

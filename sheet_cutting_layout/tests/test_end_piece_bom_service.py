@@ -302,7 +302,9 @@ class TestEndPieceBomService(SheetCuttingLayoutTestCase):
 		item_code = self.item_service.ensure_end_piece_item(Layout(), EndPiece())
 
 		self.assertEqual(item_code, "FG01SHR-EP-2x100x200")
-		self.assertEqual(self._created_doc(fake_frappe, "Item").uoms, [{"uom": "Nos", "conversion_factor": 2.5}])
+		self.assertEqual(
+			self._created_doc(fake_frappe, "Item").uoms, [{"uom": "Nos", "conversion_factor": 2.5}]
+		)
 		self.assertEqual(self._created_doc(fake_frappe, "Item").save_calls, [{"ignore_permissions": True}])
 
 	def test_generation_requires_released_layout(self) -> None:
