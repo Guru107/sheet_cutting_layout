@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib
 from dataclasses import dataclass, field
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from sheet_cutting_layout.tests.base import SheetCuttingLayoutTestCase
@@ -46,6 +47,7 @@ class EndPiece:
 	end_piece_item_code: str | None = None
 	generated_end_piece_item: str | None = None
 	generated_end_piece_bom: str | None = None
+	child_layout: str | None = None
 	weight_kg: float | None = 2.5545
 	width_mm: float | None = 1250
 	length_mm: float | None = 260
@@ -263,6 +265,19 @@ class TestValidators(SheetCuttingLayoutTestCase):
 			precision=validators._calculation_precision(),
 			density_precision=validators._float_precision(),
 		)
+
+	def test_strip_thickness_mirror_drives_strip_weight_formula(self) -> None:
+		layout = self._balanced_layout()
+		layout.sheet_thickness_mm = 2
+		layout.strip_thickness_mm = 9
+		layout.strip_width_mm = 1250
+		layout.strip_length_mm = 260
+
+		self.validators.apply_strip_thickness_mirror(layout)
+		self.validators.apply_strip_weight_formula(layout)
+
+		self.assertEqual(layout.strip_thickness_mm, 2)
+		self.assertEqual(layout.weight_of_strip_kg, 5.109)
 
 	def test_validators_parent_gross_weight_delegates_to_geometry(self) -> None:
 		from sheet_cutting_layout.services import validators
@@ -631,8 +646,23 @@ class TestValidators(SheetCuttingLayoutTestCase):
 				weight_kg=2.5545,
 				bom_quantity=3,
 				net_weight_per_part_kg=0.8515,
-				scrap_item="FG01SHR-EP-1x1250x260",
+				scrap_item="AB12SHR-EP-1x1250x260",
 			)
+		)
+
+		with self.assertRaisesRegex(ValidationError, "Scrap item cannot be the generated end-piece item"):
+			self.validators.validate_sheet_cutting_layout(layout)
+
+	def test_reuse_end_piece_rejects_parent_derived_generated_end_piece_scrap_item(self) -> None:
+		layout = self._balanced_layout(
+			finished_part=FinishedPart("PARENTSHR", 2, 11.004, 0),
+			end_piece=EndPiece(
+				used_for_finished_part="CHILDSHR",
+				weight_kg=2.5545,
+				bom_quantity=3,
+				net_weight_per_part_kg=0.8515,
+				scrap_item="PARENTSHR-EP-1x1250x260",
+			),
 		)
 
 		with self.assertRaisesRegex(ValidationError, "Scrap item cannot be the generated end-piece item"):
@@ -799,6 +829,18 @@ class TestValidators(SheetCuttingLayoutTestCase):
 		self.assertEqual(pending.end_piece_bom_status, "Pending")
 		self.assertEqual(generated.end_piece_bom_status, "Generated")
 
+	def test_apply_end_piece_bom_status_ignores_child_layout_reuse_rows(self) -> None:
+		layout = self._balanced_layout(
+			end_piece=EndPiece(
+				end_piece_item_code="FG01SHR-EP-1x1250x260",
+				child_layout="SCL-CHILD",
+			)
+		)
+
+		self.validators.apply_end_piece_bom_status(layout, layout.end_pieces)
+
+		self.assertEqual(layout.end_piece_bom_status, "Not Required")
+
 	def test_end_piece_item_code_cannot_change_after_generation(self) -> None:
 		end_piece = ExistingEndPiece(
 			previous_code="FG01SHR-EP-1x1250x260",
@@ -856,6 +898,26 @@ class TestValidators(SheetCuttingLayoutTestCase):
 
 		self.validators.validate_sheet_cutting_layout(layout)
 		self.assertEqual(layout.end_piece_bom_status, "Pending")
+
+	def test_child_layout_raw_material_guard_uses_finished_part_code(self) -> None:
+		layout = Layout(finished_part_code="FG01SHR")
+		end_piece = EndPiece(used_for_finished_part="FG02SHR")
+		self.fake_frappe.db = SimpleNamespace(
+			get_value=lambda doctype, name, fieldname: "FG01SHR-EP-1x1250x260"
+		)
+
+		with patch.object(
+			self.validators,
+			"derive_end_piece_item_code_from_row",
+			return_value="FG01SHR-EP-1x1250x260",
+		) as derive:
+			self.validators._validate_child_raw_material(layout, end_piece, "SCL-CHILD")
+
+		derive.assert_called_once_with(
+			layout,
+			end_piece,
+			source_finished_part="FG01SHR",
+		)
 
 	def test_consumption_tracking_uses_gross_plus_end_piece_weight_and_sets_balanced(self) -> None:
 		layout = self._balanced_layout(end_piece=EndPiece(scrap_item="EP-SCRAP"))

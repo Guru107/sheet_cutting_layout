@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import re
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from typing import Protocol
 
 import frappe
@@ -13,6 +13,7 @@ from sheet_cutting_layout.services.bom_service import (
 )
 from sheet_cutting_layout.services.end_piece_item_service import (
 	derive_end_piece_item_code,
+	derive_end_piece_item_code_from_row,
 	format_code_number,
 )
 
@@ -26,6 +27,7 @@ class EndPieceRow(Protocol):
 	weight_kg: float | None
 	disposition: str | None
 	used_for_finished_part: str | None
+	child_layout: str | None
 	bom_quantity: float | None
 	net_weight_per_part_kg: float | None
 	gross_weight_per_part_kg: float | None
@@ -36,6 +38,9 @@ class EndPieceRow(Protocol):
 
 class SheetCuttingLayoutDocument(Protocol):
 	finished_part_code: str | None
+	is_lh_rh: int | None
+	orientation: str | None
+	twin_finished_part: str | None
 	net_weight_per_part_kg: float | None
 	generated_bom: str | None
 	end_pieces: Sequence[EndPieceRow]
@@ -66,6 +71,32 @@ SHEET_CONSUMPTION_PRECISION = 3
 SHEET_CONSUMPTION_TOLERANCE_KG = 0.005
 
 
+class CascadeCycleError(Exception):
+	"""Raised when a child_layout chain forms a cycle."""
+
+
+def collect_descendant_layouts(root: str, child_links: Callable[[str], Sequence[str]]) -> list[str]:
+	"""Return layouts reachable from root through child links, leaves first."""
+	ordered: list[str] = []
+	seen: set[str] = set()
+
+	def visit(layout_name: str, ancestors: tuple[str, ...]) -> None:
+		if layout_name in ancestors:
+			raise CascadeCycleError(
+				f"child_layout cycle detected at {layout_name}: {' -> '.join((*ancestors, layout_name))}"
+			)
+		next_ancestors = (*ancestors, layout_name)
+		for child in child_links(layout_name):
+			if not child or child in seen:
+				continue
+			visit(child, next_ancestors)
+			seen.add(child)
+			ordered.append(child)
+
+	visit(root, ())
+	return ordered
+
+
 def validate_finished_part_code(code: str) -> None:
 	if not ALNUM_RE.fullmatch(code):
 		frappe.throw(_("Finished part item code must be alphanumeric only"))
@@ -74,6 +105,7 @@ def validate_finished_part_code(code: str) -> None:
 
 
 def validate_sheet_cutting_layout(layout: SheetCuttingLayoutDocument) -> None:
+	apply_strip_thickness_mirror(layout)
 	apply_sheet_weight_formula(layout)
 	apply_strip_weight_formula(layout)
 	apply_parent_gross_weight_per_part_formula(layout)
@@ -83,10 +115,14 @@ def validate_sheet_cutting_layout(layout: SheetCuttingLayoutDocument) -> None:
 	apply_end_piece_weight_formulas(layout, end_pieces)
 	apply_end_piece_reuse_weight_formulas(end_pieces)
 	_validate_parent_finished_part_fields(layout)
+	_validate_lh_rh_fields(layout)
 
 	for end_piece in end_pieces:
 		_validate_end_piece_item_code_is_locked(end_piece)
 		_validate_end_piece_required_fields(layout, end_piece)
+
+	_validate_child_layouts(layout, end_pieces)
+	_validate_child_release_order(layout)
 
 	if end_pieces:
 		_validate_end_piece_distribution(layout, end_pieces)
@@ -97,6 +133,10 @@ def validate_sheet_cutting_layout(layout: SheetCuttingLayoutDocument) -> None:
 	apply_end_piece_bom_status(layout, end_pieces)
 	_validate_complete_sheet_consumption(layout, end_pieces)
 	_validate_generated_bom_matches_layout(layout)
+
+
+def apply_strip_thickness_mirror(layout: SheetCuttingLayoutDocument) -> None:
+	layout.strip_thickness_mm = getattr(layout, "sheet_thickness_mm", None)
 
 
 def apply_sheet_weight_formula(layout: SheetCuttingLayoutDocument) -> None:
@@ -269,6 +309,28 @@ def _validate_parent_finished_part_fields(layout: SheetCuttingLayoutDocument) ->
 			frappe.throw(_("Process scrap item cannot be the finished part item"))
 
 
+def _validate_lh_rh_fields(layout: SheetCuttingLayoutDocument) -> None:
+	if not getattr(layout, "is_lh_rh", None):
+		layout.orientation = None
+		layout.twin_finished_part = None
+		return
+
+	orientation = str(getattr(layout, "orientation", "") or "").strip()
+	if orientation not in {"LH", "RH"}:
+		frappe.throw(_("Primary orientation must be LH or RH for LH/RH layouts"))
+
+	twin_finished_part = str(getattr(layout, "twin_finished_part", "") or "").strip()
+	if _is_missing(twin_finished_part):
+		frappe.throw(_("Twin finished part is required for LH/RH layouts"))
+	validate_finished_part_code(twin_finished_part)
+	if _same_item_code(twin_finished_part, getattr(layout, "finished_part_code", None)):
+		frappe.throw(_("Twin finished part cannot match the primary finished part"))
+	if _same_item_code(twin_finished_part, getattr(layout, "raw_material_item", None)):
+		frappe.throw(_("Twin finished part cannot match the raw material item"))
+	if _same_item_code(twin_finished_part, getattr(layout, "process_scrap_item", None)):
+		frappe.throw(_("Twin finished part cannot match the process scrap item"))
+
+
 def _validate_end_piece_required_fields(
 	layout: SheetCuttingLayoutDocument,
 	end_piece: EndPieceRow,
@@ -324,6 +386,92 @@ def _validate_non_scrap_end_piece_fields_are_empty(end_piece: EndPieceRow) -> No
 		return
 	if not _is_missing(getattr(end_piece, "scrap_item", None)):
 		frappe.throw(_("Scrap item is allowed only for scrap end pieces"))
+
+
+def _validate_child_layouts(
+	layout: SheetCuttingLayoutDocument,
+	end_pieces: Sequence[EndPieceRow],
+) -> None:
+	layout_name = str(getattr(layout, "name", "") or "").strip()
+	for end_piece in end_pieces:
+		child_layout = getattr(end_piece, "child_layout", None)
+		child_layout = str(child_layout or "").strip()
+		if not child_layout:
+			continue
+		if not _is_reuse_end_piece(end_piece):
+			frappe.throw(_("A child layout can only be linked on a reuse end piece"))
+		if layout_name and child_layout == layout_name:
+			frappe.throw(_("A layout cannot be its own child layout"))
+		_validate_child_raw_material(layout, end_piece, child_layout)
+		_validate_no_child_layout_cycle(layout_name, child_layout)
+
+
+def _validate_child_raw_material(
+	layout: SheetCuttingLayoutDocument,
+	end_piece: EndPieceRow,
+	child_layout: str,
+) -> None:
+	# Derive the expected end-piece item from the layout's finished part, the same
+	# source ensure_end_piece_item uses when it actually creates the item. Deriving
+	# from the row's used_for_finished_part here would mismatch a valid child layout
+	# whenever finished_part_code != used_for_finished_part.
+	end_piece_item_code = derive_end_piece_item_code_from_row(
+		layout,
+		end_piece,
+		source_finished_part=getattr(layout, "finished_part_code", None),
+	)  # type: ignore[arg-type]
+	child_raw_material_item = frappe.db.get_value(
+		"Sheet Cutting Layout",
+		child_layout,
+		"raw_material_item",
+	)
+	child_raw_material_item = str(child_raw_material_item or "").strip()
+	end_piece_item_code = str(end_piece_item_code or "").strip()
+	if (
+		child_raw_material_item
+		and end_piece_item_code
+		and child_raw_material_item.casefold() == end_piece_item_code.casefold()
+	):
+		return
+	frappe.throw(
+		_("Child layout {0} must use the end-piece item {1} as its raw material").format(
+			child_layout,
+			end_piece_item_code,
+		)
+	)
+
+
+def _validate_no_child_layout_cycle(layout_name: str, child_layout: str) -> None:
+	if not layout_name:
+		return
+	try:
+		descendants = collect_descendant_layouts(child_layout, _child_layout_links_from_db)
+	except CascadeCycleError:
+		frappe.throw(_("Child layout chain contains a cycle and cannot be saved"))
+	if layout_name in descendants:
+		frappe.throw(_("Linking child layout {0} would create a cycle").format(child_layout))
+
+
+def _child_layout_links_from_db(layout_name: str) -> list[str]:
+	rows = frappe.get_all(
+		"Layout End Piece",
+		filters={"parent": layout_name, "parenttype": "Sheet Cutting Layout"},
+		pluck="child_layout",
+	)
+	return [str(row).strip() for row in rows if row and str(row).strip()]
+
+
+def _validate_child_release_order(layout: SheetCuttingLayoutDocument) -> None:
+	if str(getattr(layout, "status", "") or "").strip() != "Released":
+		return
+	raw_material_item = str(getattr(layout, "raw_material_item", None) or "").strip()
+	if raw_material_item and not frappe.db.exists("Item", raw_material_item):
+		frappe.throw(
+			_(
+				"Raw material item {0} does not exist yet; release the parent layout "
+				"that produces this end-piece item before releasing this child layout"
+			).format(raw_material_item)
+		)
 
 
 def _validate_end_piece_distribution(
@@ -390,7 +538,7 @@ def _validate_scrap_item_is_not_generated_end_piece_item(
 		return
 	try:
 		generated_item_code = derive_end_piece_item_code(
-			used_for_finished_part=getattr(end_piece, "used_for_finished_part", None),
+			used_for_finished_part=getattr(layout, "finished_part_code", None),
 			thickness_mm=getattr(layout, "sheet_thickness_mm", None),
 			width_mm=getattr(end_piece, "width_mm", None),
 			length_mm=getattr(end_piece, "length_mm", None),
@@ -413,7 +561,11 @@ def apply_end_piece_bom_status(
 	layout: SheetCuttingLayoutDocument,
 	end_pieces: Sequence[EndPieceRow],
 ) -> None:
-	reuse_end_pieces = [end_piece for end_piece in end_pieces if _is_reuse_end_piece(end_piece)]
+	reuse_end_pieces = [
+		end_piece
+		for end_piece in end_pieces
+		if _is_reuse_end_piece(end_piece) and not str(getattr(end_piece, "child_layout", "") or "").strip()
+	]
 	if not reuse_end_pieces:
 		layout.end_piece_bom_status = "Not Required"
 		return
@@ -499,11 +651,21 @@ def _validate_generated_bom_matches_layout(layout: SheetCuttingLayoutDocument) -
 		category="raw material",
 	)
 	_validate_bom_rows(
-		actual_rows=list(getattr(bom, "scrap_items", []) or []),
+		actual_rows=_actual_bom_scrap_rows(bom),
 		expected_rows=expected.scrap_items,
 		qty_getter=_bom_scrap_row_qty,
 		category="scrap",
 	)
+
+
+def _actual_bom_scrap_rows(bom: object) -> list[object]:
+	rows = list(getattr(bom, "scrap_items", []) or [])
+	rows.extend(
+		row
+		for row in getattr(bom, "secondary_items", []) or []
+		if _secondary_item_type(row) in {"Scrap", "By-Product"}
+	)
+	return rows
 
 
 def _validate_bom_rows(
@@ -570,6 +732,10 @@ def _bom_row_qty(row: object) -> float:
 
 def _bom_scrap_row_qty(row: object) -> float:
 	return float(getattr(row, "stock_qty", None) or getattr(row, "qty", 0) or 0)
+
+
+def _secondary_item_type(row: object) -> str:
+	return str(getattr(row, "type", "") or "").strip()
 
 
 def _is_missing(value: object) -> bool:

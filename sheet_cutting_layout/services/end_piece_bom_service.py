@@ -5,7 +5,6 @@ from typing import Protocol
 
 import frappe
 
-from sheet_cutting_layout.overrides.bom import mark_bom_app_controlled
 from sheet_cutting_layout.services import validators
 from sheet_cutting_layout.services.bom_service import build_weight_split_bom_rows
 from sheet_cutting_layout.services.end_piece_item_service import ensure_end_piece_item
@@ -22,6 +21,7 @@ class EndPieceRow(Protocol):
 	length_mm: float | None
 	weight_kg: float | None
 	used_for_finished_part: str | None
+	child_layout: str | None
 	bom_quantity: float | None
 	net_weight_per_part_kg: float | None
 	gross_weight_per_part_kg: float | None
@@ -34,6 +34,7 @@ class LayoutDocument(Protocol):
 	name: str
 	status: str | None
 	company: str | None
+	finished_part_code: str | None
 	raw_material_item: str | None
 	sheet_thickness_mm: float | None
 	process_scrap_item: str | None
@@ -54,7 +55,11 @@ def generate_end_piece_boms(layout: LayoutDocument) -> dict[str, list[str]]:
 		_validate_pending_row(layout, row)
 		item_code = _clean(getattr(row, "end_piece_item_code", None))
 		if not item_code:
-			item_code = ensure_end_piece_item(layout, row)
+			item_code = ensure_end_piece_item(
+				layout,
+				row,
+				source_finished_part=getattr(layout, "finished_part_code", None),
+			)
 			row.end_piece_item_code = item_code
 			generated_items.append(item_code)
 		bom_name = _create_end_piece_bom(layout, row, item_code)
@@ -105,7 +110,6 @@ def _create_end_piece_bom(layout: LayoutDocument, row: EndPieceRow, item_code: s
 			},
 		)
 
-	mark_bom_app_controlled(bom)
 	bom.insert(ignore_permissions=True)
 	bom.submit()
 	return bom.name
@@ -126,7 +130,15 @@ def _validate_pending_row(layout: LayoutDocument, row: EndPieceRow) -> None:
 
 
 def _reuse_end_pieces(layout: LayoutDocument) -> list[EndPieceRow]:
-	return [row for row in getattr(layout, "end_pieces", []) or [] if _is_reuse(row)]
+	return [
+		row
+		for row in getattr(layout, "end_pieces", []) or []
+		if _is_reuse(row) and not _row_has_child_layout(row)
+	]
+
+
+def _row_has_child_layout(row: EndPieceRow) -> bool:
+	return bool(str(getattr(row, "child_layout", "") or "").strip())
 
 
 def _is_reuse(row: EndPieceRow) -> bool:

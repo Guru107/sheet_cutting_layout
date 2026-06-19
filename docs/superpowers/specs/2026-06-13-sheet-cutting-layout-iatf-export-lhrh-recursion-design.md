@@ -16,7 +16,8 @@ framework-conformance debt:
 - **A1 — Excel/IATF export.** Produce the approved `FRM/PRD/15` workbook from a layout (hard audit
   requirement; currently absent).
 - **A2 — LH/RH symmetric parts.** One layout produces identical BOMs for each of its LH/RH item
-  codes (the Excel pairs them, e.g. `0102AAG06400_6410N`); currently one layout → one BOM.
+  codes (the export pairs them as full codes joined with `/`, e.g.
+  `0102AAG06400SHR/0102AAG06410SHR` — decision 2026-06-16; see §8.4); currently one layout → one BOM.
 - **A3 — Recursive end-piece layouts (hybrid).** A reused end piece may carry its own full cutting
   layout (its own strip + its own end pieces), modeling the Excel's nesting; currently flat,
   single-level reuse only.
@@ -38,7 +39,7 @@ A single-page-per-part layout:
   it has a "used for part number", its own strip, parts/strip, gross/net/scrap, and *its own*
   sub-end-pieces (the Excel's `End Piece 2 → 2-A, 2-B`). This is the recursive structure.
 - **LH/RH twins:** symmetric parts share an identical layout; the page names both part numbers
-  ("Part Name: Brkt bumper top LH&RH", "Part Number: 0102AAG06400_6410N").
+  ("Part Name: Brkt bumper top LH & RH", "Part Number: 0102AAG06400SHR/0102AAG06410SHR" — full codes, `/`-joined; see §8.4).
 - **BOM table (right side):** main part row + end-piece rows (gross / f.g. / scrap / nos / total wt).
 - **Signatures:** Prepared By (Engg/Prod), Checked by Production Manager, BOM Updated by Purchase,
   Released by Management Rep.
@@ -112,9 +113,12 @@ Resulting lifecycle, all native:
      the BOM ends **deactivated**.
   3. The layout cancels cleanly via native **`ignore_linked_doctypes = ["BOM"]`** on the doctype — no
      manual `db_set` / backlink-unlink / savepoint juggling.
-- **Delete** is purely framework-gated: attempt `doc.delete()`; Frappe blocks via `on_trash` link
-  checks if anything still links (submitted BOM, Work Order, Stock Entry). Success ⇒ genuinely unused.
-  No custom "is it used?" query.
+- **Delete** is framework-gated, with one app-owned cleanup first. `on_trash` clears the layout's own
+  residue — the `sheet_cutting_layout` backlink on its **cancelled** (`docstatus=2`) BOMs, plus any stale
+  `Workflow Action` rows (added 2026-06-16) — so those app-created links don't block the delete. Genuine
+  usage still blocks natively: `doc.delete()` is refused by Frappe's `on_trash` link checks if anything
+  *else* links (active/submitted BOM, Work Order, Stock Entry). Success ⇒ genuinely unused. No custom
+  "is it used?" query.
 
 The no-cycle guard on `child_layout` (§9.3) guarantees the cascade terminates.
 
@@ -199,7 +203,11 @@ the native direction:
    docstatus-1 dead-end (see §4.2); `approval_snapshot` partially duplicates native workflow audit.
    → Make `Superseded` `doc_status: 2` so Supersede drives `doc.cancel()`, remove the unreachable
    `Cancel` state, and **keep `approval_snapshot`** for the IATF signature trail (justified), noting the
-   overlap. (Findings 17, 35.)
+   overlap. (Findings 17, 35.) **Refined 2026-06-16:** snapshots are recorded **live on every workflow
+   transition** — draft approvals (Submitted for Check / PM Approved / Approved by Purchase / Rejected)
+   via `on_update`, release/supersede via the existing `on_submit`/`on_cancel` calls — persisted as
+   `Layout Approval Snapshot` child rows, idempotent by `step_name`. The migration-backfill patch was
+   removed in favour of this live persistence.
 8. **frappe-less test mode + pytest emulation (low, pervasive).** `try: import frappe` shims in
    production services/controllers; `unittest_adapter.py` reimplements pytest
    (`approx/raises/parametrize/fixtures`); `factories.py` hand-rolls cleanup vs `FrappeTestCase`
@@ -246,7 +254,9 @@ has no such field, a latent mismatch this closes — plus an `orientation` colum
 `sheet_cutting_layout = this layout`** (already done in `_insert_frappe_bom`), so both reference the same
 Sheet Cutting Layout. `_sync_finished_part_reference_rows` fills the `finished_parts` mirror with both
 rows (item, orientation, generated BOM, quantities). With the Phase-0 fix, the parent `generated_bom`
-holds the primary's BOM; the mirror holds both.
+holds the primary's BOM; the mirror holds both. Each BOM's end-piece **byproduct** items derive from
+that BOM's own finished part (primary vs twin), so the twin's BOM carries twin-derived end-piece item
+codes (2026-06-16; see §9.2).
 
 ### 8.3 Validation
 When `is_lh_rh`: `orientation` and `twin_finished_part` are required; the twin code is alphanumeric +
@@ -254,8 +264,13 @@ ends `SHR`, distinct from the primary and from the raw material. Net/gross/scrap
 pair.
 
 ### 8.4 Export interaction
-The part-number cell joins the pair (e.g. `0102AAG06400_6410N`); the part-name/label uses the
-orientations (e.g. "… LH & RH").
+The part-number cell joins the pair as **full item codes, `/`-joined** (e.g.
+`0102AAG06400SHR/0102AAG06410SHR`); the part-name/label uses the orientations (e.g. "… LH & RH").
+The generated BOM keeps the **primary** item code only.
+
+> **Decision 2026-06-16:** the part-number cell uses the full item codes joined with `/`, NOT a
+> common-prefix short form (`0102AAG06400_6410N`). The short-form `joined_part_number_label`
+> /`_common_prefix_length` helpers proposed in the Phase 1 plan are superseded and were not built.
 
 ### 8.5 Tests
 - Unit: pair expansion (`is_lh_rh` → `[primary, twin]`; unchecked → `[primary]`); orientation/twin
@@ -263,8 +278,12 @@ orientations (e.g. "… LH & RH").
 - Integration: an LH/RH layout → two identical BOMs **both linked to the same layout**; the
   `finished_parts` mirror shows both with orientation + BOM; supersede/cancel retire **both** BOMs
   (`_layout_bom_names` gathers them — assert it).
-- E2E: check "LH/RH", pick twin + orientation, release → both items/BOMs shown in the mirror, both
-  referencing the layout.
+- E2E (`cypress/integration/sheet_cutting_layout_lh_rh.js`, green under bench 2026-06-16): two specs —
+  (1) the **client toggle** through the real Desk form — checking `is_lh_rh` auto-defaults `orientation`
+  to `LH`, unchecking clears `orientation` + `twin_finished_part`; (2) **release** → two distinct BOMs +
+  an LH/RH `finished_parts` mirror, both BOMs referencing the same layout. Decision (2026-06-16): the
+  release transitions are driven through the live workflow API (`frappe.model.workflow.apply_workflow`),
+  not the Desk Actions menu — see the §13 note on the LH/RH Desk-form mandatory-field timing quirk.
 
 ## 9. Phase 3 — Hybrid recursive end-piece layouts (A3)
 
@@ -281,6 +300,12 @@ Add optional **`child_layout`** (Link → Sheet Cutting Layout) to `Layout End P
   the real BOM. The parent BOM still carries the end piece as a byproduct row (consumed by the child as
   raw material — no double counting; the existing weight-balance validator already accounts for
   byproducts).
+
+> **End-piece item-code source (refined 2026-06-16).** The generated end-piece **item code** derives
+> from the **layout's main finished part** (`finished_part_code` for the simple end-piece BOM), and from
+> **that BOM's specific part** (primary/twin) for a main-BOM byproduct row — threaded as
+> `source_finished_part` through `derive_end_piece_item_code_from_row` / `ensure_end_piece_item`. It is
+> no longer taken from the end-piece row's `used_for_finished_part`, which stays the row's reuse target.
 
 ### 9.3 Guards (native validation)
 - Child `raw_material_item` must equal the parent end-piece item.
@@ -318,7 +343,7 @@ the curated template must be confirmed as the audit-approved one before Phase 2 
 ### 10.3 Cell map (codified, from the approved sheet)
 Representative (finalized in the implementation plan against the curated template):
 
-- `B1` company · `G5` part name · `N5` joined part numbers (LH_RH) · `B6/C6` project code/name
+- `B1` company · `G5` part name · `N5` joined part numbers (LH_RH) · `B6` project name (merged `B6:F6`; name only — decision 2026-06-16, no project code)
 - `K8` thickness · `K9/L9/M9` sheet T/W/L · `K10` strip weight · `K11/L11/M11` strip T/W/L ·
   `K12` parts/strip · `K13` no. strips · `K14` parts/sheet · `K15/K16/K17` gross/net/scrap per part
 - Right-side BOM table `O7:U11` and the end-piece detail blocks from `end_pieces`
@@ -388,10 +413,23 @@ cross-checked against the installed Frappe v15 / ERPNext v15.101 source. Finding
 | 32 | low | release_service.py:378-439 (`_insert_frappe_bom`) | Set only input fields; let `validate()` compute rate/status |
 | 33 | low | versioning.py:73-89 (`_reset_child_row`) | Let `copy_doc` localize children; clear only app fields |
 | 34 | low | controllers (`try: import frappe` + stub Document) | Bench-native tests; remove stub Document/whitelist |
-| 35 | low | workflow.py:33-64 (`record_approval_snapshot`) | Keep for IATF trail; note overlap with native workflow audit |
+| 35 | low | workflow.py (`record_approval_snapshot` / `approval_snapshot_row`) | Keep for IATF trail. **Recorded live per workflow transition** (draft approvals via `on_update`) as idempotent `Layout Approval Snapshot` rows; backfill patch removed (2026-06-16). |
 | 36 | low | ~~tests/base.py (FrappeTestCase fallback)~~ — **DONE (develop merge 2026-06-13)**: `base.py` now a 26-line bench-native v16-first/v15-fallback `FrappeTestCase` probe (`SheetCuttingLayoutTestCase`) | — |
 
 ## 13. Open items
 
 - Curated `FRM/PRD/15` blank template confirmed as the audit-approved page (Phase 2 gate).
-- During Phase 3: whether `end_piece_bom_service` complex-reuse path is superseded by child layouts.
+- ~~During Phase 3: whether `end_piece_bom_service` complex-reuse path is superseded by child
+  layouts.~~ **Resolved (Phase 3):** keep both. End-piece rows without `child_layout` use the simple
+  `end_piece_bom_service` item+BOM path unchanged; rows with `child_layout` route the real BOM to the
+  child layout and are excluded from `_reuse_end_pieces`. The two paths are mutually exclusive per row,
+  so neither is deprecated.
+- **LH/RH Desk-form mandatory-field timing (observed 2026-06-16).** When an LH/RH layout (whose
+  `orientation`/`twin_finished_part` are `mandatory_depends_on: is_lh_rh`) is stepped through the
+  workflow by automation at speed, the Desk form's client mandatory check can mis-fire and block the
+  save with a spurious "Missing Fields" dialog listing every mandatory field. Server-side release is
+  correct (verified: `apply_workflow` → `Released`, LH+RH mirror, two BOMs both backlinking the layout),
+  and single-part layouts are unaffected (they have no `mandatory_depends_on` pair fields). The LH/RH
+  E2E therefore drives the release through the workflow API rather than the Desk Actions menu. Whether a
+  fast real user can trip the same client race is unconfirmed — flagged for a possible UI investigation,
+  not a release blocker.

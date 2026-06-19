@@ -501,6 +501,12 @@ def _clean(value: object) -> str | None:
 
 1. The child layout's `raw_material_item` must equal the parent end-piece's generated item code
    (derived via the existing `derive_end_piece_item_code_from_row`).
+   > **Refined 2026-06-16:** `derive_end_piece_item_code_from_row` / `ensure_end_piece_item` gained a
+   > keyword `source_finished_part` that supplies the `used_for_finished_part` base — the **layout's
+   > `finished_part_code`** for the simple end-piece BOM, and **that BOM's part** (primary/twin) for a
+   > main-BOM byproduct row — instead of the end-piece row's own `used_for_finished_part`. The guard's
+   > derivation must pass the same `source_finished_part` so the expected code matches what
+   > `ensure_end_piece_item` actually creates. See spec §9.2.
 2. The child layout must not be the layout itself (self-reference) and must not be an ancestor — a
    cycle. Ancestry is resolved with the Task 2 traversal over the saved data.
 3. A child layout cannot be linked unless `disposition == "Reuse"` (the field is gated in the UI, but

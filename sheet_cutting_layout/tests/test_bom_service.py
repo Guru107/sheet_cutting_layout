@@ -83,7 +83,7 @@ class TestBomService(SheetCuttingLayoutTestCase):
 
 		assert [(row.item_code, row.qty, row.row_type) for row in bom.scrap_items] == [
 			("MSScrap", 14.233142, "process_scrap"),
-			("FG002SHR-EP-1.6x1250x179", 2.81388, "end_piece_byproduct"),
+			("FINISHED-SHR-EP-1.6x1250x179", 2.81388, "end_piece_byproduct"),
 		]
 
 	def test_reuse_end_pieces_create_main_bom_byproduct_rows(self) -> None:
@@ -98,11 +98,26 @@ class TestBomService(SheetCuttingLayoutTestCase):
 		)
 
 		assert [(row.item_code, row.qty, row.uom, row.row_type) for row in bom.scrap_items] == [
-			("FG002SHR-EP-1.6x1250x179", 2.81388, "Kg", "end_piece_byproduct"),
+			("FINISHED-SHR-EP-1.6x1250x179", 2.81388, "Kg", "end_piece_byproduct"),
+		]
+
+	def test_twin_bom_uses_twin_finished_part_for_end_piece_byproduct_code(self) -> None:
+		bom = bom_service.build_bom_from_layout_row(
+			Layout(
+				sheet_thickness_mm=1.6,
+				end_pieces=[
+					EndPiece(weight_kg=2.81388, used_for_finished_part="FG002SHR"),
+				],
+			),
+			FinishedPart(finished_part_item="BRKT-RH-SHR", parts_per_sheet=77),
+		)
+
+		assert [(row.item_code, row.qty, row.uom, row.row_type) for row in bom.scrap_items] == [
+			("BRKT-RH-SHR-EP-1.6x1250x179", 2.81388, "Kg", "end_piece_byproduct"),
 		]
 
 	def test_existing_reuse_end_piece_item_code_wins_over_resolver(self) -> None:
-		def fail_resolver(_layout: object, _row: object) -> str:
+		def fail_resolver(_layout: object, _row: object, _finished_part: object) -> str:
 			raise AssertionError("resolver should not run when row is already linked")
 
 		bom = bom_service.build_bom_from_layout_row(
@@ -116,7 +131,7 @@ class TestBomService(SheetCuttingLayoutTestCase):
 		]
 
 	def test_reuse_end_piece_resolver_runs_before_pure_derivation(self) -> None:
-		def resolver(_layout: object, _row: object) -> str:
+		def resolver(_layout: object, _row: object, _finished_part: object) -> str:
 			return "RESOLVED-EP"
 
 		bom = bom_service.build_bom_from_layout_row(
@@ -143,7 +158,7 @@ class TestBomService(SheetCuttingLayoutTestCase):
 					Layout(end_pieces=[EndPiece(weight_kg=2.5)]),
 					FinishedPart(),
 					document_factory=capture_bom,
-					end_piece_item_code_resolver=lambda _layout, _row: resolver_result,
+					end_piece_item_code_resolver=lambda _layout, _row, _finished_part: resolver_result,
 				)
 
 			assert created_boms[0].scrap_items == []
@@ -287,7 +302,7 @@ class TestBomService(SheetCuttingLayoutTestCase):
 			[(row.item_code, row.qty, row.row_type) for row in bom.scrap_items],
 			[
 				("PROCESS-SCRAP", 14.233142, "process_scrap"),
-				("FG002SHR-EP-1.6x1250x179", 2.81388, "end_piece_byproduct"),
+				("FG01SHR-EP-1.6x1250x179", 2.81388, "end_piece_byproduct"),
 			],
 		)
 

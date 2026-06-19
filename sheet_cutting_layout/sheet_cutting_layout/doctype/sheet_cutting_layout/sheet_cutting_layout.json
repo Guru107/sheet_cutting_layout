@@ -40,9 +40,13 @@
   "no_of_strips",
   "parts_per_sheet",
   "finished_part_code",
+  "is_lh_rh",
+  "orientation",
+  "twin_finished_part",
   "net_weight_per_part_kg",
   "scrap_weight_per_part_kg",
   "generated_bom",
+  "twin_generated_bom",
   "workflow_section",
   "status",
   "tables_section",
@@ -196,6 +200,7 @@
    "fieldname": "strip_thickness_mm",
    "fieldtype": "Float",
    "label": "Strip Thickness Mm",
+   "read_only": 1,
    "reqd": 1
   },
   {
@@ -254,6 +259,28 @@
    "reqd": 1
   },
   {
+   "default": "0",
+   "fieldname": "is_lh_rh",
+   "fieldtype": "Check",
+   "label": "Symmetric LH/RH Part"
+  },
+  {
+   "depends_on": "eval:doc.is_lh_rh",
+   "fieldname": "orientation",
+   "fieldtype": "Select",
+   "label": "Primary Orientation",
+   "mandatory_depends_on": "eval:doc.is_lh_rh",
+   "options": "\nLH\nRH"
+  },
+  {
+   "depends_on": "eval:doc.is_lh_rh",
+   "fieldname": "twin_finished_part",
+   "fieldtype": "Link",
+   "label": "Twin Finished Part",
+   "mandatory_depends_on": "eval:doc.is_lh_rh",
+   "options": "Item"
+  },
+  {
    "fieldname": "net_weight_per_part_kg",
    "fieldtype": "Float",
    "label": "Net Weight Per Part (Kg)",
@@ -269,6 +296,15 @@
    "fieldname": "generated_bom",
    "fieldtype": "Link",
    "label": "Generated BOM",
+   "no_copy": 1,
+   "options": "BOM",
+   "read_only": 1
+  },
+  {
+   "depends_on": "eval:doc.twin_generated_bom",
+   "fieldname": "twin_generated_bom",
+   "fieldtype": "Link",
+   "label": "Twin Part BOM",
    "no_copy": 1,
    "options": "BOM",
    "read_only": 1
@@ -341,7 +377,7 @@
   {
    "create": 1,
    "read": 1,
-   "role": "Project Manager",
+   "role": "Projects Manager",
    "write": 1
   },
   {

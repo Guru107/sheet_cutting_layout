@@ -242,6 +242,12 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 
 ### Task 2: Add the joined part-number + LH/RH label helpers
 
+> **SUPERSEDED (decision 2026-06-16).** The short-form `joined_part_number_label` /
+> `_common_prefix_length` helpers below were **not** built. The export part-number cell uses the
+> **full item codes joined with `/`** (e.g. `0102AAG06400SHR/0102AAG06410SHR`), not the common-prefix
+> short form (`0102AAG06400_6410N`). Only the `lh_rh_part_name_suffix` ("LH & RH") portion shipped.
+> Kept below for historical context; see spec §8.4.
+
 These pure helpers are consumed by the Phase 2 exporter (§8.4) but are defined and tested now so the labeling contract is fixed in Phase 1.
 
 **Files:**
@@ -1301,6 +1307,18 @@ This spec is also the automated gate for the Task 9 client JS (`syncLhRhFields`)
 checking `is_lh_rh` auto-defaults `orientation` to `LH`, and that un-checking it clears
 `orientation` + `twin_finished_part`. Both branches of `syncLhRhFields` are therefore exercised here
 before the release assertions run.
+
+> **Implementation decision (2026-06-16, verified green under bench).** As shipped, the spec is two
+> tests: (1) the **client toggle** through the real Desk form (covers both `syncLhRhFields` branches);
+> (2) the **release** assertions. The release transitions are driven through the live **workflow API**
+> (`cy.call("frappe.model.workflow.apply_workflow", { doc, action })`), **not** the Desk Actions menu.
+> Reason: stepping an LH/RH layout through the workflow via the Desk UI at automation speed trips a
+> client mandatory-field timing race — the form mis-fires a "Missing Fields" dialog for the
+> `mandatory_depends_on` pair fields (`orientation`/`twin_finished_part`) and blocks the save. Server-side
+> release is correct (`apply_workflow` → `Released`, LH+RH mirror, two BOMs both backlinking the layout),
+> and single-part layouts are unaffected, so this is an automation/UI race, not a release bug (see spec
+> §13). Also: the seed layout **must include a `finished_parts` row** (mirror the single-part release
+> spec) or the form's derived/mandatory fields are not populated at save time.
 
 **Files:**
 - Create: `cypress/integration/sheet_cutting_layout_lh_rh.js`

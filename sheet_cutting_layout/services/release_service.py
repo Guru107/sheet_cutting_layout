@@ -6,15 +6,16 @@ from typing import Literal, Protocol
 
 import frappe
 
-from sheet_cutting_layout.overrides.bom import mark_bom_app_controlled
 from sheet_cutting_layout.services.bom_service import (
 	BomDocument,
+	BomItemRow,
 	ParentFinishedPartRow,
 	build_bom_from_layout_row,
 	parent_finished_part_row,
+	twin_finished_part_row,
 )
 from sheet_cutting_layout.services.end_piece_item_service import ensure_end_piece_item
-from sheet_cutting_layout.services.validators import validate_sheet_cutting_layout
+from sheet_cutting_layout.services.validators import collect_descendant_layouts, validate_sheet_cutting_layout
 from sheet_cutting_layout.services.versioning import finalize_new_revision_release
 
 _ = frappe._
@@ -26,6 +27,7 @@ class EndPieceRow(Protocol):
 	weight_kg: float
 	disposition: str
 	scrap_item: str | None
+	child_layout: str | None
 
 
 class ReleaseValidator(Protocol):
@@ -37,7 +39,7 @@ class FinishedPartRow(Protocol):
 	parts_per_sheet: int
 	gross_weight_per_part_kg: float
 	scrap_weight_per_part_kg: float
-	generated_bom: str | None
+	orientation: str | None
 
 
 class ReleaseLayoutDocument(Protocol):
@@ -49,6 +51,9 @@ class ReleaseLayoutDocument(Protocol):
 	no_of_strips: int
 	weight_per_sheet_kg: float
 	finished_part_code: str | None
+	is_lh_rh: int | bool | None
+	orientation: str | None
+	twin_finished_part: str | None
 	net_weight_per_part_kg: float | None
 	gross_weight_per_part_kg: float | None
 	scrap_weight_per_part_kg: float | None
@@ -143,15 +148,12 @@ def retire_layout(layout: object) -> None:
 
 		save_point = f"scl_retire_bom_{index}"
 		frappe.db.savepoint(save_point)
-		mark_bom_app_controlled(bom_doc)
 		try:
 			bom_doc.cancel()
 		except frappe.LinkExistsError:
 			frappe.db.rollback(save_point=save_point)
 			bom_doc = frappe.get_doc("BOM", bom_name)
-			mark_bom_app_controlled(bom_doc)
-			bom_doc.is_active = 0
-			bom_doc.save(ignore_permissions=True)
+			bom_doc.db_set("is_active", 0, update_modified=False)
 
 
 def _layout_bom_names(layout: object) -> list[str]:
@@ -171,6 +173,56 @@ def _layout_bom_names(layout: object) -> list[str]:
 			_append_unique_clean(names, bom_name)
 
 	return names
+
+
+def collect_descendant_layout_names(
+	layout: object,
+	load_layout: Callable[[str], object],
+) -> list[str]:
+	"""Return descendant layout names via end-piece child_layout links, leaves first."""
+
+	def child_links(layout_name: str) -> list[str]:
+		source = layout if layout_name == _layout_name(layout) else load_layout(layout_name)
+		return _child_layout_links(source)
+
+	layout_name = _layout_name(layout)
+	if not layout_name:
+		return []
+	return collect_descendant_layouts(layout_name, child_links)
+
+
+def cancel_descendant_layouts(layout: object) -> list[str]:
+	"""Cancel descendant layouts leaves-first through the native document lifecycle."""
+	cancelled: list[str] = []
+
+	def load_layout(layout_name: str) -> object:
+		return frappe.get_doc("Sheet Cutting Layout", layout_name)
+
+	for descendant_name in collect_descendant_layout_names(layout, load_layout):
+		descendant = frappe.get_doc("Sheet Cutting Layout", descendant_name)
+		if _is_cancelled_document(descendant) or not _is_submitted_document(descendant):
+			continue
+		if hasattr(descendant, "status"):
+			descendant.status = "Superseded"
+		ignore_linked_doctypes = list(getattr(descendant, "ignore_linked_doctypes", None) or [])
+		for doctype in ("BOM", "Sheet Cutting Layout"):
+			if doctype not in ignore_linked_doctypes:
+				ignore_linked_doctypes.append(doctype)
+		descendant.ignore_linked_doctypes = ignore_linked_doctypes
+		descendant.cancel()
+		cancelled.append(descendant_name)
+	return cancelled
+
+
+def _child_layout_links(source: object) -> list[str]:
+	names: list[str] = []
+	for row in getattr(source, "end_pieces", []) or []:
+		_append_unique_clean(names, getattr(row, "child_layout", None))
+	return names
+
+
+def _layout_name(layout: object) -> str:
+	return str(getattr(layout, "name", "") or "").strip()
 
 
 def _append_unique_clean(values: list[str], value: object) -> None:
@@ -201,6 +253,8 @@ def _generate_boms(
 		)
 		if index == 1:
 			_set_frappe_field_if_supported(layout, "generated_bom", bom.name)
+		elif index == 2:
+			_set_frappe_field_if_supported(layout, "twin_generated_bom", bom.name)
 		generated_boms.append(bom)
 
 	return generated_boms
@@ -233,8 +287,17 @@ def _default_bom_document_factory(
 	return _insert_frappe_bom(bom)
 
 
-def _ensure_and_link_end_piece_item(layout: ReleaseLayoutDocument, row: object) -> str:
-	item_code = ensure_end_piece_item(layout, row)  # type: ignore[arg-type]
+def _ensure_and_link_end_piece_item(
+	layout: ReleaseLayoutDocument, row: object, finished_part: FinishedPartRow
+) -> str:
+	existing_item_code = str(getattr(row, "end_piece_item_code", "") or "").strip()
+	if existing_item_code:
+		return existing_item_code
+	item_code = ensure_end_piece_item(
+		layout,
+		row,
+		source_finished_part=finished_part.finished_part_item,
+	)  # type: ignore[arg-type]
 	if hasattr(row, "end_piece_item_code"):
 		row.end_piece_item_code = item_code
 	return item_code
@@ -251,7 +314,6 @@ def _insert_frappe_bom(bom: BomDocument) -> BomDocument:
 	bom_doc.sheet_cutting_layout = bom.sheet_cutting_layout or getattr(
 		getattr(bom, "_layout", None), "name", None
 	)
-	mark_bom_app_controlled(bom_doc)
 	for row in bom.items:
 		bom_doc.append(
 			"items",
@@ -262,15 +324,7 @@ def _insert_frappe_bom(bom: BomDocument) -> BomDocument:
 			},
 		)
 	for row in bom.scrap_items:
-		bom_doc.append(
-			"scrap_items",
-			{
-				"item_code": row.item_code,
-				"stock_qty": row.qty,
-				"qty": row.qty,
-				"uom": row.uom,
-			},
-		)
+		_append_frappe_bom_scrap_row(bom_doc, row)
 	bom_doc.insert()
 	bom_doc.submit()
 
@@ -280,10 +334,59 @@ def _insert_frappe_bom(bom: BomDocument) -> BomDocument:
 	return bom
 
 
+def _append_frappe_bom_scrap_row(bom_doc: object, row: BomItemRow) -> None:
+	if _has_bom_child_table(bom_doc, "scrap_items"):
+		bom_doc.append(
+			"scrap_items",
+			{
+				"item_code": row.item_code,
+				"stock_qty": row.qty,
+				"stock_uom": row.uom,
+			},
+		)
+		return
+
+	if _has_bom_child_table(bom_doc, "secondary_items"):
+		bom_doc.append(
+			"secondary_items",
+			{
+				"type": _secondary_item_type(row),
+				"item_code": row.item_code,
+				"stock_qty": row.qty,
+				"qty": row.qty,
+				"uom": row.uom,
+				"stock_uom": row.uom,
+				"conversion_factor": 1,
+				"cost_allocation_per": 0,
+				"process_loss_per": 0,
+				"process_loss_qty": 0,
+				"cost": 0,
+				"base_cost": 0,
+			},
+		)
+		return
+
+	frappe.throw(_("BOM DocType must include a scrap or secondary item table"))
+
+
+def _secondary_item_type(row: BomItemRow) -> str:
+	return "By-Product" if row.row_type == "end_piece_byproduct" else "Scrap"
+
+
+def _has_bom_child_table(bom_doc: object, fieldname: str) -> bool:
+	meta = getattr(bom_doc, "meta", None)
+	if meta is not None and hasattr(meta, "get_field"):
+		return meta.get_field(fieldname) is not None
+	return hasattr(bom_doc, fieldname)
+
+
 def _parent_finished_part_rows(layout: ReleaseLayoutDocument) -> list[ParentFinishedPartRow]:
 	if not str(getattr(layout, "finished_part_code", "") or "").strip():
 		return []
-	return [parent_finished_part_row(layout)]  # type: ignore[arg-type]
+	rows = [parent_finished_part_row(layout)]  # type: ignore[arg-type]
+	if getattr(layout, "is_lh_rh", None):
+		rows.append(twin_finished_part_row(layout))  # type: ignore[arg-type]
+	return rows
 
 
 def _sync_finished_part_reference_rows(
@@ -362,7 +465,6 @@ def _save_bom_records(boms: Sequence[BomRecord]) -> None:
 			continue
 		bom_doc = bom if hasattr(bom, "save") else frappe.get_doc("BOM", bom.name)
 		_set_frappe_field_if_supported(bom_doc, "is_active", 1 if bom.is_active else 0)
-		mark_bom_app_controlled(bom_doc)
 		bom_doc.save(ignore_permissions=True)
 
 
@@ -402,6 +504,7 @@ def _save_submitted_layout_record(layout: object) -> None:
 			"status": getattr(layout, "status", None),
 			"is_active": getattr(layout, "is_active", None),
 			"generated_bom": getattr(layout, "generated_bom", None),
+			"twin_generated_bom": getattr(layout, "twin_generated_bom", None),
 		},
 	)
 	if state_values:

@@ -13,6 +13,7 @@
   "disposition",
   "scrap_item",
   "used_for_finished_part",
+  "child_layout",
   "bom_quantity",
   "net_weight_per_part_kg",
   "gross_weight_per_part_kg",
@@ -76,6 +77,14 @@
   },
   {
    "depends_on": "eval:doc.disposition==\"Reuse\"",
+   "fieldname": "child_layout",
+   "fieldtype": "Link",
+   "label": "Child Layout",
+   "no_copy": 1,
+   "options": "Sheet Cutting Layout"
+  },
+  {
+   "depends_on": "eval:doc.disposition==\"Reuse\"",
    "fieldname": "bom_quantity",
    "fieldtype": "Float",
    "label": "BOM Quantity"
@@ -108,10 +117,11 @@
    "read_only": 1
   },
   {
+   "depends_on": "eval:doc.generated_end_piece_bom",
    "fieldname": "generated_end_piece_bom",
    "fieldtype": "Link",
-   "hidden": 1,
    "label": "Generated End Piece BOM",
+   "in_list_view": 1,
    "no_copy": 1,
    "options": "BOM",
    "read_only": 1

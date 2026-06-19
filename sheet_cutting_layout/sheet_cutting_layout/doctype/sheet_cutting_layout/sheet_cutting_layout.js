@@ -75,6 +75,14 @@ frappe.provide("sheet_cutting_layout");
 		return frm.set_value("weight_of_strip_kg", weight);
 	}
 
+	function syncStripThicknessFromSheet(frm) {
+		if (frm.doc.strip_thickness_mm === frm.doc.sheet_thickness_mm) {
+			return Promise.resolve();
+		}
+
+		return frm.set_value("strip_thickness_mm", frm.doc.sheet_thickness_mm);
+	}
+
 	function calculateParentGrossWeightPerPart(frm) {
 		const stripWeight = Number(frm.doc.weight_of_strip_kg);
 		const partsPerStrip = Number(frm.doc.parts_per_strip);
@@ -326,7 +334,11 @@ frappe.provide("sheet_cutting_layout");
 	}
 
 	function updateSheetWeightAndDerivedFields(frm) {
-		return updateSheetWeight(frm)
+		return syncStripThicknessFromSheet(frm)
+			.then(() => updateSheetWeight(frm))
+			.then(() => updateStripWeight(frm))
+			.then(() => updateParentGrossWeightPerPart(frm))
+			.then(() => updateParentScrapWeightPerPart(frm))
 			.then(() => updateEndPieceWeights(frm))
 			.then(() => updateEndPieceReuseWeights(frm))
 			.then(() => updateConsumptionTracking(frm));
@@ -366,6 +378,24 @@ frappe.provide("sheet_cutting_layout");
 		);
 	}
 
+	function updateLhRhFields(frm) {
+		if (frm.doc.is_lh_rh) {
+			if (!frm.doc.orientation) {
+				return frm.set_value("orientation", "LH");
+			}
+			return Promise.resolve();
+		}
+
+		const updates = [];
+		if (frm.doc.orientation) {
+			updates.push(frm.set_value("orientation", ""));
+		}
+		if (frm.doc.twin_finished_part) {
+			updates.push(frm.set_value("twin_finished_part", ""));
+		}
+		return Promise.all(updates);
+	}
+
 	function addEndPieceBomButtons(frm) {
 		const hasReusableEndPieces = (frm.doc.end_pieces || []).some(
 			(row) => row.disposition === "Reuse"
@@ -388,6 +418,19 @@ frappe.provide("sheet_cutting_layout");
 		});
 	}
 
+	function addDownloadLayoutButton(frm) {
+		if (frm.is_new()) {
+			return;
+		}
+		frm.add_custom_button(__("Download Layout (Excel)"), () => {
+			const method =
+				"sheet_cutting_layout.sheet_cutting_layout.doctype.sheet_cutting_layout." +
+				"sheet_cutting_layout.download_sheet_cutting_layout";
+			const url = `/api/method/${method}?name=${encodeURIComponent(frm.doc.name)}`;
+			window.open(url, "_blank");
+		});
+	}
+
 	function ignoreBomInGenericCancelAll(frm) {
 		frm.ignore_doctypes_on_cancel_all = Array.from(
 			new Set([...(frm.ignore_doctypes_on_cancel_all || []), "BOM"])
@@ -398,6 +441,7 @@ frappe.provide("sheet_cutting_layout");
 		refresh(frm) {
 			ignoreBomInGenericCancelAll(frm);
 			addEndPieceBomButtons(frm);
+			addDownloadLayoutButton(frm);
 			if (!frm.is_new() && ["Released", "Superseded"].includes(frm.doc.status)) {
 				frm.add_custom_button(__("New Version"), () => {
 					frappe.call({
@@ -444,6 +488,7 @@ frappe.provide("sheet_cutting_layout");
 		parts_per_strip: updatePartsPerSheetAndDerivedFields,
 		no_of_strips: updatePartsPerSheetAndDerivedFields,
 		net_weight_per_part_kg: updateParentWeightsAndConsumption,
+		is_lh_rh: updateLhRhFields,
 	});
 
 	frappe.ui.form.on("Layout End Piece", {

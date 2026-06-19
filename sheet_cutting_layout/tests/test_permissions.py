@@ -7,7 +7,7 @@ from frappe.tests.utils import FrappeTestCase
 class TestSheetCuttingLayoutPermissions(FrappeTestCase):
 	def test_workflow_roles_can_read_and_write(self) -> None:
 		permissions = frappe.get_meta("Sheet Cutting Layout").permissions
-		for role in ("Project Manager", "Purchase Manager", "MR Coordinator"):
+		for role in ("Projects Manager", "Purchase Manager", "MR Coordinator"):
 			with self.subTest(role=role):
 				self.assertTrue(any(permission.role == role for permission in permissions))
 				self.assertTrue(

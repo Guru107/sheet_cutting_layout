@@ -12,6 +12,7 @@ class FinishedPartRow(Protocol):
 	parts_per_sheet: int
 	gross_weight_per_part_kg: float
 	scrap_weight_per_part_kg: float
+	orientation: str | None
 
 
 class EndPieceRow(Protocol):
@@ -30,6 +31,9 @@ class LayoutDocument(Protocol):
 	weight_per_sheet_kg: float
 	no_of_strips: int
 	finished_part_code: str | None
+	is_lh_rh: int | bool | None
+	orientation: str | None
+	twin_finished_part: str | None
 	parts_per_sheet: int
 	gross_weight_per_part_kg: float
 	scrap_weight_per_part_kg: float
@@ -71,6 +75,7 @@ class ParentFinishedPartRow:
 	parts_per_sheet: int
 	gross_weight_per_part_kg: float
 	scrap_weight_per_part_kg: float
+	orientation: str | None = None
 
 
 @dataclass
@@ -82,7 +87,7 @@ class ExpectedBomWeightBalance:
 
 
 BomDocumentFactory = Callable[[str], BomDocument]
-EndPieceItemCodeResolver = Callable[[LayoutDocument, EndPieceRow], str]
+EndPieceItemCodeResolver = Callable[[LayoutDocument, EndPieceRow, FinishedPartRow], str]
 
 
 def build_weight_split_bom_rows(
@@ -147,6 +152,7 @@ def build_bom_from_layout_row(
 		if _is_reuse_end_piece(end_piece):
 			item_code = _end_piece_byproduct_item_code(
 				layout_doc,
+				finished_part_row,
 				end_piece,
 				end_piece_item_code_resolver,
 			)
@@ -200,7 +206,37 @@ def parent_finished_part_row(layout_doc: LayoutDocument) -> ParentFinishedPartRo
 		parts_per_sheet=int(getattr(layout_doc, "parts_per_sheet", 0) or 0),
 		gross_weight_per_part_kg=float(getattr(layout_doc, "gross_weight_per_part_kg", 0) or 0),
 		scrap_weight_per_part_kg=float(getattr(layout_doc, "scrap_weight_per_part_kg", 0) or 0),
+		orientation=_parent_orientation(layout_doc),
 	)
+
+
+def twin_finished_part_row(layout_doc: LayoutDocument) -> ParentFinishedPartRow:
+	primary = parent_finished_part_row(layout_doc)
+	twin_item = str(getattr(layout_doc, "twin_finished_part", "") or "").strip()
+	if not twin_item:
+		raise ValueError("twin_finished_part is required to create the LH/RH twin BOM")
+	return ParentFinishedPartRow(
+		finished_part_item=twin_item,
+		parts_per_sheet=primary.parts_per_sheet,
+		gross_weight_per_part_kg=primary.gross_weight_per_part_kg,
+		scrap_weight_per_part_kg=primary.scrap_weight_per_part_kg,
+		orientation=_opposite_orientation(primary.orientation),
+	)
+
+
+def _parent_orientation(layout_doc: LayoutDocument) -> str | None:
+	if not getattr(layout_doc, "is_lh_rh", None):
+		return None
+	orientation = str(getattr(layout_doc, "orientation", "") or "").strip().upper()
+	return orientation or None
+
+
+def _opposite_orientation(orientation: str | None) -> str | None:
+	if orientation == "LH":
+		return "RH"
+	if orientation == "RH":
+		return "LH"
+	return None
 
 
 def _new_bom(item: str, document_factory: BomDocumentFactory | None) -> BomDocument:
@@ -219,6 +255,7 @@ def _is_reuse_end_piece(end_piece: EndPieceRow) -> bool:
 
 def _end_piece_byproduct_item_code(
 	layout_doc: LayoutDocument,
+	finished_part_row: FinishedPartRow,
 	end_piece: EndPieceRow,
 	end_piece_item_code_resolver: EndPieceItemCodeResolver | None,
 ) -> str:
@@ -226,13 +263,19 @@ def _end_piece_byproduct_item_code(
 	if existing_item_code:
 		return existing_item_code
 	if end_piece_item_code_resolver is not None:
-		resolved_item_code = str(end_piece_item_code_resolver(layout_doc, end_piece) or "").strip()
+		resolved_item_code = str(
+			end_piece_item_code_resolver(layout_doc, end_piece, finished_part_row) or ""
+		).strip()
 		if not resolved_item_code:
 			raise ValueError(
 				"Reusable end piece requires generated item code before creating BOM byproduct row"
 			)
 		return resolved_item_code
-	return derive_end_piece_item_code_from_row(layout_doc, end_piece)
+	return derive_end_piece_item_code_from_row(
+		layout_doc,
+		end_piece,
+		source_finished_part=finished_part_row.finished_part_item,
+	)
 
 
 def _required_scrap_item(end_piece: EndPieceRow) -> str:
