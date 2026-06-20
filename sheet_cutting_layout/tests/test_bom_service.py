@@ -23,6 +23,11 @@ class EndPiece:
 	used_for_finished_part: str | None = "FG002SHR"
 	width_mm: float | None = 1250
 	length_mm: float | None = 179
+	strip_weight_kg: float | None = None
+
+	def __post_init__(self) -> None:
+		if self.disposition == "Reuse" and self.strip_weight_kg is None:
+			self.strip_weight_kg = self.weight_kg
 
 
 @dataclass
@@ -99,6 +104,21 @@ class TestBomService(SheetCuttingLayoutTestCase):
 
 		assert [(row.item_code, row.qty, row.uom, row.row_type) for row in bom.scrap_items] == [
 			("FINISHED-SHR-EP-1.6x1250x179", 2.81388, "Kg", "end_piece_byproduct"),
+		]
+
+	def test_reuse_end_piece_byproduct_uses_strip_weight(self) -> None:
+		bom = bom_service.build_bom_from_layout_row(
+			Layout(
+				sheet_thickness_mm=1.6,
+				end_pieces=[
+					EndPiece(weight_kg=5, strip_weight_kg=3, used_for_finished_part="FG002SHR"),
+				],
+			),
+			FinishedPart(parts_per_sheet=77),
+		)
+
+		assert [(row.item_code, row.qty, row.uom, row.row_type) for row in bom.scrap_items] == [
+			("FINISHED-SHR-EP-1.6x1250x179", 3, "Kg", "end_piece_byproduct"),
 		]
 
 	def test_twin_bom_uses_twin_finished_part_for_end_piece_byproduct_code(self) -> None:
