@@ -350,7 +350,8 @@
    "fieldtype": "Table",
    "label": "Approval Snapshot",
    "no_copy": 1,
-   "options": "Layout Approval Snapshot"
+   "options": "Layout Approval Snapshot",
+   "read_only": 1
   }
  ],
  "index_web_pages_for_search": 1,
