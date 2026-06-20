@@ -539,6 +539,7 @@ class TestEndPieceBomService(SheetCuttingLayoutTestCase):
 			row.db_set_calls,
 			[
 				("end_piece_item_code", existing_code, {"update_modified": False}),
+				("strip_weight_kg", 2.5, {"update_modified": False}),
 				("generated_end_piece_bom", result["boms"][0], {"update_modified": False}),
 			],
 		)
@@ -546,6 +547,21 @@ class TestEndPieceBomService(SheetCuttingLayoutTestCase):
 			layout.db_set_calls,
 			[("end_piece_bom_status", "Generated", {"update_modified": True})],
 		)
+
+	def test_generation_persists_derived_strip_fields_for_submitted_old_rows(self) -> None:
+		existing_code = "FG01SHR-EP-2x100x200"
+		self._install_fakes(existing_items={existing_code})
+		row = EndPiece(strip_weight_kg=None)
+		layout = SubmittedLayout(end_pieces=[row])
+
+		self.service.generate_end_piece_boms(layout)
+
+		self.assertEqual(row.strip_width_mm, 100)
+		self.assertEqual(row.strip_length_mm, 200)
+		self.assertEqual(row.strip_weight_kg, 0.3144)
+		self.assertIn(("strip_width_mm", 100, {"update_modified": False}), row.db_set_calls)
+		self.assertIn(("strip_length_mm", 200, {"update_modified": False}), row.db_set_calls)
+		self.assertIn(("strip_weight_kg", 0.3144, {"update_modified": False}), row.db_set_calls)
 
 	def test_generation_handles_scrap_rows_with_input_fields_only(self) -> None:
 		existing_code = "FG01SHR-EP-2x100x200"

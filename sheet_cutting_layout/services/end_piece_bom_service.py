@@ -169,17 +169,12 @@ def _apply_end_piece_bom_status(layout: LayoutDocument) -> None:
 def _persist_generated_links(layout: LayoutDocument, rows: Sequence[EndPieceRow]) -> None:
 	if _is_submitted_document(layout):
 		for row in rows:
-			row.db_set(
-				"end_piece_item_code",
-				getattr(row, "end_piece_item_code", None),
-				update_modified=False,
-			)
+			_db_set_row_field(row, "end_piece_item_code")
+			_db_set_row_field(row, "strip_width_mm", skip_none=True)
+			_db_set_row_field(row, "strip_length_mm", skip_none=True)
+			_db_set_row_field(row, "strip_weight_kg", skip_none=True)
 			if hasattr(row, "generated_end_piece_bom"):
-				row.db_set(
-					"generated_end_piece_bom",
-					getattr(row, "generated_end_piece_bom", None),
-					update_modified=False,
-				)
+				_db_set_row_field(row, "generated_end_piece_bom")
 		layout.db_set(
 			"end_piece_bom_status",
 			getattr(layout, "end_piece_bom_status", None),
@@ -190,6 +185,13 @@ def _persist_generated_links(layout: LayoutDocument, rows: Sequence[EndPieceRow]
 	save = getattr(layout, "save", None)
 	if callable(save):
 		save(ignore_permissions=True)
+
+
+def _db_set_row_field(row: EndPieceRow, fieldname: str, *, skip_none: bool = False) -> None:
+	value = getattr(row, fieldname, None)
+	if skip_none and value is None:
+		return
+	row.db_set(fieldname, value, update_modified=False)
 
 
 def _is_submitted_document(doc: object) -> bool:

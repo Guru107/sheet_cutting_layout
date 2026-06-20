@@ -1292,6 +1292,26 @@ class TestControllerWorkflow(ReleaseServiceIsolatedTestCase):
 		assert "ignoreBomInGenericCancelAll(frm);" in content
 		assert 'frm.ignore_doctypes_on_cancel_all || []), "BOM"' in content
 
+	def test_form_recalculates_reuse_strip_fields(self) -> None:
+		content = (
+			Path(__file__)
+			.resolve()
+			.parents[1]
+			.joinpath(
+				"sheet_cutting_layout",
+				"doctype",
+				"sheet_cutting_layout",
+				"sheet_cutting_layout.js",
+			)
+			.read_text(encoding="utf-8")
+		)
+
+		assert "function updateEndPieceStripWeights(frm)" in content
+		assert "endPieces.reduce((total, row) => total + endPieceConsumedWeight(row), 0)" in content
+		assert "strip_width_mm: updateEndPieceWeightsAndConsumption" in content
+		assert "strip_length_mm: updateEndPieceWeightsAndConsumption" in content
+		assert "strip_weight_kg: updateEndPieceReuseWeightsAndConsumption" in content
+
 
 def _new_sheet_cutting_layout_doc(sheet_cutting_layout_module: object):
 	doc = object.__new__(sheet_cutting_layout_module.SheetCuttingLayout)
