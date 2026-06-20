@@ -396,12 +396,8 @@ class TestReleaseContracts(SheetCuttingLayoutTestCase):
 		doctype = json.loads(doctype_path.read_text(encoding="utf-8"))
 		fields = {field["fieldname"]: field for field in doctype["fields"]}
 
-		assert doctype["field_order"].index("strip_width_mm") > doctype["field_order"].index(
-			"length_mm"
-		)
-		assert doctype["field_order"].index("strip_weight_kg") < doctype["field_order"].index(
-			"weight_kg"
-		)
+		assert doctype["field_order"].index("strip_width_mm") > doctype["field_order"].index("length_mm")
+		assert doctype["field_order"].index("strip_weight_kg") < doctype["field_order"].index("weight_kg")
 		assert fields["strip_width_mm"]["fieldtype"] == "Float"
 		assert fields["strip_width_mm"]["depends_on"] == 'eval:doc.disposition=="Reuse"'
 		assert fields["strip_length_mm"]["fieldtype"] == "Float"
