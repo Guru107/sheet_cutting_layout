@@ -383,6 +383,31 @@ class TestReleaseContracts(SheetCuttingLayoutTestCase):
 			assert fields[fieldname]["no_copy"] == 1
 		assert end_piece_fields["end_piece_item_code"]["no_copy"] == 1
 
+	def test_layout_end_piece_has_reuse_strip_fields(self) -> None:
+		doctype_path = (
+			Path(__file__).resolve().parents[1]
+			/ "sheet_cutting_layout"
+			/ "doctype"
+			/ "layout_end_piece"
+			/ "layout_end_piece.json"
+		)
+		doctype = json.loads(doctype_path.read_text(encoding="utf-8"))
+		fields = {field["fieldname"]: field for field in doctype["fields"]}
+
+		assert doctype["field_order"].index("strip_width_mm") > doctype["field_order"].index(
+			"length_mm"
+		)
+		assert doctype["field_order"].index("strip_weight_kg") < doctype["field_order"].index(
+			"weight_kg"
+		)
+		assert fields["strip_width_mm"]["fieldtype"] == "Float"
+		assert fields["strip_width_mm"]["depends_on"] == 'eval:doc.disposition=="Reuse"'
+		assert fields["strip_length_mm"]["fieldtype"] == "Float"
+		assert fields["strip_length_mm"]["depends_on"] == 'eval:doc.disposition=="Reuse"'
+		assert fields["strip_weight_kg"]["fieldtype"] == "Float"
+		assert fields["strip_weight_kg"]["read_only"] == 1
+		assert fields["strip_weight_kg"]["depends_on"] == 'eval:doc.disposition=="Reuse"'
+
 	def test_approval_snapshot_table_is_system_maintained(self) -> None:
 		doctype_dir = Path(__file__).resolve().parents[1] / "sheet_cutting_layout" / "doctype"
 		layout_fields = {
