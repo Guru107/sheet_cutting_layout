@@ -4,7 +4,7 @@
   "dt": "BOM",
   "fieldname": "custom_operation",
   "fieldtype": "Data",
-  "insert_after": "with_operations",
+  "insert_after": "image",
   "label": "Custom Operation",
   "name": "BOM-custom_operation"
  },
@@ -13,7 +13,6 @@
   "dt": "BOM",
   "fieldname": "sheet_cutting_layout",
   "fieldtype": "Link",
-  "hidden": 1,
   "insert_after": "custom_operation",
   "label": "Sheet Cutting Layout",
   "name": "BOM-sheet_cutting_layout",

@@ -293,10 +293,12 @@ class TestReleaseContracts(SheetCuttingLayoutTestCase):
 		}
 
 		assert fields["custom_operation"]["fieldtype"] in {"Data", "Select"}
+		assert fields["custom_operation"]["insert_after"] == "image"
 		assert fields["sheet_cutting_layout"]["fieldtype"] == "Link"
 		assert fields["sheet_cutting_layout"]["options"] == "Sheet Cutting Layout"
 		assert fields["sheet_cutting_layout"]["read_only"] == 1
-		assert fields["sheet_cutting_layout"]["hidden"] == 1
+		assert fields["sheet_cutting_layout"].get("hidden") in (None, 0)
+		assert fields["sheet_cutting_layout"]["insert_after"] == "custom_operation"
 		assert fields["sheet_cutting_layout"]["no_copy"] == 1
 
 	def test_parent_finished_part_code_is_item_link(self) -> None:
