@@ -244,6 +244,8 @@ class TestBuildCellMapEndPiecesAndGuards(SheetCuttingLayoutTestCase):
 				"end_piece_item_code": f"EP-{index}",
 				"width_mm": 200 + index,
 				"length_mm": 300 + index,
+				"strip_width_mm": 100 + index,
+				"strip_length_mm": 150 + index,
 				"gross_weight_per_part_kg": 0.4 + index,
 				"net_weight_per_part_kg": 0.3 + index,
 				"scrap_weight_per_part_kg": 0.1 + index,
@@ -267,8 +269,8 @@ class TestBuildCellMapEndPiecesAndGuards(SheetCuttingLayoutTestCase):
 		self.assertEqual(cells["L23"], 200)
 		self.assertEqual(cells["M23"], 300)
 		self.assertEqual(cells["K25"], 2.0)
-		self.assertEqual(cells["L25"], 200)
-		self.assertEqual(cells["M25"], 300)
+		self.assertEqual(cells["L25"], 100)
+		self.assertEqual(cells["M25"], 150)
 		self.assertEqual(cells["K26"], 2)
 		self.assertEqual(cells["K27"], 0.4)
 		self.assertEqual(cells["K28"], 0.3)
@@ -278,8 +280,8 @@ class TestBuildCellMapEndPiecesAndGuards(SheetCuttingLayoutTestCase):
 		self.assertEqual(cells["M19"], 301)
 		self.assertEqual(cells["Q14"], "0102AAG06401SHR")
 		self.assertEqual(cells["R15"], 2.0)
-		self.assertEqual(cells["S15"], 201)
-		self.assertEqual(cells["T15"], 301)
+		self.assertEqual(cells["S15"], 101)
+		self.assertEqual(cells["T15"], 151)
 		self.assertEqual(cells["R16"], 3)
 		self.assertEqual(cells["R17"], 1.4)
 		self.assertEqual(cells["R18"], 1.3)
@@ -289,8 +291,8 @@ class TestBuildCellMapEndPiecesAndGuards(SheetCuttingLayoutTestCase):
 		self.assertEqual(cells["M20"], 302)
 		self.assertEqual(cells["Q24"], "0102AAG06402SHR")
 		self.assertEqual(cells["R25"], 2.0)
-		self.assertEqual(cells["S25"], 202)
-		self.assertEqual(cells["T25"], 302)
+		self.assertEqual(cells["S25"], 102)
+		self.assertEqual(cells["T25"], 152)
 		self.assertEqual(cells["R26"], 4)
 		self.assertEqual(cells["R27"], 2.4)
 		self.assertEqual(cells["R28"], 2.3)
