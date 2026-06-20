@@ -77,6 +77,7 @@ class FinishedPart:
 @dataclass
 class EndPiece:
 	weight_kg: float
+	strip_weight_kg: float | None = None
 	disposition: str = "Reuse"
 	scrap_item: str | None = None
 	end_piece_item_code: str | None = None
@@ -95,6 +96,7 @@ class EndPiece:
 		return {
 			"doctype": "Layout End Piece",
 			"weight_kg": self.weight_kg,
+			"strip_weight_kg": self.strip_weight_kg,
 			"disposition": self.disposition,
 			"scrap_item": self.scrap_item,
 			"end_piece_item_code": self.end_piece_item_code,
@@ -443,6 +445,42 @@ class TestReleaseContracts(SheetCuttingLayoutTestCase):
 
 		assert "BOM quantity equals `parts_per_sheet`" in content
 		assert "Draft -> Submitted for Check -> PM Approved -> Approved by Purchase -> Released" in content
+
+	def test_reuse_end_piece_byproduct_uses_strip_weight(self) -> None:
+		from sheet_cutting_layout.services.bom_service import (
+			build_bom_from_layout_row,
+			parent_finished_part_row,
+		)
+
+		layout = SimpleNamespace(
+			raw_material_item="RM-001",
+			process_scrap_item="SCRAP-001",
+			weight_per_sheet_kg=10.0,
+			no_of_strips=1,
+			finished_part_code="FG01SHR",
+			is_lh_rh=0,
+			orientation=None,
+			twin_finished_part=None,
+			parts_per_sheet=1,
+			gross_weight_per_part_kg=2.0,
+			scrap_weight_per_part_kg=0.0,
+			sheet_thickness_mm=2.0,
+			end_pieces=[
+				SimpleNamespace(
+					disposition="Reuse",
+					weight_kg=5.0,
+					strip_weight_kg=3.0,
+					end_piece_item_code="EP-001",
+					used_for_finished_part="FG02SHR",
+					width_mm=200.0,
+					length_mm=300.0,
+				)
+			],
+		)
+
+		bom = build_bom_from_layout_row(layout, parent_finished_part_row(layout))
+
+		assert bom.scrap_items[-1].qty == 3.0
 
 
 class TestReleaseFlow(ReleaseServiceIsolatedTestCase):
@@ -1616,6 +1654,7 @@ class TestFrappeBomInsertAndEndPieces(ReleaseServiceIsolatedTestCase):
 			end_pieces=[
 				EndPiece(
 					weight_kg=2.81388,
+					strip_weight_kg=2.81388,
 					disposition="Reuse",
 					used_for_finished_part="FG002SHR",
 					width_mm=1250,

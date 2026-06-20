@@ -17,6 +17,7 @@ class FinishedPartRow(Protocol):
 
 class EndPieceRow(Protocol):
 	weight_kg: float
+	strip_weight_kg: float | None
 	disposition: str
 	scrap_item: str | None
 	end_piece_item_code: str | None
@@ -159,7 +160,7 @@ def build_bom_from_layout_row(
 			bom.scrap_items.append(
 				BomItemRow(
 					item_code=item_code,
-					qty=end_piece.weight_kg,
+					qty=_end_piece_bom_qty_kg(end_piece),
 					row_type="end_piece_byproduct",
 				)
 			)
@@ -253,6 +254,12 @@ def _is_reuse_end_piece(end_piece: EndPieceRow) -> bool:
 	return str(getattr(end_piece, "disposition", "") or "").strip().lower() == "reuse"
 
 
+def _end_piece_bom_qty_kg(end_piece: EndPieceRow) -> float:
+	if _is_reuse_end_piece(end_piece):
+		return float(getattr(end_piece, "strip_weight_kg", 0) or 0)
+	return float(getattr(end_piece, "weight_kg", 0) or 0)
+
+
 def _end_piece_byproduct_item_code(
 	layout_doc: LayoutDocument,
 	finished_part_row: FinishedPartRow,
@@ -294,5 +301,5 @@ def _sheet_weight_kg(layout_doc: LayoutDocument, finished_part_row: FinishedPart
 	if weight_per_sheet_kg is not None:
 		return weight_per_sheet_kg
 
-	end_piece_weight = sum(end_piece.weight_kg for end_piece in layout_doc.end_pieces)
+	end_piece_weight = sum(_end_piece_bom_qty_kg(end_piece) for end_piece in layout_doc.end_pieces)
 	return finished_part_row.gross_weight_per_part_kg * finished_part_row.parts_per_sheet + end_piece_weight

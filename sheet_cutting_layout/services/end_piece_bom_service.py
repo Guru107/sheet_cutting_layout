@@ -20,6 +20,7 @@ class EndPieceRow(Protocol):
 	width_mm: float | None
 	length_mm: float | None
 	weight_kg: float | None
+	strip_weight_kg: float | None
 	used_for_finished_part: str | None
 	child_layout: str | None
 	bom_quantity: float | None
@@ -84,7 +85,7 @@ def _create_end_piece_bom(layout: LayoutDocument, row: EndPieceRow, item_code: s
 
 	weight_rows = build_weight_split_bom_rows(
 		raw_material_item=item_code,
-		raw_material_qty_kg=float(getattr(row, "weight_kg", 0) or 0),
+		raw_material_qty_kg=float(getattr(row, "strip_weight_kg", 0) or 0),
 		scrap_qty_kg=float(getattr(row, "bom_scrap_quantity_kg", 0) or 0),
 		scrap_item=_clean(getattr(row, "scrap_item", None)),
 		scrap_row_type="process_scrap",
@@ -123,8 +124,8 @@ def _validate_pending_row(layout: LayoutDocument, row: EndPieceRow) -> None:
 		_throw(_("Row {0}: BOM quantity must be greater than zero").format(row_idx))
 	if getattr(row, "bom_scrap_quantity_kg", None) is None or row.bom_scrap_quantity_kg < 0:
 		_throw(_("Row {0}: BOM scrap quantity must be non-negative").format(row_idx))
-	if getattr(row, "weight_kg", None) is None or row.weight_kg <= 0:
-		_throw(_("Row {0}: End piece weight must be greater than zero").format(row_idx))
+	if getattr(row, "strip_weight_kg", None) is None or row.strip_weight_kg <= 0:
+		_throw(_("Row {0}: Strip weight must be greater than zero").format(row_idx))
 	if row.bom_scrap_quantity_kg > 0 and _is_missing(getattr(row, "scrap_item", None)):
 		_throw(_("Row {0}: Scrap item is required when BOM scrap quantity is positive").format(row_idx))
 
