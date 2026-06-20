@@ -310,6 +310,20 @@ class TestValidators(SheetCuttingLayoutTestCase):
 		with self.assertRaises(ValidationError):
 			self.validators.apply_end_piece_strip_weight_formulas(layout, [row])
 
+	def test_reuse_strip_length_cannot_exceed_end_piece_length(self) -> None:
+		layout = SimpleNamespace(sheet_thickness_mm=2.0)
+		row = SimpleNamespace(
+			disposition="Reuse",
+			width_mm=200.0,
+			length_mm=300.0,
+			strip_width_mm=200.0,
+			strip_length_mm=301.0,
+			strip_weight_kg=None,
+		)
+
+		with self.assertRaises(ValidationError):
+			self.validators.apply_end_piece_strip_weight_formulas(layout, [row])
+
 	def test_consumed_weight_uses_strip_for_reuse_and_total_weight_for_scrap(self) -> None:
 		layout = SimpleNamespace(
 			finished_part_code="FG01SHR",
