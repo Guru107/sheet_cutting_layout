@@ -3,7 +3,7 @@
  "allow_rename": 1,
  "creation": "2026-04-27 00:00:00.000000",
  "doctype": "DocType",
- "editable_grid": 1,
+ "editable_grid": 0,
  "engine": "InnoDB",
  "field_order": [
   "step_name",
@@ -18,6 +18,7 @@
    "fieldtype": "Data",
    "in_list_view": 1,
    "label": "Step Name",
+   "read_only": 1,
    "reqd": 1
   },
   {
@@ -25,24 +26,28 @@
    "fieldtype": "Link",
    "in_list_view": 1,
    "label": "Approver",
-   "options": "User"
+   "options": "User",
+   "read_only": 1
   },
   {
    "fieldname": "decision",
    "fieldtype": "Select",
    "in_list_view": 1,
    "label": "Decision",
-   "options": "\nSubmitted\nApproved\nRejected"
+   "options": "\nSubmitted\nApproved\nRejected",
+   "read_only": 1
   },
   {
    "fieldname": "comment",
    "fieldtype": "Small Text",
-   "label": "Comment"
+   "label": "Comment",
+   "read_only": 1
   },
   {
    "fieldname": "decision_time",
    "fieldtype": "Datetime",
-   "label": "Decision Time"
+   "label": "Decision Time",
+   "read_only": 1
   }
  ],
  "istable": 1,

@@ -293,10 +293,12 @@ class TestReleaseContracts(SheetCuttingLayoutTestCase):
 		}
 
 		assert fields["custom_operation"]["fieldtype"] in {"Data", "Select"}
+		assert fields["custom_operation"]["insert_after"] == "image"
 		assert fields["sheet_cutting_layout"]["fieldtype"] == "Link"
 		assert fields["sheet_cutting_layout"]["options"] == "Sheet Cutting Layout"
 		assert fields["sheet_cutting_layout"]["read_only"] == 1
-		assert fields["sheet_cutting_layout"]["hidden"] == 1
+		assert fields["sheet_cutting_layout"].get("hidden") in (None, 0)
+		assert fields["sheet_cutting_layout"]["insert_after"] == "custom_operation"
 		assert fields["sheet_cutting_layout"]["no_copy"] == 1
 
 	def test_parent_finished_part_code_is_item_link(self) -> None:
@@ -380,6 +382,33 @@ class TestReleaseContracts(SheetCuttingLayoutTestCase):
 		):
 			assert fields[fieldname]["no_copy"] == 1
 		assert end_piece_fields["end_piece_item_code"]["no_copy"] == 1
+
+	def test_approval_snapshot_table_is_system_maintained(self) -> None:
+		doctype_dir = Path(__file__).resolve().parents[1] / "sheet_cutting_layout" / "doctype"
+		layout_fields = {
+			row["fieldname"]: row
+			for row in json.loads(
+				(doctype_dir / "sheet_cutting_layout" / "sheet_cutting_layout.json").read_text(
+					encoding="utf-8"
+				)
+			)["fields"]
+			if "fieldname" in row
+		}
+		snapshot = json.loads(
+			(doctype_dir / "layout_approval_snapshot" / "layout_approval_snapshot.json").read_text(
+				encoding="utf-8"
+			)
+		)
+
+		assert layout_fields["approval_snapshot"]["read_only"] == 1
+		assert snapshot["editable_grid"] == 0
+		assert {row["fieldname"] for row in snapshot["fields"] if row.get("read_only") == 1} == {
+			"step_name",
+			"approver",
+			"decision",
+			"comment",
+			"decision_time",
+		}
 
 	def test_workflow_wrapper_override_is_removed(self) -> None:
 		assert not hasattr(hooks, "override_whitelisted_methods")
