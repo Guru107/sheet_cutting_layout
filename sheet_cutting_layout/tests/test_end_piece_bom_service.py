@@ -21,6 +21,8 @@ class EndPiece:
 	width_mm: float | None = 100
 	length_mm: float | None = 200
 	weight_kg: float | None = 2.5
+	strip_width_mm: float | None = None
+	strip_length_mm: float | None = None
 	strip_weight_kg: float | None = 2.5
 	used_for_finished_part: str | None = "FG01SHR"
 	bom_quantity: float | None = 1
@@ -365,6 +367,18 @@ class TestEndPieceBomService(SheetCuttingLayoutTestCase):
 		assert result["boms"]
 		assert bom.items[0]["qty"] == 1.75
 
+	def test_generated_end_piece_bom_derives_missing_strip_weight_for_old_rows(self) -> None:
+		existing_code = "FG01SHR-EP-2x100x200"
+		fake_frappe = self._install_fakes(existing_items={existing_code})
+		layout = Layout(end_pieces=[EndPiece(strip_weight_kg=None)])
+
+		self.service.generate_end_piece_boms(layout)
+		bom = self._created_doc(fake_frappe, "BOM")
+
+		self.assertEqual(layout.end_pieces[0].strip_width_mm, 100)
+		self.assertEqual(layout.end_pieces[0].strip_length_mm, 200)
+		self.assertEqual(bom.items[0]["qty"], 0.3144)
+
 	def test_generation_uses_linked_item_when_end_piece_bom_is_missing(self) -> None:
 		existing_code = "FG01SHR-EP-2x100x200"
 		fake_frappe = self._install_fakes(existing_items={existing_code})
@@ -647,17 +661,35 @@ class TestEndPieceBomService(SheetCuttingLayoutTestCase):
 	def test_generation_validates_pending_rows_with_row_numbered_messages(self) -> None:
 		self._install_fakes()
 		cases = [
-			(EndPiece(idx=1, used_for_finished_part=""), "Row 1: Used for finished part is required"),
-			(EndPiece(idx=2, bom_quantity=0), "Row 2: BOM quantity must be greater than zero"),
-			(EndPiece(idx=3, bom_scrap_quantity_kg=None), "Row 3: BOM scrap quantity must be non-negative"),
-			(EndPiece(idx=4, bom_scrap_quantity_kg=-0.1), "Row 4: BOM scrap quantity must be non-negative"),
-			(EndPiece(idx=5, strip_weight_kg=0), "Row 5: Strip weight must be greater than zero"),
-			(EndPiece(idx=6, width_mm=0), "Row 6: End piece width must be greater than zero"),
+			(
+				Layout(end_pieces=[EndPiece(idx=1, used_for_finished_part="")]),
+				"Row 1: Used for finished part is required",
+			),
+			(
+				Layout(end_pieces=[EndPiece(idx=2, bom_quantity=0)]),
+				"Row 2: BOM quantity must be greater than zero",
+			),
+			(
+				Layout(end_pieces=[EndPiece(idx=3, bom_scrap_quantity_kg=None)]),
+				"Row 3: BOM scrap quantity must be non-negative",
+			),
+			(
+				Layout(end_pieces=[EndPiece(idx=4, bom_scrap_quantity_kg=-0.1)]),
+				"Row 4: BOM scrap quantity must be non-negative",
+			),
+			(
+				Layout(sheet_thickness_mm=None, end_pieces=[EndPiece(idx=5, strip_weight_kg=0)]),
+				"Row 5: Strip weight must be greater than zero",
+			),
+			(
+				Layout(end_pieces=[EndPiece(idx=6, width_mm=0)]),
+				"Row 6: End piece width must be greater than zero",
+			),
 		]
-		for row, expected_message in cases:
+		for layout, expected_message in cases:
 			with self.subTest(expected_message=expected_message):
 				with self.assertRaisesRegex(ValueError, expected_message):
-					self.service.generate_end_piece_boms(Layout(end_pieces=[row]))
+					self.service.generate_end_piece_boms(layout)
 
 	def test_generation_skips_non_reuse_and_already_generated_rows(self) -> None:
 		existing_code = "FG01SHR-EP-2x100x200"

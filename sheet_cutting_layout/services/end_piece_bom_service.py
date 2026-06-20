@@ -20,6 +20,8 @@ class EndPieceRow(Protocol):
 	width_mm: float | None
 	length_mm: float | None
 	weight_kg: float | None
+	strip_width_mm: float | None
+	strip_length_mm: float | None
 	strip_weight_kg: float | None
 	used_for_finished_part: str | None
 	child_layout: str | None
@@ -53,6 +55,7 @@ def generate_end_piece_boms(layout: LayoutDocument) -> dict[str, list[str]]:
 	pending_rows = [row for row in reuse_rows if _is_missing(getattr(row, "generated_end_piece_bom", None))]
 
 	for row in pending_rows:
+		_apply_missing_strip_weight(layout, row)
 		_validate_pending_row(layout, row)
 		item_code = _clean(getattr(row, "end_piece_item_code", None))
 		if not item_code:
@@ -130,6 +133,12 @@ def _validate_pending_row(layout: LayoutDocument, row: EndPieceRow) -> None:
 		_throw(_("Row {0}: Scrap item is required when BOM scrap quantity is positive").format(row_idx))
 
 
+def _apply_missing_strip_weight(layout: LayoutDocument, row: EndPieceRow) -> None:
+	if _flt(getattr(row, "strip_weight_kg", 0)) > 0:
+		return
+	validators.apply_end_piece_strip_weight_formulas(layout, [row])
+
+
 def _reuse_end_pieces(layout: LayoutDocument) -> list[EndPieceRow]:
 	return [
 		row
@@ -144,6 +153,13 @@ def _row_has_child_layout(row: EndPieceRow) -> bool:
 
 def _is_reuse(row: EndPieceRow) -> bool:
 	return str(getattr(row, "disposition", "") or "").strip().lower() == "reuse"
+
+
+def _flt(value: float | int | str | None) -> float:
+	try:
+		return float(value or 0)
+	except (TypeError, ValueError):
+		return 0.0
 
 
 def _apply_end_piece_bom_status(layout: LayoutDocument) -> None:

@@ -261,8 +261,11 @@ def _end_piece_detail_cells(layout: Mapping[str, object]) -> dict[str, object]:
 		cells[detail_length] = _num(end_piece.get("length_mm"))
 		cells[block["used_for"]] = _text(end_piece.get("used_for_finished_part"))
 		cells[strip_thickness] = _num(sheet_thickness)
-		cells[strip_width] = _num(end_piece.get("strip_width_mm") or end_piece.get("width_mm"))
-		cells[strip_length] = _num(end_piece.get("strip_length_mm") or end_piece.get("length_mm"))
+		is_reuse = _text(end_piece.get("disposition")).strip().lower() == "reuse"
+		strip_width_value = end_piece.get("strip_width_mm") if is_reuse else None
+		strip_length_value = end_piece.get("strip_length_mm") if is_reuse else None
+		cells[strip_width] = _num(strip_width_value or end_piece.get("width_mm"))
+		cells[strip_length] = _num(strip_length_value or end_piece.get("length_mm"))
 		cells[block["parts"]] = _num(end_piece.get("bom_quantity"))
 		cells[block["gross"]] = _num(end_piece.get("gross_weight_per_part_kg"))
 		cells[block["net"]] = _num(end_piece.get("net_weight_per_part_kg"))

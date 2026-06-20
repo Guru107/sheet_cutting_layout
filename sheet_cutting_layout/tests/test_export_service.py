@@ -228,11 +228,22 @@ class TestBuildCellMapEndPiecesAndGuards(SheetCuttingLayoutTestCase):
 		from sheet_cutting_layout.services.export_service import build_cell_map
 
 		layout = _base_layout()
-		layout["end_pieces"] = [{"width_mm": 200.0, "length_mm": 300.0, "weight_kg": 0.94}]
+		layout["end_pieces"] = [
+			{
+				"disposition": "Scrap",
+				"width_mm": 200.0,
+				"length_mm": 300.0,
+				"strip_width_mm": 100.0,
+				"strip_length_mm": 150.0,
+				"weight_kg": 0.94,
+			}
+		]
 
 		cells = build_cell_map(layout)
 
 		self.assertEqual(cells["O9"], "ENDPIECE")
+		self.assertEqual(cells["L25"], 200.0)
+		self.assertEqual(cells["M25"], 300.0)
 
 	def test_first_three_end_pieces_render_in_bom_and_detail_blocks(self) -> None:
 		from sheet_cutting_layout.services.export_service import build_cell_map
