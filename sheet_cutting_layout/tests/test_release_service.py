@@ -1813,7 +1813,7 @@ class TestFrappeBomInsertAndEndPieces(ReleaseServiceIsolatedTestCase):
 		assert layout.save_calls == 1
 		assert persisted_layout.save_calls == 0
 
-	def test_lh_rh_release_keeps_primary_end_piece_item_code_on_shared_row(self) -> None:
+	def test_lh_rh_release_uses_primary_and_twin_for_shared_end_piece_item_code(self) -> None:
 		from sheet_cutting_layout.services import release_service
 
 		created_for: list[str | None] = []
@@ -1881,8 +1881,8 @@ class TestFrappeBomInsertAndEndPieces(ReleaseServiceIsolatedTestCase):
 			release_context=release_service.ReleaseContext(layouts=(), boms=[]),
 		)
 
-		assert created_for == ["FG01SHR"]
-		assert layout.end_pieces[0].end_piece_item_code == "FG01SHR-EP-1.6x1250x179"
+		assert created_for == ["FG01SHR-FG01RHSHR"]
+		assert layout.end_pieces[0].end_piece_item_code == "FG01SHR-FG01RHSHR-EP-1.6x1250x179"
 
 
 class TestReleaseContextAndHelpers(ReleaseServiceIsolatedTestCase):

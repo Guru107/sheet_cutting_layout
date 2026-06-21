@@ -4,7 +4,10 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from typing import Literal, Protocol
 
-from sheet_cutting_layout.services.end_piece_item_service import derive_end_piece_item_code_from_row
+from sheet_cutting_layout.services.end_piece_item_service import (
+	derive_end_piece_item_code_from_row,
+	layout_end_piece_source_finished_part,
+)
 
 
 class FinishedPartRow(Protocol):
@@ -281,7 +284,9 @@ def _end_piece_byproduct_item_code(
 	return derive_end_piece_item_code_from_row(
 		layout_doc,
 		end_piece,
-		source_finished_part=finished_part_row.finished_part_item,
+		source_finished_part=layout_end_piece_source_finished_part(
+			layout_doc, fallback=finished_part_row.finished_part_item
+		),
 	)
 
 

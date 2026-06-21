@@ -42,6 +42,8 @@ class Layout:
 	scrap_weight_per_part_kg: float = 0
 	parts_per_sheet: int = 4
 	sheet_thickness_mm: float | None = 1.6
+	is_lh_rh: int = 0
+	twin_finished_part: str | None = None
 	end_pieces: list[EndPiece] = field(default_factory=list)
 
 
@@ -121,10 +123,13 @@ class TestBomService(SheetCuttingLayoutTestCase):
 			("FINISHED-SHR-EP-1.6x1250x179", 3, "Kg", "end_piece_byproduct"),
 		]
 
-	def test_twin_bom_uses_twin_finished_part_for_end_piece_byproduct_code(self) -> None:
+	def test_lh_rh_bom_uses_primary_and_twin_for_end_piece_byproduct_code(self) -> None:
 		bom = bom_service.build_bom_from_layout_row(
 			Layout(
+				finished_part_code="BRKT-LH-SHR",
 				sheet_thickness_mm=1.6,
+				is_lh_rh=1,
+				twin_finished_part="BRKT-RH-SHR",
 				end_pieces=[
 					EndPiece(weight_kg=2.81388, used_for_finished_part="FG002SHR"),
 				],
@@ -133,7 +138,7 @@ class TestBomService(SheetCuttingLayoutTestCase):
 		)
 
 		assert [(row.item_code, row.qty, row.uom, row.row_type) for row in bom.scrap_items] == [
-			("BRKT-RH-SHR-EP-1.6x1250x179", 2.81388, "Kg", "end_piece_byproduct"),
+			("BRKT-LH-SHR-BRKT-RH-SHR-EP-1.6x1250x179", 2.81388, "Kg", "end_piece_byproduct"),
 		]
 
 	def test_existing_reuse_end_piece_item_code_wins_over_resolver(self) -> None:

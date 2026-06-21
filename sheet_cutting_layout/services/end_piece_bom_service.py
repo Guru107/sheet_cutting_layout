@@ -7,7 +7,10 @@ import frappe
 
 from sheet_cutting_layout.services import validators
 from sheet_cutting_layout.services.bom_service import build_weight_split_bom_rows
-from sheet_cutting_layout.services.end_piece_item_service import ensure_end_piece_item
+from sheet_cutting_layout.services.end_piece_item_service import (
+	ensure_end_piece_item,
+	layout_end_piece_source_finished_part,
+)
 
 _ = frappe._
 
@@ -62,7 +65,7 @@ def generate_end_piece_boms(layout: LayoutDocument) -> dict[str, list[str]]:
 			item_code = ensure_end_piece_item(
 				layout,
 				row,
-				source_finished_part=getattr(layout, "finished_part_code", None),
+				source_finished_part=layout_end_piece_source_finished_part(layout),
 			)
 			row.end_piece_item_code = item_code
 			generated_items.append(item_code)

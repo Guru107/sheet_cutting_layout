@@ -411,6 +411,15 @@ class TestEndPieceBomService(SheetCuttingLayoutTestCase):
 		self.assertEqual([doc.doctype for doc in fake_frappe.created_docs], ["Item", "BOM"])
 		self.assertEqual(layout.end_pieces[0].end_piece_item_code, existing_code)
 
+	def test_reuse_end_piece_item_code_uses_strip_dimensions(self) -> None:
+		existing_code = "FG01SHR-EP-2x80x150"
+		self._install_fakes(existing_items={existing_code})
+		row = EndPiece(width_mm=100, length_mm=200, strip_width_mm=80, strip_length_mm=150)
+
+		item_code = self.item_service.ensure_end_piece_item(Layout(), row)
+
+		self.assertEqual(item_code, existing_code)
+
 	def test_generation_creates_missing_item_with_kg_stock_uom_alternate_nos_and_rm_valuation(
 		self,
 	) -> None:
