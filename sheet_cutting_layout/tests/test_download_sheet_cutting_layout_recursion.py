@@ -160,6 +160,7 @@ class TestDownloadReleasedRecursiveLhRhLayout(_RecursiveExportFixtureMixin, Shee
 		cls.suffix = frappe.generate_hash(length=8).upper()
 		cls._setup_items()
 		cls.twin_part = ensure_item(f"SCLXTWIN{cls.suffix}SHR", stock_uom="Nos")
+		cls.end_piece_item = ensure_item(f"{cls.parent_part}-{cls.twin_part}-EP-2x500x1000", stock_uom="Kg")
 		cls.child = cls._make_child_layout()
 		cls.parent = cls._make_parent_layout(
 			layout_code=f"SCL-X-LHRH-{cls.suffix}",
