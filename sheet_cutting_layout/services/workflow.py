@@ -107,7 +107,7 @@ class LayoutWorkflowModel:
 			"Approved by Purchase",
 		}:
 			raise AssertionError("Only in-review or pre-release layouts can be rejected")
-		self.state = "Rejected"
+		self.state = "Draft"
 
 	def supersede(self) -> None:
 		self._require_state("Released")

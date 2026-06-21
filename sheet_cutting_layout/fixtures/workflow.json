@@ -69,23 +69,23 @@
     "state": "Approved by Purchase"
    },
    {
-   "action": "Reject",
-   "allowed": "System Manager",
-   "next_state": "Draft",
-   "state": "Submitted for Check"
-  },
-  {
-   "action": "Reject",
-   "allowed": "System Manager",
-   "next_state": "Draft",
-   "state": "PM Approved"
-  },
-  {
-   "action": "Reject",
-   "allowed": "System Manager",
-   "next_state": "Draft",
-   "state": "Approved by Purchase"
-  },
+    "action": "Reject",
+    "allowed": "System Manager",
+    "next_state": "Draft",
+    "state": "Submitted for Check"
+   },
+   {
+    "action": "Reject",
+    "allowed": "System Manager",
+    "next_state": "Draft",
+    "state": "PM Approved"
+   },
+   {
+    "action": "Reject",
+    "allowed": "System Manager",
+    "next_state": "Draft",
+    "state": "Approved by Purchase"
+   },
    {
     "action": "Supersede",
     "allowed": "MR Coordinator",

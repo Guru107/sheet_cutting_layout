@@ -434,33 +434,44 @@ class TestSheetCuttingLayoutController(SheetCuttingLayoutTestCase):
 	def test_reject_returns_layout_to_draft_and_records_snapshot(self) -> None:
 		from frappe.model.workflow import apply_workflow
 
-		layout = make_layout(
-			finished_part_code=f"SCLTESTFG{frappe.generate_hash(length=5).upper()}SHR",
-			parts_per_strip=1,
-			no_of_strips=1,
-			strip_length_mm=2500,
-		).insert()
-
-		layout = apply_workflow(layout, "Submit for Check")
-		layout = apply_workflow(layout, "Reject")
-		layout.reload()
-
-		self.assertEqual(layout.status, "Draft")
-		self.assertEqual(layout.docstatus, 0)
-		layout.notes = "Corrected after rejection"
-		layout.save()
-		layout = apply_workflow(layout, "Submit for Check")
-		layout.reload()
-
-		self.assertEqual(layout.status, "Submitted for Check")
-		snapshots = [(row.step_name, row.decision) for row in layout.approval_snapshot]
-		self.assertEqual(
-			snapshots,
-			[
-				("Submit for Check", "Submitted"),
-				("Rejection", "Rejected"),
+		paths = {
+			"Submitted for Check": ["Submit for Check"],
+			"PM Approved": ["Submit for Check", "Project Manager Approves"],
+			"Approved by Purchase": [
+				"Submit for Check",
+				"Project Manager Approves",
+				"Purchase Approves",
 			],
-		)
+		}
+
+		for rejected_state, actions in paths.items():
+			with self.subTest(rejected_state=rejected_state):
+				layout = make_layout(
+					finished_part_code=f"SCLTESTFG{frappe.generate_hash(length=5).upper()}SHR",
+					parts_per_strip=1,
+					no_of_strips=1,
+					strip_length_mm=2500,
+				).insert()
+
+				for action in actions:
+					layout = apply_workflow(layout, action)
+				self.assertEqual(layout.status, rejected_state)
+
+				layout = apply_workflow(layout, "Reject")
+				layout.reload()
+
+				self.assertEqual(layout.status, "Draft")
+				self.assertEqual(layout.docstatus, 0)
+				self.assertIn(
+					("Rejection", "Rejected"),
+					[(row.step_name, row.decision) for row in layout.approval_snapshot],
+				)
+				layout.notes = "Corrected after rejection"
+				layout.save()
+				layout = apply_workflow(layout, "Submit for Check")
+				layout.reload()
+
+				self.assertEqual(layout.status, "Submitted for Check")
 
 	def test_native_cancel_persists_supersession_snapshot_after_reload(self) -> None:
 		layout = make_release_ready_layout()
