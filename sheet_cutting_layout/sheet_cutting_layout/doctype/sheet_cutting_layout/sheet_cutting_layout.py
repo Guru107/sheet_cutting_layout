@@ -16,7 +16,6 @@ from sheet_cutting_layout.services.end_piece_bom_service import (
 )
 from sheet_cutting_layout.services.export_service import (
 	build_multi_sheet_workbook,
-	walk_layout_tree,
 )
 from sheet_cutting_layout.services.release_service import (
 	release_layout,
@@ -309,15 +308,7 @@ def download_sheet_cutting_layout(name: str) -> None:
 	if callable(check_permission):
 		check_permission("read")
 
-	def fetch_child(child_name: str) -> object:
-		child = frappe.get_doc("Sheet Cutting Layout", child_name)
-		child_check_permission = getattr(child, "check_permission", None)
-		if callable(child_check_permission):
-			child_check_permission("read")
-		return child
-
-	layouts = walk_layout_tree(doc, fetch_child)
-	pages = [(layout.name, _export_layout_dict(layout)) for layout in layouts]
+	pages = [(doc.name, _export_layout_dict(doc))]
 	workbook = build_multi_sheet_workbook(pages)
 	stream = BytesIO()
 	workbook.save(stream)

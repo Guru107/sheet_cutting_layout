@@ -12,7 +12,6 @@ from sheet_cutting_layout.sheet_cutting_layout.doctype.sheet_cutting_layout impo
 )
 from sheet_cutting_layout.tests.base import SheetCuttingLayoutTestCase
 from sheet_cutting_layout.tests.factories import (
-	ensure_item,
 	make_layout,
 	make_release_ready_layout,
 )
@@ -43,41 +42,6 @@ class _PreviousDoc:
 
 
 class TestSheetCuttingLayoutController(SheetCuttingLayoutTestCase):
-	def _ensure_project(self, project_name: str) -> str:
-		existing = frappe.db.exists("Project", {"project_name": project_name})
-		if existing:
-			return str(existing)
-		return (
-			frappe.get_doc({"doctype": "Project", "project_name": project_name})
-			.insert(ignore_permissions=True)
-			.name
-		)
-
-	def _ensure_projects_manager_user(self, email: str, project: str) -> str:
-		user = frappe.get_doc(
-			{
-				"doctype": "User",
-				"email": email,
-				"first_name": "SCL Export Permission",
-				"enabled": 1,
-				"send_welcome_email": 0,
-				"new_password": frappe.generate_hash(length=12),
-			}
-		)
-		user.flags.ignore_password_policy = True
-		user.insert(ignore_permissions=True)
-		user.add_roles("Projects Manager")
-		frappe.get_doc(
-			{
-				"doctype": "User Permission",
-				"user": email,
-				"allow": "Project",
-				"for_value": project,
-				"applicable_for": "Sheet Cutting Layout",
-			}
-		).insert(ignore_permissions=True)
-		return email
-
 	def test_validate_only_runs_validator_no_workflow_side_effects(self) -> None:
 		doc = object.__new__(controller.SheetCuttingLayout)
 		doc.doctype = "Sheet Cutting Layout"
@@ -372,110 +336,6 @@ class TestSheetCuttingLayoutController(SheetCuttingLayoutTestCase):
 		self.assertEqual(calls, [("Sheet Cutting Layout", "SCL-TEST-002")])
 		self.assertEqual(doc.check_permission_calls, ["write"])
 		generate_end_piece_boms.assert_called_once_with(doc)
-
-	def test_download_checks_child_layout_read_permission_before_export(self) -> None:
-		parent = _FakeLayoutDoc(name="SCL-PARENT")
-		parent.end_pieces = [SimpleNamespace(disposition="Reuse", child_layout="SCL-CHILD")]
-		child = _FakeLayoutDoc(name="SCL-CHILD")
-
-		def deny_read(permission_type: str) -> None:
-			child.check_permission_calls = [permission_type]
-			raise PermissionError("child denied")
-
-		child.check_permission = deny_read
-
-		def get_doc(doctype: str, name: str) -> _FakeLayoutDoc:
-			self.assertEqual(doctype, "Sheet Cutting Layout")
-			return {"SCL-PARENT": parent, "SCL-CHILD": child}[name]
-
-		with (
-			patch.object(controller.frappe, "get_doc", side_effect=get_doc),
-			patch.object(controller, "_export_layout_dict", return_value={"end_pieces": []}) as export,
-			patch.object(controller, "build_multi_sheet_workbook") as build_workbook,
-			self.assertRaisesRegex(PermissionError, "child denied"),
-		):
-			controller.download_sheet_cutting_layout("SCL-PARENT")
-
-		self.assertEqual(parent.check_permission_calls, ["read"])
-		self.assertEqual(child.check_permission_calls, ["read"])
-		export.assert_not_called()
-		build_workbook.assert_not_called()
-
-	def test_download_denies_real_user_without_child_layout_read_access(self) -> None:
-		suffix = frappe.generate_hash(length=6).upper()
-		parent_project = self._ensure_project(f"SCL-PARENT-PERM-{suffix}")
-		child_project = self._ensure_project(f"SCL-CHILD-PERM-{suffix}")
-		raw_material = ensure_item(f"SCLPERMRM{suffix}", stock_uom="Kg")
-		scrap_item = ensure_item(f"SCLPERMSCRAP{suffix}", stock_uom="Kg")
-		parent_part = ensure_item(f"SCLPERMP{suffix}SHR", stock_uom="Nos")
-		child_part = ensure_item(f"SCLPERMC{suffix}SHR", stock_uom="Nos")
-		end_piece_item = ensure_item(f"{parent_part}-EP-2x500x1000", stock_uom="Kg")
-		child = frappe.get_doc(
-			{
-				"doctype": "Sheet Cutting Layout",
-				"layout_code": f"SCL-PERM-CHILD-{suffix}",
-				"project": child_project,
-				"revision_no": 1,
-				"status": "Draft",
-				"raw_material_item": end_piece_item,
-				"process_scrap_item": scrap_item,
-				"finished_part_code": child_part,
-				"net_weight_per_part_kg": 7.86,
-				"sheet_thickness_mm": 2,
-				"sheet_width_mm": 500,
-				"sheet_length_mm": 1000,
-				"strip_thickness_mm": 2,
-				"strip_width_mm": 500,
-				"strip_length_mm": 1000,
-				"parts_per_strip": 1,
-				"no_of_strips": 1,
-			}
-		).insert(ignore_permissions=True)
-		parent = frappe.get_doc(
-			{
-				"doctype": "Sheet Cutting Layout",
-				"layout_code": f"SCL-PERM-PARENT-{suffix}",
-				"project": parent_project,
-				"revision_no": 1,
-				"status": "Draft",
-				"raw_material_item": raw_material,
-				"process_scrap_item": scrap_item,
-				"finished_part_code": parent_part,
-				"net_weight_per_part_kg": 7.86,
-				"sheet_thickness_mm": 2,
-				"sheet_width_mm": 1000,
-				"sheet_length_mm": 1000,
-				"strip_thickness_mm": 2,
-				"strip_width_mm": 500,
-				"strip_length_mm": 1000,
-				"parts_per_strip": 1,
-				"no_of_strips": 1,
-				"end_pieces": [
-					{
-						"width_mm": 500,
-						"length_mm": 1000,
-						"disposition": "Reuse",
-						"used_for_finished_part": child_part,
-						"scrap_item": scrap_item,
-						"child_layout": child.name,
-						"bom_quantity": 1,
-						"net_weight_per_part_kg": 7.86,
-					}
-				],
-			}
-		).insert(ignore_permissions=True)
-		user = self._ensure_projects_manager_user(f"scl-export-{suffix.lower()}@example.com", parent_project)
-
-		frappe.response.clear()
-		self.addCleanup(frappe.set_user, frappe.session.user)
-		frappe.set_user(user)
-		frappe.get_doc("Sheet Cutting Layout", parent.name).check_permission("read")
-		with self.assertRaises(frappe.PermissionError):
-			frappe.get_doc("Sheet Cutting Layout", child.name).check_permission("read")
-
-		with self.assertRaises(frappe.PermissionError):
-			controller.download_sheet_cutting_layout(parent.name)
-		self.assertNotIn("filecontent", frappe.response)
 
 	def test_create_revision_inserts_new_doc_and_returns_name(self) -> None:
 		old_doc = _FakeLayoutDoc(name="SCL-TEST-003")

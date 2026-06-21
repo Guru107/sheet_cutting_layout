@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import os
 import re
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Mapping, Sequence
 from copy import copy as _copy
 
 from openpyxl import load_workbook
@@ -54,12 +54,6 @@ def default_template_path() -> str:
 	)
 
 
-def walk_layout_tree(layout: object, fetch_child: Callable[[str], object]) -> list[object]:
-	"""Return the layout and every descendant child layout, depth-first."""
-	visited: set[str] = set()
-	return list(_walk_layout_tree(layout, fetch_child, visited))
-
-
 def unique_sheet_title(base: object, used: set[str]) -> str:
 	"""Return an openpyxl-safe worksheet title unique within ``used``."""
 	title = _INVALID_SHEET_TITLE_CHARS.sub("_", str(base or "").strip())
@@ -99,23 +93,6 @@ def build_multi_sheet_workbook(pages: Sequence[tuple[object, Mapping[str, object
 		_apply_cell_map(worksheet, layout)
 
 	return workbook
-
-
-def _walk_layout_tree(layout: object, fetch_child: Callable[[str], object], visited: set[str]):
-	name = str(getattr(layout, "name", "") or "").strip()
-	if name in visited:
-		return
-	visited.add(name)
-	yield layout
-
-	for row in getattr(layout, "end_pieces", []) or []:
-		if str(getattr(row, "disposition", "") or "").strip() != "Reuse":
-			continue
-		child_name = str(getattr(row, "child_layout", "") or "").strip()
-		if not child_name or child_name in visited:
-			continue
-		child = fetch_child(child_name)
-		yield from _walk_layout_tree(child, fetch_child, visited)
 
 
 def _apply_cell_map(worksheet: object, layout: Mapping[str, object]) -> None:
