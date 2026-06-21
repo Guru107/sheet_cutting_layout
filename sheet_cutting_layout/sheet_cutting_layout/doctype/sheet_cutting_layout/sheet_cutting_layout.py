@@ -40,6 +40,13 @@ _DRAFT_STATUS_SNAPSHOT_ACTIONS = {
 	"Approved by Purchase": PURCHASE_APPROVAL_ACTION,
 	"Rejected": REJECT_ACTION,
 }
+_REJECTABLE_STATUSES = frozenset(
+	{
+		"Submitted for Check",
+		"PM Approved",
+		"Approved by Purchase",
+	}
+)
 
 
 class SheetCuttingLayout(Document):
@@ -129,12 +136,9 @@ def _record_workflow_snapshot(doc: object, *, action: str) -> None:
 
 def _record_draft_workflow_snapshot(doc: object) -> None:
 	status = getattr(doc, "status", None)
-	action = _DRAFT_STATUS_SNAPSHOT_ACTIONS.get(status)
-	if not action:
-		return
-
 	previous_status = _previous_status(doc)
-	if previous_status in {None, status}:
+	action = _draft_workflow_snapshot_action(status=status, previous_status=previous_status)
+	if not action:
 		return
 
 	row = approval_snapshot_row(
@@ -146,6 +150,14 @@ def _record_draft_workflow_snapshot(doc: object) -> None:
 		return
 
 	_insert_approval_snapshot_row(doc, row=row)
+
+
+def _draft_workflow_snapshot_action(*, status: object, previous_status: object) -> str | None:
+	if previous_status in {None, status}:
+		return None
+	if status == "Draft" and previous_status in _REJECTABLE_STATUSES:
+		return REJECT_ACTION
+	return _DRAFT_STATUS_SNAPSHOT_ACTIONS.get(status)
 
 
 def _insert_approval_snapshot_row(doc: object, *, row: dict[str, object]) -> None:

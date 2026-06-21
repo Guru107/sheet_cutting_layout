@@ -348,6 +348,22 @@ class TestReleaseContracts(SheetCuttingLayoutTestCase):
 		assert workflow_states["Superseded"]["doc_status"] == "2"
 		assert "Cancel" not in workflow_states
 
+	def test_reject_workflow_transitions_return_to_draft(self) -> None:
+		workflow_path = Path(__file__).resolve().parents[1] / "fixtures" / "workflow.json"
+		workflow = json.loads(workflow_path.read_text(encoding="utf-8"))[0]
+		reject_transitions = [
+			transition for transition in workflow["transitions"] if transition["action"] == "Reject"
+		]
+
+		self.assertEqual(
+			{transition["state"]: transition["next_state"] for transition in reject_transitions},
+			{
+				"Submitted for Check": "Draft",
+				"PM Approved": "Draft",
+				"Approved by Purchase": "Draft",
+			},
+		)
+
 	def test_generated_release_artifact_fields_are_not_copied(self) -> None:
 		doctype_path = (
 			Path(__file__).resolve().parents[1]

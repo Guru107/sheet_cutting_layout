@@ -431,7 +431,7 @@ class TestSheetCuttingLayoutController(SheetCuttingLayoutTestCase):
 		self.assertEqual(layout.approval_snapshot[0].step_name, "MR Approval")
 		self.assertEqual(layout.approval_snapshot[0].decision, "Approved")
 
-	def test_draft_workflow_actions_persist_approval_snapshots_after_reload(self) -> None:
+	def test_reject_returns_layout_to_draft_and_records_snapshot(self) -> None:
 		from frappe.model.workflow import apply_workflow
 
 		layout = make_layout(
@@ -445,6 +445,14 @@ class TestSheetCuttingLayoutController(SheetCuttingLayoutTestCase):
 		layout = apply_workflow(layout, "Reject")
 		layout.reload()
 
+		self.assertEqual(layout.status, "Draft")
+		self.assertEqual(layout.docstatus, 0)
+		layout.notes = "Corrected after rejection"
+		layout.save()
+		layout = apply_workflow(layout, "Submit for Check")
+		layout.reload()
+
+		self.assertEqual(layout.status, "Submitted for Check")
 		snapshots = [(row.step_name, row.decision) for row in layout.approval_snapshot]
 		self.assertEqual(
 			snapshots,
