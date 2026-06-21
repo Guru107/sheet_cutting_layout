@@ -30,6 +30,7 @@ from sheet_cutting_layout.services.workflow import (
 	PURCHASE_APPROVAL_ACTION,
 	REJECT_ACTION,
 	SUBMIT_FOR_CHECK_ACTION,
+	SUPERSEDE_ACTION,
 	approval_snapshot_row,
 	record_approval_snapshot,
 )
@@ -70,6 +71,10 @@ class SheetCuttingLayout(Document):
 
 	def before_cancel(self) -> None:
 		self.ignore_linked_doctypes = ["BOM", "Sheet Cutting Layout"]
+		if getattr(self, "status", None) != "Superseded":
+			frappe.throw(_("Sheet Cutting Layout can be cancelled only through Supersede"))
+		_validate_workflow_approval_access(self, action=SUPERSEDE_ACTION)
+		_record_workflow_snapshot(self, action=SUPERSEDE_ACTION)
 
 	def on_cancel(self) -> None:
 		retire_layout(self)

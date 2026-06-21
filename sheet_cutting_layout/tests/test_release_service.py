@@ -1210,19 +1210,33 @@ class TestControllerWorkflow(ReleaseServiceIsolatedTestCase):
 			),
 		]
 
-	def test_controller_before_cancel_sets_linked_doctype_ignores_only(self) -> None:
+	def test_controller_before_cancel_records_supersede_snapshot(self) -> None:
 		from sheet_cutting_layout.sheet_cutting_layout.doctype.sheet_cutting_layout import (
 			sheet_cutting_layout,
 		)
 
 		snapshot = self.start_patcher(patch.object(sheet_cutting_layout, "record_approval_snapshot"))
+		self.start_patcher(patch.object(sheet_cutting_layout, "_get_session_user", lambda: "mr@example.com"))
+		self.start_patcher(
+			patch.object(
+				sheet_cutting_layout,
+				"_get_now_datetime",
+				lambda: datetime(2026, 5, 15, 12, 30, 0),
+			)
+		)
 
 		doc = _new_sheet_cutting_layout_doc(sheet_cutting_layout)
+		doc.status = "Superseded"
 		doc.generated_bom = "BOM-PART001SHR-001"
 		doc.before_cancel()
 
 		assert doc.ignore_linked_doctypes == ["BOM", "Sheet Cutting Layout"]
-		snapshot.assert_not_called()
+		snapshot.assert_called_once_with(
+			doc,
+			action="Supersede",
+			approver="mr@example.com",
+			decision_time=datetime(2026, 5, 15, 12, 30, 0),
+		)
 
 	def test_controller_on_cancel_retires_layout(self) -> None:
 		from sheet_cutting_layout.sheet_cutting_layout.doctype.sheet_cutting_layout import (
