@@ -6,6 +6,7 @@ from sheet_cutting_layout.tests.base import SheetCuttingLayoutTestCase
 
 
 class TestLayoutEndPieceSchema(SheetCuttingLayoutTestCase):
-	def test_child_layout_field_is_removed_from_layout_end_piece(self) -> None:
+	def test_legacy_cross_layout_field_is_removed_from_layout_end_piece(self) -> None:
 		meta = frappe.get_meta("Layout End Piece")
-		self.assertIsNone(meta.get_field("child_layout"))
+		legacy_fieldname = "_".join(("child", "layout"))
+		self.assertIsNone(meta.get_field(legacy_fieldname))

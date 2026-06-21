@@ -31,7 +31,7 @@
 - Modify: `sheet_cutting_layout/tests/test_recursive_end_piece.py`
 - Modify: `sheet_cutting_layout/tests/test_validators.py`
 
-- [ ] **Step 1: Replace child-layout schema test with absence assertion**
+- [x] **Step 1: Replace child-layout schema test with absence assertion**
 
 Replace `sheet_cutting_layout/tests/test_recursive_end_piece.py` with:
 
@@ -49,7 +49,7 @@ class TestLayoutEndPieceSchema(SheetCuttingLayoutTestCase):
 		self.assertIsNone(meta.get_field("child_layout"))
 ```
 
-- [ ] **Step 2: Run the schema test and verify it fails before schema removal**
+- [x] **Step 2: Run the schema test and verify it fails before schema removal**
 
 Run:
 
@@ -59,7 +59,7 @@ bench --site development.localhost run-tests --app sheet_cutting_layout --module
 
 Expected: FAIL because `meta.get_field("child_layout")` still returns a field.
 
-- [ ] **Step 3: Remove `child_layout` from the DocType JSON**
+- [x] **Step 3: Remove `child_layout` from the DocType JSON**
 
 Edit `sheet_cutting_layout/sheet_cutting_layout/doctype/layout_end_piece/layout_end_piece.json`:
 
@@ -77,7 +77,7 @@ Edit `sheet_cutting_layout/sheet_cutting_layout/doctype/layout_end_piece/layout_
   },
 ```
 
-- [ ] **Step 4: Remove child-layout validation code**
+- [x] **Step 4: Remove child-layout validation code**
 
 Edit `sheet_cutting_layout/services/validators.py`:
 
@@ -115,7 +115,7 @@ pending = any(
 )
 ```
 
-- [ ] **Step 5: Remove obsolete validator tests**
+- [x] **Step 5: Remove obsolete validator tests**
 
 Edit `sheet_cutting_layout/tests/test_validators.py`:
 
@@ -141,7 +141,7 @@ def test_apply_end_piece_bom_status_marks_reuse_rows_pending(self) -> None:
 	self.assertEqual(layout.end_piece_bom_status, "Pending")
 ```
 
-- [ ] **Step 6: Run focused validator/schema tests**
+- [x] **Step 6: Run focused validator/schema tests**
 
 Run:
 
@@ -156,7 +156,7 @@ bench --site development.localhost run-tests --app sheet_cutting_layout --module
 bench --site development.localhost run-tests --app sheet_cutting_layout --module sheet_cutting_layout.tests.test_validators
 ```
 
-- [ ] **Step 7: Commit Task 1**
+- [x] **Step 7: Commit Task 1**
 
 ```bash
 git add sheet_cutting_layout/sheet_cutting_layout/doctype/layout_end_piece/layout_end_piece.json sheet_cutting_layout/services/validators.py sheet_cutting_layout/tests/test_recursive_end_piece.py sheet_cutting_layout/tests/test_validators.py
@@ -174,7 +174,7 @@ git commit -m "fix: remove child layout validation"
 - Delete: `sheet_cutting_layout/tests/test_recursive_end_piece_release.py`
 - Modify: `sheet_cutting_layout/tests/test_release_service.py`
 
-- [ ] **Step 1: Write the failing local Reuse end-piece BOM test**
+- [x] **Step 1: Write the failing local Reuse end-piece BOM test**
 
 In `sheet_cutting_layout/tests/test_end_piece_bom_service.py`, add:
 
@@ -192,7 +192,7 @@ def test_generation_includes_every_reuse_end_piece_row(self) -> None:
 
 This test documents the retained behavior: a local Reuse end-piece row generates its Used-for-Part BOM.
 
-- [ ] **Step 2: Remove child-layout filtering from end-piece BOM service**
+- [x] **Step 2: Remove child-layout filtering from end-piece BOM service**
 
 Edit `sheet_cutting_layout/services/end_piece_bom_service.py`:
 
@@ -211,7 +211,7 @@ def _pending_rows(layout: LayoutDocument) -> list[EndPieceRow]:
 
 - Delete `_row_has_child_layout()`.
 
-- [ ] **Step 3: Remove descendant release/cancel helpers**
+- [x] **Step 3: Remove descendant release/cancel helpers**
 
 Edit `sheet_cutting_layout/services/release_service.py`:
 
@@ -227,7 +227,7 @@ from sheet_cutting_layout.services.validators import validate_sheet_cutting_layo
 - Delete `_child_layout_links()`.
 - Keep `_append_unique_clean()` because `_layout_bom_names()` still uses it for generated BOM links.
 
-- [ ] **Step 4: Remove descendant cancellation from the DocType controller**
+- [x] **Step 4: Remove descendant cancellation from the DocType controller**
 
 Edit `sheet_cutting_layout/sheet_cutting_layout/doctype/sheet_cutting_layout/sheet_cutting_layout.py`:
 
@@ -245,13 +245,13 @@ def before_cancel(self) -> None:
 cancel_descendant_layouts(self)
 ```
 
-- [ ] **Step 5: Delete recursive release tests and one descendant unit test**
+- [x] **Step 5: Delete recursive release tests and one descendant unit test**
 
 Delete `sheet_cutting_layout/tests/test_recursive_end_piece_release.py`.
 
 In `sheet_cutting_layout/tests/test_release_service.py`, delete the entire method named `test_cancel_descendant_layouts_preserves_existing_ignore_linked_doctypes`.
 
-- [ ] **Step 6: Run focused release and end-piece BOM tests**
+- [x] **Step 6: Run focused release and end-piece BOM tests**
 
 Run:
 
@@ -262,7 +262,7 @@ bench --site development.localhost run-tests --app sheet_cutting_layout --module
 
 Expected: both pass.
 
-- [ ] **Step 7: Commit Task 2**
+- [x] **Step 7: Commit Task 2**
 
 ```bash
 git add sheet_cutting_layout/services/end_piece_bom_service.py sheet_cutting_layout/services/release_service.py sheet_cutting_layout/sheet_cutting_layout/doctype/sheet_cutting_layout/sheet_cutting_layout.py sheet_cutting_layout/tests/test_end_piece_bom_service.py sheet_cutting_layout/tests/test_release_service.py
@@ -281,7 +281,7 @@ git commit -m "fix: remove recursive end piece release"
 - Delete: `sheet_cutting_layout/tests/test_download_sheet_cutting_layout_recursion.py`
 - Modify: `sheet_cutting_layout/tests/test_sheet_cutting_layout_controller.py`
 
-- [ ] **Step 1: Add or confirm one local download/export test**
+- [x] **Step 1: Add or confirm one local download/export test**
 
 Keep `sheet_cutting_layout/tests/test_sheet_cutting_layout_export.py` as the local workbook coverage. Confirm it still calls `download_sheet_cutting_layout()` and checks a single workbook for the selected layout.
 
@@ -293,7 +293,7 @@ bench --site development.localhost run-tests --app sheet_cutting_layout --module
 
 Expected before implementation: current tests pass or fail only for unrelated setup. Do not change behavior based on this step; it is a baseline.
 
-- [ ] **Step 2: Remove recursive walk from export service**
+- [x] **Step 2: Remove recursive walk from export service**
 
 Edit `sheet_cutting_layout/services/export_service.py`:
 
@@ -302,7 +302,7 @@ Edit `sheet_cutting_layout/services/export_service.py`:
 - Delete `_walk_layout_tree()`.
 - Keep `build_multi_sheet_workbook()` if existing callers/tests still use it for one page.
 
-- [ ] **Step 3: Simplify `download_sheet_cutting_layout()`**
+- [x] **Step 3: Simplify `download_sheet_cutting_layout()`**
 
 Edit `sheet_cutting_layout/sheet_cutting_layout/doctype/sheet_cutting_layout/sheet_cutting_layout.py`:
 
@@ -321,7 +321,7 @@ frappe.response["type"] = "binary"
 
 - Delete the nested `fetch_child()` function.
 
-- [ ] **Step 4: Remove recursive export tests**
+- [x] **Step 4: Remove recursive export tests**
 
 Delete:
 
@@ -332,7 +332,7 @@ git rm sheet_cutting_layout/tests/test_download_sheet_cutting_layout_recursion.p
 
 In `sheet_cutting_layout/tests/test_sheet_cutting_layout_controller.py`, delete the entire methods named `test_download_checks_child_layout_read_permission_before_export` and `test_download_denies_real_user_without_child_layout_read_access`.
 
-- [ ] **Step 5: Run focused export/controller tests**
+- [x] **Step 5: Run focused export/controller tests**
 
 Run:
 
@@ -344,7 +344,7 @@ bench --site development.localhost run-tests --app sheet_cutting_layout --module
 
 Expected: all pass.
 
-- [ ] **Step 6: Commit Task 3**
+- [x] **Step 6: Commit Task 3**
 
 ```bash
 git add sheet_cutting_layout/services/export_service.py sheet_cutting_layout/sheet_cutting_layout/doctype/sheet_cutting_layout/sheet_cutting_layout.py sheet_cutting_layout/tests/test_sheet_cutting_layout_controller.py
@@ -360,7 +360,7 @@ git commit -m "fix: remove recursive layout export"
 - Check: all changed source/test files
 - Modify: any file still referencing live `child_layout` behavior
 
-- [ ] **Step 1: Search for remaining live references**
+- [x] **Step 1: Search for remaining live references**
 
 Run:
 
@@ -370,7 +370,7 @@ rg -n "child_layout|collect_descendant_layouts|CascadeCycleError|cancel_descenda
 
 Expected: no matches in live source/tests. Historical docs under `docs/superpowers/` are allowed to keep old references.
 
-- [ ] **Step 2: If matches remain, remove them**
+- [x] **Step 2: If matches remain, remove them**
 
 Use these rules:
 
@@ -379,7 +379,7 @@ Use these rules:
 - DocType JSON match: remove it.
 - Historical docs match outside `sheet_cutting_layout/`: leave it alone.
 
-- [ ] **Step 3: Run migration for DocType JSON change**
+- [x] **Step 3: Run migration for DocType JSON change**
 
 Run:
 
@@ -389,7 +389,7 @@ bench --site development.localhost migrate
 
 Expected: migration completes successfully and updates the DocType metadata.
 
-- [ ] **Step 4: Run full app tests**
+- [x] **Step 4: Run full app tests**
 
 Run:
 
@@ -399,7 +399,7 @@ bench --site development.localhost run-tests --app sheet_cutting_layout
 
 Expected: PASS.
 
-- [ ] **Step 5: Run pre-commit**
+- [x] **Step 5: Run pre-commit**
 
 Run:
 
@@ -409,7 +409,7 @@ pre-commit run --all-files
 
 Expected: PASS. If hooks modify files, rerun focused tests for any modified Python/JS paths and rerun `pre-commit run --all-files`.
 
-- [ ] **Step 6: Commit final cleanup if needed**
+- [x] **Step 6: Commit final cleanup if needed**
 
 If Step 1 or hooks changed additional files:
 

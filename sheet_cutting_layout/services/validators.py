@@ -501,8 +501,7 @@ def apply_end_piece_bom_status(
 		layout.end_piece_bom_status = "Not Required"
 		return
 	pending = any(
-		_is_reuse_end_piece(end_piece)
-		and _is_missing(getattr(end_piece, "generated_end_piece_bom", None))
+		_is_reuse_end_piece(end_piece) and _is_missing(getattr(end_piece, "generated_end_piece_bom", None))
 		for end_piece in end_pieces
 	)
 	layout.end_piece_bom_status = "Pending" if pending else "Generated"
