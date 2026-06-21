@@ -1311,6 +1311,9 @@ class TestControllerWorkflow(ReleaseServiceIsolatedTestCase):
 		assert "strip_width_mm: updateEndPieceWeightsAndConsumption" in content
 		assert "strip_length_mm: updateEndPieceWeightsAndConsumption" in content
 		assert "strip_weight_kg: updateEndPieceReuseWeightsAndConsumption" in content
+		assert 'frappe.model.set_value(cdt, cdn, "strip_width_mm", null)' in content
+		assert 'frappe.model.set_value(cdt, cdn, "strip_length_mm", null)' in content
+		assert 'frappe.model.set_value(cdt, cdn, "strip_weight_kg", null)' in content
 
 
 def _new_sheet_cutting_layout_doc(sheet_cutting_layout_module: object):
@@ -1708,7 +1711,7 @@ class TestFrappeBomInsertAndEndPieces(ReleaseServiceIsolatedTestCase):
 				"stock_uom": "Kg",
 			},
 		]
-		assert round(layout.finished_parts[0].scrap_weight_kg, 6) == 17.047022
+		assert round(layout.finished_parts[0].scrap_weight_kg, 6) == 14.233142
 		assert layout.finished_parts[0].raw_material_weight_kg == 39.3
 
 	def test_default_release_persists_generated_end_piece_item_code_on_saved_layout(self) -> None:

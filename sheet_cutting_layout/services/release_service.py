@@ -406,7 +406,7 @@ def _sync_finished_part_reference_rows(
 		{
 			"finished_part_item": finished_part.finished_part_item,
 			"bom_quantity": _finished_part_bom_quantity(finished_part),
-			"scrap_weight_kg": _sum_bom_qty(bom.scrap_items),
+			"scrap_weight_kg": _sum_bom_qty(bom.scrap_items, row_type="process_scrap"),
 			"raw_material_weight_kg": _sum_bom_qty(bom.items),
 			"generated_bom": getattr(bom, "name", None),
 			"orientation": getattr(finished_part, "orientation", None),
@@ -564,5 +564,9 @@ def _supported_field_values(doc: object, values: dict[str, object]) -> dict[str,
 	return {field: value for field, value in values.items() if _field_is_supported(doc, field)}
 
 
-def _sum_bom_qty(rows: Sequence[object]) -> float:
-	return sum(float(getattr(row, "qty", 0) or 0) for row in rows)
+def _sum_bom_qty(rows: Sequence[object], *, row_type: str | None = None) -> float:
+	return sum(
+		float(getattr(row, "qty", 0) or 0)
+		for row in rows
+		if row_type is None or getattr(row, "row_type", None) == row_type
+	)

@@ -15,6 +15,7 @@ from sheet_cutting_layout.services.end_piece_item_service import (
 	derive_end_piece_item_code,
 	derive_end_piece_item_code_from_row,
 	format_code_number,
+	layout_end_piece_source_finished_part,
 )
 
 _ = frappe._
@@ -471,7 +472,7 @@ def _validate_child_raw_material(
 	end_piece_item_code = derive_end_piece_item_code_from_row(
 		layout,
 		end_piece,
-		source_finished_part=getattr(layout, "finished_part_code", None),
+		source_finished_part=layout_end_piece_source_finished_part(layout),
 	)  # type: ignore[arg-type]
 	child_raw_material_item = frappe.db.get_value(
 		"Sheet Cutting Layout",

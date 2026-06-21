@@ -86,6 +86,8 @@ class ExistingEndPiece(EndPiece):
 @dataclass
 class Layout:
 	finished_part_code: str | None = "AB12SHR"
+	is_lh_rh: int = 0
+	twin_finished_part: str | None = None
 	net_weight_per_part_kg: float | None = 11.004
 	generated_bom: str | None = None
 	finished_parts: list[FinishedPart] = field(default_factory=list)
@@ -976,6 +978,26 @@ class TestValidators(SheetCuttingLayoutTestCase):
 			layout,
 			end_piece,
 			source_finished_part="FG01SHR",
+		)
+
+	def test_child_layout_raw_material_guard_uses_lh_rh_pair_code(self) -> None:
+		layout = Layout(finished_part_code="FG01LHSHR", is_lh_rh=1, twin_finished_part="FG01RHSHR")
+		end_piece = EndPiece(used_for_finished_part="FG02SHR")
+		self.fake_frappe.db = SimpleNamespace(
+			get_value=lambda doctype, name, fieldname: "FG01LHSHR-FG01RHSHR-EP-1x1250x260"
+		)
+
+		with patch.object(
+			self.validators,
+			"derive_end_piece_item_code_from_row",
+			return_value="FG01LHSHR-FG01RHSHR-EP-1x1250x260",
+		) as derive:
+			self.validators._validate_child_raw_material(layout, end_piece, "SCL-CHILD")
+
+		derive.assert_called_once_with(
+			layout,
+			end_piece,
+			source_finished_part="FG01LHSHR-FG01RHSHR",
 		)
 
 	def test_consumption_tracking_uses_gross_plus_end_piece_weight_and_sets_balanced(self) -> None:
