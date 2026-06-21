@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+from types import SimpleNamespace
 
 import frappe
 from openpyxl import load_workbook
@@ -194,6 +195,46 @@ class TestSheetCuttingLayoutExport(SheetCuttingLayoutTestCase):
 		self.assertAlmostEqual(float(worksheet["K29"].value), 0.0716, places=4)
 		self.assertIn(worksheet["O10"].value, (None, ""))
 		self.assertIn(worksheet["U10"].value, (None, ""))
+
+	def test_export_end_piece_dict_preserves_reuse_strip_dimensions_for_all_blocks(self) -> None:
+		from sheet_cutting_layout.services.export_service import build_multi_sheet_workbook
+		from sheet_cutting_layout.sheet_cutting_layout.doctype.sheet_cutting_layout.sheet_cutting_layout import (
+			_export_end_piece_dict,
+		)
+
+		rows = [
+			SimpleNamespace(
+				end_piece_item_code=f"FG01SHR-EP-{index}",
+				disposition="Reuse",
+				used_for_finished_part=f"FG00{index}SHR",
+				width_mm=1250.0,
+				length_mm=179.0 + index,
+				weight_kg=2.81388,
+				strip_width_mm=1250.0,
+				strip_length_mm=170.0 + index,
+				strip_weight_kg=2.6724,
+				gross_weight_per_part_kg=0.381771,
+				net_weight_per_part_kg=0.171,
+				scrap_weight_per_part_kg=0.210771,
+				bom_quantity=7,
+			)
+			for index in range(3)
+		]
+		exported = [_export_end_piece_dict(row) for row in rows]
+
+		worksheet = build_multi_sheet_workbook(
+			[("export", {"sheet_thickness_mm": 1.6, "end_pieces": exported})]
+		).active
+
+		self.assertEqual(worksheet["K25"].value, 1.6)
+		self.assertEqual(worksheet["L25"].value, 1250.0)
+		self.assertEqual(worksheet["M25"].value, 170.0)
+		self.assertEqual(worksheet["R15"].value, 1.6)
+		self.assertEqual(worksheet["S15"].value, 1250.0)
+		self.assertEqual(worksheet["T15"].value, 171.0)
+		self.assertEqual(worksheet["R25"].value, 1.6)
+		self.assertEqual(worksheet["S25"].value, 1250.0)
+		self.assertEqual(worksheet["T25"].value, 172.0)
 
 	def test_download_populates_scrap_end_piece_bom_weight(self) -> None:
 		from sheet_cutting_layout.sheet_cutting_layout.doctype.sheet_cutting_layout.sheet_cutting_layout import (

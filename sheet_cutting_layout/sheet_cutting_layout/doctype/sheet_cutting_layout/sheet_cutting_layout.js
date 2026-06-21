@@ -455,6 +455,15 @@ frappe.provide("sheet_cutting_layout");
 		return Promise.all(updates);
 	}
 
+	function updateOrientationDescription(frm) {
+		const finishedPartCode = frm.doc.finished_part_code || "finished_part_code";
+		frm.set_df_property(
+			"orientation",
+			"description",
+			`Set the orientation for ${finishedPartCode}`
+		);
+	}
+
 	function addEndPieceBomButtons(frm) {
 		const hasReusableEndPieces = (frm.doc.end_pieces || []).some(
 			(row) => row.disposition === "Reuse"
@@ -499,6 +508,7 @@ frappe.provide("sheet_cutting_layout");
 	frappe.ui.form.on("Sheet Cutting Layout", {
 		refresh(frm) {
 			ignoreBomInGenericCancelAll(frm);
+			updateOrientationDescription(frm);
 			addEndPieceBomButtons(frm);
 			addDownloadLayoutButton(frm);
 			if (!frm.is_new() && ["Released", "Superseded"].includes(frm.doc.status)) {
@@ -547,6 +557,7 @@ frappe.provide("sheet_cutting_layout");
 		parts_per_strip: updatePartsPerSheetAndDerivedFields,
 		no_of_strips: updatePartsPerSheetAndDerivedFields,
 		net_weight_per_part_kg: updateParentWeightsAndConsumption,
+		finished_part_code: updateOrientationDescription,
 		is_lh_rh: updateLhRhFields,
 	});
 
