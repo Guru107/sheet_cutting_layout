@@ -135,8 +135,16 @@ frappe.provide("sheet_cutting_layout");
 		return calculateWeight(frm.doc.sheet_thickness_mm, row.width_mm, row.length_mm);
 	}
 
+	function calculateEndPieceStripWeight(frm, row) {
+		return calculateWeight(
+			frm.doc.sheet_thickness_mm,
+			row.strip_width_mm,
+			row.strip_length_mm
+		);
+	}
+
 	function calculateEndPieceGrossWeightPerPart(row) {
-		const weight = Number(row.weight_kg);
+		const weight = Number(row.strip_weight_kg);
 		const bomQuantity = Number(row.bom_quantity);
 		if (!(weight >= 0 && bomQuantity > 0)) {
 			return null;
@@ -238,6 +246,44 @@ frappe.provide("sheet_cutting_layout");
 		return Promise.all(updates);
 	}
 
+	function updateEndPieceStripWeights(frm) {
+		const updates = (frm.doc.end_pieces || []).flatMap((row) => {
+			if (row.disposition !== "Reuse") {
+				return [];
+			}
+
+			const rowUpdates = [];
+			const setRowValue = (fieldname, value) => {
+				if (row[fieldname] !== value) {
+					rowUpdates.push(
+						frappe.model.set_value(row.doctype, row.name, fieldname, value)
+					);
+				}
+			};
+
+			if (!hasValue(row.strip_width_mm) && hasValue(row.width_mm)) {
+				setRowValue("strip_width_mm", row.width_mm);
+			}
+			if (!hasValue(row.strip_length_mm) && hasValue(row.length_mm)) {
+				setRowValue("strip_length_mm", row.length_mm);
+			}
+
+			const stripWeight = calculateEndPieceStripWeight(frm, {
+				...row,
+				strip_width_mm: hasValue(row.strip_width_mm) ? row.strip_width_mm : row.width_mm,
+				strip_length_mm: hasValue(row.strip_length_mm)
+					? row.strip_length_mm
+					: row.length_mm,
+			});
+			if (stripWeight !== null) {
+				setRowValue("strip_weight_kg", stripWeight);
+			}
+			return rowUpdates;
+		});
+
+		return Promise.all(updates);
+	}
+
 	function updateEndPieceReuseWeights(frm) {
 		const updates = (frm.doc.end_pieces || []).flatMap((row) => {
 			if (row.disposition !== "Reuse") {
@@ -292,7 +338,7 @@ frappe.provide("sheet_cutting_layout");
 		const consumedWeight = roundConsumptionWeight(
 			numberOrZero(frm.doc.gross_weight_per_part_kg) *
 				numberOrZero(frm.doc.parts_per_sheet) +
-				endPieces.reduce((total, row) => total + numberOrZero(row.weight_kg), 0)
+				endPieces.reduce((total, row) => total + endPieceConsumedWeight(row), 0)
 		);
 		const leftoverWeight = roundConsumptionWeight(
 			roundConsumptionWeight(frm.doc.weight_per_sheet_kg) - consumedWeight
@@ -303,6 +349,13 @@ frappe.provide("sheet_cutting_layout");
 			leftover_weight_kg: leftoverWeight,
 			consumption_status: getConsumptionStatus(leftoverWeight),
 		};
+	}
+
+	function endPieceConsumedWeight(row) {
+		if (row.disposition === "Reuse") {
+			return numberOrZero(row.strip_weight_kg);
+		}
+		return numberOrZero(row.weight_kg);
 	}
 
 	function updateConsumptionTracking(frm) {
@@ -340,6 +393,7 @@ frappe.provide("sheet_cutting_layout");
 			.then(() => updateParentGrossWeightPerPart(frm))
 			.then(() => updateParentScrapWeightPerPart(frm))
 			.then(() => updateEndPieceWeights(frm))
+			.then(() => updateEndPieceStripWeights(frm))
 			.then(() => updateEndPieceReuseWeights(frm))
 			.then(() => updateConsumptionTracking(frm));
 	}
@@ -368,13 +422,18 @@ frappe.provide("sheet_cutting_layout");
 
 	function updateEndPieceWeightsAndConsumption(frm) {
 		return updateEndPieceWeights(frm)
+			.then(() => updateEndPieceStripWeights(frm))
 			.then(() => updateEndPieceReuseWeights(frm))
 			.then(() => updateConsumptionTracking(frm));
 	}
 
+	function updateEndPieceReuseWeightsAndConsumption(frm) {
+		return updateEndPieceReuseWeights(frm).then(() => updateConsumptionTracking(frm));
+	}
+
 	function updateEndPieceDispositionAndDerivedFields(frm, cdt, cdn) {
 		return clearStaleEndPieceDispositionFields(cdt, cdn).then(() =>
-			updateConsumptionTracking(frm)
+			updateEndPieceWeightsAndConsumption(frm)
 		);
 	}
 
@@ -394,6 +453,15 @@ frappe.provide("sheet_cutting_layout");
 			updates.push(frm.set_value("twin_finished_part", ""));
 		}
 		return Promise.all(updates);
+	}
+
+	function updateOrientationDescription(frm) {
+		const finishedPartCode = frm.doc.finished_part_code || "finished_part_code";
+		frm.set_df_property(
+			"orientation",
+			"description",
+			`Set the orientation for ${finishedPartCode}`
+		);
 	}
 
 	function addEndPieceBomButtons(frm) {
@@ -440,6 +508,7 @@ frappe.provide("sheet_cutting_layout");
 	frappe.ui.form.on("Sheet Cutting Layout", {
 		refresh(frm) {
 			ignoreBomInGenericCancelAll(frm);
+			updateOrientationDescription(frm);
 			addEndPieceBomButtons(frm);
 			addDownloadLayoutButton(frm);
 			if (!frm.is_new() && ["Released", "Superseded"].includes(frm.doc.status)) {
@@ -488,6 +557,7 @@ frappe.provide("sheet_cutting_layout");
 		parts_per_strip: updatePartsPerSheetAndDerivedFields,
 		no_of_strips: updatePartsPerSheetAndDerivedFields,
 		net_weight_per_part_kg: updateParentWeightsAndConsumption,
+		finished_part_code: updateOrientationDescription,
 		is_lh_rh: updateLhRhFields,
 	});
 
@@ -495,6 +565,9 @@ frappe.provide("sheet_cutting_layout");
 		width_mm: updateEndPieceWeightsAndConsumption,
 		length_mm: updateEndPieceWeightsAndConsumption,
 		weight_kg: updateConsumptionTrackingFields,
+		strip_width_mm: updateEndPieceWeightsAndConsumption,
+		strip_length_mm: updateEndPieceWeightsAndConsumption,
+		strip_weight_kg: updateEndPieceReuseWeightsAndConsumption,
 		disposition: updateEndPieceDispositionAndDerivedFields,
 		bom_quantity: updateEndPieceWeightsAndConsumption,
 		net_weight_per_part_kg: updateEndPieceWeightsAndConsumption,

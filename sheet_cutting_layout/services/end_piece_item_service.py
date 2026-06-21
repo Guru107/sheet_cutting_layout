@@ -67,11 +67,12 @@ def derive_end_piece_item_code_from_row(
 	source_finished_part: str | None = None,
 ) -> str:
 	try:
+		width_mm, length_mm = _end_piece_item_dimensions(row)
 		item_code = derive_end_piece_item_code(
 			used_for_finished_part=source_finished_part or getattr(row, "used_for_finished_part", None),
 			thickness_mm=getattr(layout, "sheet_thickness_mm", None),
-			width_mm=getattr(row, "width_mm", None),
-			length_mm=getattr(row, "length_mm", None),
+			width_mm=width_mm,
+			length_mm=length_mm,
 		)
 	except ValueError as error:
 		_throw(_("Row {0}: {1}").format(getattr(row, "idx", 0), str(error)))
@@ -86,6 +87,14 @@ def derive_end_piece_item_code_from_row(
 			)
 		)
 	return item_code
+
+
+def layout_end_piece_source_finished_part(layout: object, fallback: object = None) -> str | None:
+	primary = _clean(getattr(layout, "finished_part_code", None)) or _clean(fallback)
+	twin = _clean(getattr(layout, "twin_finished_part", None))
+	if getattr(layout, "is_lh_rh", None) and primary and twin:
+		return f"{primary}-{twin}"
+	return primary
 
 
 def ensure_end_piece_item(
@@ -224,9 +233,19 @@ def _upsert_uom_row(item: object, *, uom: str, conversion_factor: float) -> None
 def _build_item_description(layout: LayoutDocument, row: EndPieceRow) -> str:
 	raw_material_item = _clean(getattr(layout, "raw_material_item", None)) or "Unknown raw material"
 	thickness_mm = format_code_number(getattr(layout, "sheet_thickness_mm", 0))
-	width_mm = format_code_number(getattr(row, "width_mm", 0))
-	length_mm = format_code_number(getattr(row, "length_mm", 0))
+	width, length = _end_piece_item_dimensions(row)
+	width_mm = format_code_number(width or 0)
+	length_mm = format_code_number(length or 0)
 	return f"Derived from {raw_material_item}; End Piece {thickness_mm}x{width_mm}x{length_mm} mm"
+
+
+def _end_piece_item_dimensions(row: EndPieceRow) -> tuple[object, object]:
+	if (_clean(getattr(row, "disposition", None)) or "").casefold() == "reuse":
+		return (
+			getattr(row, "strip_width_mm", None) or getattr(row, "width_mm", None),
+			getattr(row, "strip_length_mm", None) or getattr(row, "length_mm", None),
+		)
+	return getattr(row, "width_mm", None), getattr(row, "length_mm", None)
 
 
 def _is_positive_number(value: object) -> bool:

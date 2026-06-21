@@ -7,7 +7,10 @@ import frappe
 
 from sheet_cutting_layout.services import validators
 from sheet_cutting_layout.services.bom_service import build_weight_split_bom_rows
-from sheet_cutting_layout.services.end_piece_item_service import ensure_end_piece_item
+from sheet_cutting_layout.services.end_piece_item_service import (
+	ensure_end_piece_item,
+	layout_end_piece_source_finished_part,
+)
 
 _ = frappe._
 
@@ -20,6 +23,9 @@ class EndPieceRow(Protocol):
 	width_mm: float | None
 	length_mm: float | None
 	weight_kg: float | None
+	strip_width_mm: float | None
+	strip_length_mm: float | None
+	strip_weight_kg: float | None
 	used_for_finished_part: str | None
 	child_layout: str | None
 	bom_quantity: float | None
@@ -52,13 +58,14 @@ def generate_end_piece_boms(layout: LayoutDocument) -> dict[str, list[str]]:
 	pending_rows = [row for row in reuse_rows if _is_missing(getattr(row, "generated_end_piece_bom", None))]
 
 	for row in pending_rows:
+		_apply_missing_strip_weight(layout, row)
 		_validate_pending_row(layout, row)
 		item_code = _clean(getattr(row, "end_piece_item_code", None))
 		if not item_code:
 			item_code = ensure_end_piece_item(
 				layout,
 				row,
-				source_finished_part=getattr(layout, "finished_part_code", None),
+				source_finished_part=layout_end_piece_source_finished_part(layout),
 			)
 			row.end_piece_item_code = item_code
 			generated_items.append(item_code)
@@ -84,7 +91,7 @@ def _create_end_piece_bom(layout: LayoutDocument, row: EndPieceRow, item_code: s
 
 	weight_rows = build_weight_split_bom_rows(
 		raw_material_item=item_code,
-		raw_material_qty_kg=float(getattr(row, "weight_kg", 0) or 0),
+		raw_material_qty_kg=float(getattr(row, "strip_weight_kg", 0) or 0),
 		scrap_qty_kg=float(getattr(row, "bom_scrap_quantity_kg", 0) or 0),
 		scrap_item=_clean(getattr(row, "scrap_item", None)),
 		scrap_row_type="process_scrap",
@@ -123,10 +130,16 @@ def _validate_pending_row(layout: LayoutDocument, row: EndPieceRow) -> None:
 		_throw(_("Row {0}: BOM quantity must be greater than zero").format(row_idx))
 	if getattr(row, "bom_scrap_quantity_kg", None) is None or row.bom_scrap_quantity_kg < 0:
 		_throw(_("Row {0}: BOM scrap quantity must be non-negative").format(row_idx))
-	if getattr(row, "weight_kg", None) is None or row.weight_kg <= 0:
-		_throw(_("Row {0}: End piece weight must be greater than zero").format(row_idx))
+	if getattr(row, "strip_weight_kg", None) is None or row.strip_weight_kg <= 0:
+		_throw(_("Row {0}: Strip weight must be greater than zero").format(row_idx))
 	if row.bom_scrap_quantity_kg > 0 and _is_missing(getattr(row, "scrap_item", None)):
 		_throw(_("Row {0}: Scrap item is required when BOM scrap quantity is positive").format(row_idx))
+
+
+def _apply_missing_strip_weight(layout: LayoutDocument, row: EndPieceRow) -> None:
+	if _flt(getattr(row, "strip_weight_kg", 0)) > 0:
+		return
+	validators.apply_end_piece_strip_weight_formulas(layout, [row])
 
 
 def _reuse_end_pieces(layout: LayoutDocument) -> list[EndPieceRow]:
@@ -145,6 +158,13 @@ def _is_reuse(row: EndPieceRow) -> bool:
 	return str(getattr(row, "disposition", "") or "").strip().lower() == "reuse"
 
 
+def _flt(value: float | int | str | None) -> float:
+	try:
+		return float(value or 0)
+	except (TypeError, ValueError):
+		return 0.0
+
+
 def _apply_end_piece_bom_status(layout: LayoutDocument) -> None:
 	validators.apply_end_piece_bom_status(layout, getattr(layout, "end_pieces", []) or [])
 
@@ -152,17 +172,12 @@ def _apply_end_piece_bom_status(layout: LayoutDocument) -> None:
 def _persist_generated_links(layout: LayoutDocument, rows: Sequence[EndPieceRow]) -> None:
 	if _is_submitted_document(layout):
 		for row in rows:
-			row.db_set(
-				"end_piece_item_code",
-				getattr(row, "end_piece_item_code", None),
-				update_modified=False,
-			)
+			_db_set_row_field(row, "end_piece_item_code")
+			_db_set_row_field(row, "strip_width_mm", skip_none=True)
+			_db_set_row_field(row, "strip_length_mm", skip_none=True)
+			_db_set_row_field(row, "strip_weight_kg", skip_none=True)
 			if hasattr(row, "generated_end_piece_bom"):
-				row.db_set(
-					"generated_end_piece_bom",
-					getattr(row, "generated_end_piece_bom", None),
-					update_modified=False,
-				)
+				_db_set_row_field(row, "generated_end_piece_bom")
 		layout.db_set(
 			"end_piece_bom_status",
 			getattr(layout, "end_piece_bom_status", None),
@@ -173,6 +188,13 @@ def _persist_generated_links(layout: LayoutDocument, rows: Sequence[EndPieceRow]
 	save = getattr(layout, "save", None)
 	if callable(save):
 		save(ignore_permissions=True)
+
+
+def _db_set_row_field(row: EndPieceRow, fieldname: str, *, skip_none: bool = False) -> None:
+	value = getattr(row, fieldname, None)
+	if skip_none and value is None:
+		return
+	row.db_set(fieldname, value, update_modified=False)
 
 
 def _is_submitted_document(doc: object) -> bool:

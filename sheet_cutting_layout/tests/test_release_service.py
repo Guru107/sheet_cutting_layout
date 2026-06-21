@@ -77,6 +77,7 @@ class FinishedPart:
 @dataclass
 class EndPiece:
 	weight_kg: float
+	strip_weight_kg: float | None = None
 	disposition: str = "Reuse"
 	scrap_item: str | None = None
 	end_piece_item_code: str | None = None
@@ -95,6 +96,7 @@ class EndPiece:
 		return {
 			"doctype": "Layout End Piece",
 			"weight_kg": self.weight_kg,
+			"strip_weight_kg": self.strip_weight_kg,
 			"disposition": self.disposition,
 			"scrap_item": self.scrap_item,
 			"end_piece_item_code": self.end_piece_item_code,
@@ -383,6 +385,27 @@ class TestReleaseContracts(SheetCuttingLayoutTestCase):
 			assert fields[fieldname]["no_copy"] == 1
 		assert end_piece_fields["end_piece_item_code"]["no_copy"] == 1
 
+	def test_layout_end_piece_has_reuse_strip_fields(self) -> None:
+		doctype_path = (
+			Path(__file__).resolve().parents[1]
+			/ "sheet_cutting_layout"
+			/ "doctype"
+			/ "layout_end_piece"
+			/ "layout_end_piece.json"
+		)
+		doctype = json.loads(doctype_path.read_text(encoding="utf-8"))
+		fields = {field["fieldname"]: field for field in doctype["fields"]}
+
+		assert doctype["field_order"].index("strip_width_mm") > doctype["field_order"].index("length_mm")
+		assert doctype["field_order"].index("strip_weight_kg") < doctype["field_order"].index("weight_kg")
+		assert fields["strip_width_mm"]["fieldtype"] == "Float"
+		assert fields["strip_width_mm"]["depends_on"] == 'eval:doc.disposition=="Reuse"'
+		assert fields["strip_length_mm"]["fieldtype"] == "Float"
+		assert fields["strip_length_mm"]["depends_on"] == 'eval:doc.disposition=="Reuse"'
+		assert fields["strip_weight_kg"]["fieldtype"] == "Float"
+		assert fields["strip_weight_kg"]["read_only"] == 1
+		assert fields["strip_weight_kg"]["depends_on"] == 'eval:doc.disposition=="Reuse"'
+
 	def test_approval_snapshot_table_is_system_maintained(self) -> None:
 		doctype_dir = Path(__file__).resolve().parents[1] / "sheet_cutting_layout" / "doctype"
 		layout_fields = {
@@ -418,6 +441,42 @@ class TestReleaseContracts(SheetCuttingLayoutTestCase):
 
 		assert "BOM quantity equals `parts_per_sheet`" in content
 		assert "Draft -> Submitted for Check -> PM Approved -> Approved by Purchase -> Released" in content
+
+	def test_reuse_end_piece_byproduct_uses_strip_weight(self) -> None:
+		from sheet_cutting_layout.services.bom_service import (
+			build_bom_from_layout_row,
+			parent_finished_part_row,
+		)
+
+		layout = SimpleNamespace(
+			raw_material_item="RM-001",
+			process_scrap_item="SCRAP-001",
+			weight_per_sheet_kg=10.0,
+			no_of_strips=1,
+			finished_part_code="FG01SHR",
+			is_lh_rh=0,
+			orientation=None,
+			twin_finished_part=None,
+			parts_per_sheet=1,
+			gross_weight_per_part_kg=2.0,
+			scrap_weight_per_part_kg=0.0,
+			sheet_thickness_mm=2.0,
+			end_pieces=[
+				SimpleNamespace(
+					disposition="Reuse",
+					weight_kg=5.0,
+					strip_weight_kg=3.0,
+					end_piece_item_code="EP-001",
+					used_for_finished_part="FG02SHR",
+					width_mm=200.0,
+					length_mm=300.0,
+				)
+			],
+		)
+
+		bom = build_bom_from_layout_row(layout, parent_finished_part_row(layout))
+
+		assert bom.scrap_items[-1].qty == 3.0
 
 
 class TestReleaseFlow(ReleaseServiceIsolatedTestCase):
@@ -1233,6 +1292,26 @@ class TestControllerWorkflow(ReleaseServiceIsolatedTestCase):
 		assert "ignoreBomInGenericCancelAll(frm);" in content
 		assert 'frm.ignore_doctypes_on_cancel_all || []), "BOM"' in content
 
+	def test_form_recalculates_reuse_strip_fields(self) -> None:
+		content = (
+			Path(__file__)
+			.resolve()
+			.parents[1]
+			.joinpath(
+				"sheet_cutting_layout",
+				"doctype",
+				"sheet_cutting_layout",
+				"sheet_cutting_layout.js",
+			)
+			.read_text(encoding="utf-8")
+		)
+
+		assert "function updateEndPieceStripWeights(frm)" in content
+		assert "endPieces.reduce((total, row) => total + endPieceConsumedWeight(row), 0)" in content
+		assert "strip_width_mm: updateEndPieceWeightsAndConsumption" in content
+		assert "strip_length_mm: updateEndPieceWeightsAndConsumption" in content
+		assert "strip_weight_kg: updateEndPieceReuseWeightsAndConsumption" in content
+
 
 def _new_sheet_cutting_layout_doc(sheet_cutting_layout_module: object):
 	doc = object.__new__(sheet_cutting_layout_module.SheetCuttingLayout)
@@ -1591,6 +1670,7 @@ class TestFrappeBomInsertAndEndPieces(ReleaseServiceIsolatedTestCase):
 			end_pieces=[
 				EndPiece(
 					weight_kg=2.81388,
+					strip_weight_kg=2.81388,
 					disposition="Reuse",
 					used_for_finished_part="FG002SHR",
 					width_mm=1250,
@@ -1733,7 +1813,7 @@ class TestFrappeBomInsertAndEndPieces(ReleaseServiceIsolatedTestCase):
 		assert layout.save_calls == 1
 		assert persisted_layout.save_calls == 0
 
-	def test_lh_rh_release_keeps_primary_end_piece_item_code_on_shared_row(self) -> None:
+	def test_lh_rh_release_uses_primary_and_twin_for_shared_end_piece_item_code(self) -> None:
 		from sheet_cutting_layout.services import release_service
 
 		created_for: list[str | None] = []
@@ -1801,8 +1881,8 @@ class TestFrappeBomInsertAndEndPieces(ReleaseServiceIsolatedTestCase):
 			release_context=release_service.ReleaseContext(layouts=(), boms=[]),
 		)
 
-		assert created_for == ["FG01SHR"]
-		assert layout.end_pieces[0].end_piece_item_code == "FG01SHR-EP-1.6x1250x179"
+		assert created_for == ["FG01SHR-FG01RHSHR"]
+		assert layout.end_pieces[0].end_piece_item_code == "FG01SHR-FG01RHSHR-EP-1.6x1250x179"
 
 
 class TestReleaseContextAndHelpers(ReleaseServiceIsolatedTestCase):

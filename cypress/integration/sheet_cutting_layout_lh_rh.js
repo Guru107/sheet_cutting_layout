@@ -116,6 +116,10 @@ describe("Sheet Cutting Layout LH/RH symmetric parts", () => {
 			// Checking is_lh_rh must default orientation to LH (updateLhRhFields).
 			cy.get('[data-fieldname="is_lh_rh"] input[type="checkbox"]').check({ force: true });
 			cy.window().its("cur_frm.doc.orientation").should("eq", "LH");
+			cy.contains(
+				'[data-fieldname="orientation"] .help-box',
+				`Set the orientation for ${primaryPart}`
+			);
 
 			// Pick a twin so the unchecking branch has something to clear.
 			cy.window().then((win) => win.cur_frm.set_value("twin_finished_part", twinPart));

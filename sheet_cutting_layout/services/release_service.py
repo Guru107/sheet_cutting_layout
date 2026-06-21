@@ -14,7 +14,10 @@ from sheet_cutting_layout.services.bom_service import (
 	parent_finished_part_row,
 	twin_finished_part_row,
 )
-from sheet_cutting_layout.services.end_piece_item_service import ensure_end_piece_item
+from sheet_cutting_layout.services.end_piece_item_service import (
+	ensure_end_piece_item,
+	layout_end_piece_source_finished_part,
+)
 from sheet_cutting_layout.services.validators import collect_descendant_layouts, validate_sheet_cutting_layout
 from sheet_cutting_layout.services.versioning import finalize_new_revision_release
 
@@ -296,7 +299,9 @@ def _ensure_and_link_end_piece_item(
 	item_code = ensure_end_piece_item(
 		layout,
 		row,
-		source_finished_part=finished_part.finished_part_item,
+		source_finished_part=layout_end_piece_source_finished_part(
+			layout, fallback=finished_part.finished_part_item
+		),
 	)  # type: ignore[arg-type]
 	if hasattr(row, "end_piece_item_code"):
 		row.end_piece_item_code = item_code

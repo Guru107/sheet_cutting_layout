@@ -25,6 +25,9 @@ class EndPieceRow(Protocol):
 	width_mm: float | None
 	length_mm: float | None
 	weight_kg: float | None
+	strip_width_mm: float | None
+	strip_length_mm: float | None
+	strip_weight_kg: float | None
 	disposition: str | None
 	used_for_finished_part: str | None
 	child_layout: str | None
@@ -113,6 +116,7 @@ def validate_sheet_cutting_layout(layout: SheetCuttingLayoutDocument) -> None:
 	end_pieces = list(getattr(layout, "end_pieces", []) or [])
 	apply_parts_per_sheet_formula(layout)
 	apply_end_piece_weight_formulas(layout, end_pieces)
+	apply_end_piece_strip_weight_formulas(layout, end_pieces)
 	apply_end_piece_reuse_weight_formulas(end_pieces)
 	_validate_parent_finished_part_fields(layout)
 	_validate_lh_rh_fields(layout)
@@ -221,11 +225,32 @@ def apply_end_piece_weight_formulas(
 			end_piece.weight_kg = _flt(weight)
 
 
+def apply_end_piece_strip_weight_formulas(
+	layout: SheetCuttingLayoutDocument,
+	end_pieces: Sequence[EndPieceRow],
+) -> None:
+	for end_piece in end_pieces:
+		if not _is_reuse_end_piece(end_piece):
+			continue
+		if getattr(end_piece, "strip_width_mm", None) is None:
+			end_piece.strip_width_mm = getattr(end_piece, "width_mm", None)
+		if getattr(end_piece, "strip_length_mm", None) is None:
+			end_piece.strip_length_mm = getattr(end_piece, "length_mm", None)
+		_validate_reuse_strip_dimensions(end_piece)
+		weight = calculate_sheet_weight_kg(
+			thickness_mm=getattr(layout, "sheet_thickness_mm", None),
+			width_mm=getattr(end_piece, "strip_width_mm", None),
+			length_mm=getattr(end_piece, "strip_length_mm", None),
+		)
+		if weight is not None:
+			end_piece.strip_weight_kg = _flt(weight)
+
+
 def apply_end_piece_reuse_weight_formulas(end_pieces: Sequence[EndPieceRow]) -> None:
 	for end_piece in end_pieces:
 		if not _is_reuse_end_piece(end_piece):
 			continue
-		weight = getattr(end_piece, "weight_kg", None)
+		weight = getattr(end_piece, "strip_weight_kg", None)
 		bom_quantity = getattr(end_piece, "bom_quantity", None)
 		net_weight = getattr(end_piece, "net_weight_per_part_kg", None)
 		if weight is None or bom_quantity is None or bom_quantity <= 0:
@@ -279,8 +304,36 @@ def calculate_consumed_weight_kg(
 		part_gross_weight = _flt(getattr(layout, "gross_weight_per_part_kg", 0)) * int(
 			getattr(layout, "parts_per_sheet", 0) or 0
 		)
-	end_piece_weight = sum(end_piece.weight_kg for end_piece in end_pieces if end_piece.weight_kg is not None)
+	end_piece_weight = sum(_end_piece_consumed_weight_kg(end_piece) for end_piece in end_pieces)
 	return _sheet_consumption_flt(part_gross_weight + end_piece_weight)
+
+
+def _validate_reuse_strip_dimensions(end_piece: EndPieceRow) -> None:
+	if getattr(end_piece, "strip_width_mm", None) is None:
+		frappe.throw(_("Strip width is required for reuse end pieces"))
+	if getattr(end_piece, "strip_length_mm", None) is None:
+		frappe.throw(_("Strip length is required for reuse end pieces"))
+	try:
+		strip_width = _flt(getattr(end_piece, "strip_width_mm", 0))
+		strip_length = _flt(getattr(end_piece, "strip_length_mm", 0))
+		end_piece_width = _flt(getattr(end_piece, "width_mm", 0))
+		end_piece_length = _flt(getattr(end_piece, "length_mm", 0))
+	except (TypeError, ValueError):
+		frappe.throw(_("Strip dimensions must be numeric for reuse end pieces"))
+	if strip_width <= 0:
+		frappe.throw(_("Strip width must be greater than zero for reuse end pieces"))
+	if strip_length <= 0:
+		frappe.throw(_("Strip length must be greater than zero for reuse end pieces"))
+	if strip_width > end_piece_width:
+		frappe.throw(_("Strip width cannot be greater than end piece width"))
+	if strip_length > end_piece_length:
+		frappe.throw(_("Strip length cannot be greater than end piece length"))
+
+
+def _end_piece_consumed_weight_kg(end_piece: EndPieceRow) -> float:
+	if _is_reuse_end_piece(end_piece):
+		return _flt(getattr(end_piece, "strip_weight_kg", 0))
+	return _flt(getattr(end_piece, "weight_kg", 0))
 
 
 def _validate_parent_finished_part_fields(layout: SheetCuttingLayoutDocument) -> None:
@@ -483,7 +536,7 @@ def _validate_end_piece_distribution(
 		frappe.throw(_("Parts per sheet must be greater than zero for end-piece distribution"))
 
 	end_piece_weight_per_part = sum(
-		end_piece.weight_kg / parts_per_sheet for end_piece in end_pieces if end_piece.weight_kg is not None
+		_end_piece_consumed_weight_kg(end_piece) / parts_per_sheet for end_piece in end_pieces
 	)
 	derived_fg_weight = (
 		_flt(getattr(layout, "gross_weight_per_part_kg", 0))

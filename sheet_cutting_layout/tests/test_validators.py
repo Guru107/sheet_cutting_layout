@@ -279,6 +279,64 @@ class TestValidators(SheetCuttingLayoutTestCase):
 		self.assertEqual(layout.strip_thickness_mm, 2)
 		self.assertEqual(layout.weight_of_strip_kg, 5.109)
 
+	def test_reuse_strip_fields_default_and_drive_weight(self) -> None:
+		layout = SimpleNamespace(sheet_thickness_mm=2.0)
+		row = SimpleNamespace(
+			disposition="Reuse",
+			width_mm=200.0,
+			length_mm=300.0,
+			strip_width_mm=None,
+			strip_length_mm=None,
+			strip_weight_kg=None,
+		)
+
+		self.validators.apply_end_piece_strip_weight_formulas(layout, [row])
+
+		self.assertEqual(row.strip_width_mm, 200.0)
+		self.assertEqual(row.strip_length_mm, 300.0)
+		self.assertEqual(row.strip_weight_kg, 0.9432)
+
+	def test_reuse_strip_dimensions_cannot_exceed_end_piece_dimensions(self) -> None:
+		layout = SimpleNamespace(sheet_thickness_mm=2.0)
+		row = SimpleNamespace(
+			disposition="Reuse",
+			width_mm=200.0,
+			length_mm=300.0,
+			strip_width_mm=201.0,
+			strip_length_mm=300.0,
+			strip_weight_kg=None,
+		)
+
+		with self.assertRaises(ValidationError):
+			self.validators.apply_end_piece_strip_weight_formulas(layout, [row])
+
+	def test_reuse_strip_length_cannot_exceed_end_piece_length(self) -> None:
+		layout = SimpleNamespace(sheet_thickness_mm=2.0)
+		row = SimpleNamespace(
+			disposition="Reuse",
+			width_mm=200.0,
+			length_mm=300.0,
+			strip_width_mm=200.0,
+			strip_length_mm=301.0,
+			strip_weight_kg=None,
+		)
+
+		with self.assertRaises(ValidationError):
+			self.validators.apply_end_piece_strip_weight_formulas(layout, [row])
+
+	def test_consumed_weight_uses_strip_for_reuse_and_total_weight_for_scrap(self) -> None:
+		layout = SimpleNamespace(
+			finished_part_code="FG01SHR",
+			gross_weight_per_part_kg=1.0,
+			parts_per_sheet=2,
+		)
+		rows = [
+			SimpleNamespace(disposition="Reuse", weight_kg=10.0, strip_weight_kg=6.0),
+			SimpleNamespace(disposition="Scrap", weight_kg=4.0, strip_weight_kg=1.0),
+		]
+
+		self.assertEqual(self.validators.calculate_consumed_weight_kg(layout, rows), 12.0)
+
 	def test_validators_parent_gross_weight_delegates_to_geometry(self) -> None:
 		from sheet_cutting_layout.services import validators
 
@@ -681,7 +739,8 @@ class TestValidators(SheetCuttingLayoutTestCase):
 			)
 		)
 
-		self.validators.validate_sheet_cutting_layout(layout)
+		with self.assertRaises(ValidationError):
+			self.validators.validate_sheet_cutting_layout(layout)
 
 	def test_scrap_requires_scrap_item_and_rejects_reuse_only_fields(self) -> None:
 		layout = self._balanced_layout(
@@ -998,6 +1057,6 @@ class TestValidators(SheetCuttingLayoutTestCase):
 		)
 		consumed = self.validators.calculate_consumed_weight_kg(
 			layout,
-			[EndPiece(weight_kg=2.5545)],
+			[EndPiece(disposition="Scrap", weight_kg=2.5545)],
 		)
 		self.assertEqual(consumed, 24.562)
