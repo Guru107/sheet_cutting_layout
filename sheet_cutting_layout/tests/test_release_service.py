@@ -1210,32 +1210,19 @@ class TestControllerWorkflow(ReleaseServiceIsolatedTestCase):
 			),
 		]
 
-	def test_controller_before_cancel_records_supersede_snapshot(self) -> None:
+	def test_controller_before_cancel_sets_linked_doctype_ignores_only(self) -> None:
 		from sheet_cutting_layout.sheet_cutting_layout.doctype.sheet_cutting_layout import (
 			sheet_cutting_layout,
 		)
 
 		snapshot = self.start_patcher(patch.object(sheet_cutting_layout, "record_approval_snapshot"))
-		self.start_patcher(patch.object(sheet_cutting_layout, "_get_session_user", lambda: "mr@example.com"))
-		self.start_patcher(
-			patch.object(
-				sheet_cutting_layout,
-				"_get_now_datetime",
-				lambda: datetime(2026, 5, 15, 12, 30, 0),
-			)
-		)
 
 		doc = _new_sheet_cutting_layout_doc(sheet_cutting_layout)
-		doc.status = "Superseded"
 		doc.generated_bom = "BOM-PART001SHR-001"
 		doc.before_cancel()
 
-		snapshot.assert_called_once_with(
-			doc,
-			action="Supersede",
-			approver="mr@example.com",
-			decision_time=datetime(2026, 5, 15, 12, 30, 0),
-		)
+		assert doc.ignore_linked_doctypes == ["BOM", "Sheet Cutting Layout"]
+		snapshot.assert_not_called()
 
 	def test_controller_on_cancel_retires_layout(self) -> None:
 		from sheet_cutting_layout.sheet_cutting_layout.doctype.sheet_cutting_layout import (
@@ -2177,41 +2164,6 @@ class TestRevisioning(ReleaseServiceIsolatedTestCase):
 
 
 class TestBomLifecycle(ReleaseServiceIsolatedTestCase):
-	def test_cancel_descendant_layouts_preserves_existing_ignore_linked_doctypes(self) -> None:
-		from sheet_cutting_layout.services import release_service
-
-		cancelled: list[tuple[str, ...]] = []
-
-		class Descendant:
-			def __init__(self) -> None:
-				self.name = "SCL-CHILD"
-				self.docstatus = 1
-				self.status = "Released"
-				self.end_pieces: list[object] = []
-				self.ignore_linked_doctypes = ["Stock Entry"]
-
-			def cancel(self) -> None:
-				cancelled.append(tuple(self.ignore_linked_doctypes))
-				self.docstatus = 2
-
-		descendant = Descendant()
-		parent = SimpleNamespace(
-			name="SCL-PARENT",
-			end_pieces=[SimpleNamespace(child_layout="SCL-CHILD")],
-		)
-
-		class FrappeStub:
-			@staticmethod
-			def get_doc(doctype: str, name: str) -> object:
-				assert (doctype, name) == ("Sheet Cutting Layout", "SCL-CHILD")
-				return descendant
-
-		with patch.object(release_service, "frappe", FrappeStub):
-			result = release_service.cancel_descendant_layouts(parent)
-
-		self.assertEqual(result, ["SCL-CHILD"])
-		self.assertEqual(cancelled, [("Stock Entry", "BOM", "Sheet Cutting Layout")])
-
 	def test_retire_layout_cancels_unused_bom(self) -> None:
 		from sheet_cutting_layout.services import release_service
 

@@ -18,7 +18,7 @@ from sheet_cutting_layout.services.end_piece_item_service import (
 	ensure_end_piece_item,
 	layout_end_piece_source_finished_part,
 )
-from sheet_cutting_layout.services.validators import collect_descendant_layouts, validate_sheet_cutting_layout
+from sheet_cutting_layout.services.validators import validate_sheet_cutting_layout
 from sheet_cutting_layout.services.versioning import finalize_new_revision_release
 
 _ = frappe._
@@ -30,7 +30,7 @@ class EndPieceRow(Protocol):
 	weight_kg: float
 	disposition: str
 	scrap_item: str | None
-	child_layout: str | None
+	generated_end_piece_bom: str | None
 
 
 class ReleaseValidator(Protocol):
@@ -176,56 +176,6 @@ def _layout_bom_names(layout: object) -> list[str]:
 			_append_unique_clean(names, bom_name)
 
 	return names
-
-
-def collect_descendant_layout_names(
-	layout: object,
-	load_layout: Callable[[str], object],
-) -> list[str]:
-	"""Return descendant layout names via end-piece child_layout links, leaves first."""
-
-	def child_links(layout_name: str) -> list[str]:
-		source = layout if layout_name == _layout_name(layout) else load_layout(layout_name)
-		return _child_layout_links(source)
-
-	layout_name = _layout_name(layout)
-	if not layout_name:
-		return []
-	return collect_descendant_layouts(layout_name, child_links)
-
-
-def cancel_descendant_layouts(layout: object) -> list[str]:
-	"""Cancel descendant layouts leaves-first through the native document lifecycle."""
-	cancelled: list[str] = []
-
-	def load_layout(layout_name: str) -> object:
-		return frappe.get_doc("Sheet Cutting Layout", layout_name)
-
-	for descendant_name in collect_descendant_layout_names(layout, load_layout):
-		descendant = frappe.get_doc("Sheet Cutting Layout", descendant_name)
-		if _is_cancelled_document(descendant) or not _is_submitted_document(descendant):
-			continue
-		if hasattr(descendant, "status"):
-			descendant.status = "Superseded"
-		ignore_linked_doctypes = list(getattr(descendant, "ignore_linked_doctypes", None) or [])
-		for doctype in ("BOM", "Sheet Cutting Layout"):
-			if doctype not in ignore_linked_doctypes:
-				ignore_linked_doctypes.append(doctype)
-		descendant.ignore_linked_doctypes = ignore_linked_doctypes
-		descendant.cancel()
-		cancelled.append(descendant_name)
-	return cancelled
-
-
-def _child_layout_links(source: object) -> list[str]:
-	names: list[str] = []
-	for row in getattr(source, "end_pieces", []) or []:
-		_append_unique_clean(names, getattr(row, "child_layout", None))
-	return names
-
-
-def _layout_name(layout: object) -> str:
-	return str(getattr(layout, "name", "") or "").strip()
 
 
 def _append_unique_clean(values: list[str], value: object) -> None:

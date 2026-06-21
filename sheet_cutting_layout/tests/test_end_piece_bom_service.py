@@ -397,6 +397,28 @@ class TestEndPieceBomService(SheetCuttingLayoutTestCase):
 		self.assertEqual(layout.end_piece_bom_status, "Generated")
 		self.assertEqual(layout.save_calls, [{"ignore_permissions": True}])
 
+	def test_generation_includes_all_reuse_rows_missing_item_or_used_for_part_bom(self) -> None:
+		existing_code = "FG01SHR-EP-2x100x200"
+		self._install_fakes(existing_items={existing_code})
+		missing_item = EndPiece(idx=1, end_piece_item_code=None, generated_end_piece_bom="BOM-STALE")
+		missing_used_for_part_bom = EndPiece(
+			idx=2,
+			end_piece_item_code=existing_code,
+			generated_end_piece_bom=None,
+		)
+		layout = Layout(end_pieces=[missing_item, missing_used_for_part_bom])
+
+		with patch.object(self.service, "ensure_end_piece_item", return_value=existing_code) as ensure_item:
+			result = self.service.generate_end_piece_boms(layout)
+
+		self.assertEqual(result["items"], [existing_code])
+		self.assertEqual(len(result["boms"]), 2)
+		ensure_item.assert_called_once()
+		self.assertEqual(missing_item.end_piece_item_code, existing_code)
+		self.assertEqual(missing_item.generated_end_piece_bom, result["boms"][0])
+		self.assertEqual(missing_used_for_part_bom.end_piece_item_code, existing_code)
+		self.assertEqual(missing_used_for_part_bom.generated_end_piece_bom, result["boms"][1])
+
 	def test_generation_uses_layout_finished_part_in_generated_item_code(self) -> None:
 		existing_code = "AB12SHR-EP-2x100x200"
 		fake_frappe = self._install_fakes(existing_items={existing_code})

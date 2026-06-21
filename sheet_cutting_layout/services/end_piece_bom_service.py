@@ -27,7 +27,6 @@ class EndPieceRow(Protocol):
 	strip_length_mm: float | None
 	strip_weight_kg: float | None
 	used_for_finished_part: str | None
-	child_layout: str | None
 	bom_quantity: float | None
 	net_weight_per_part_kg: float | None
 	gross_weight_per_part_kg: float | None
@@ -54,8 +53,7 @@ def generate_end_piece_boms(layout: LayoutDocument) -> dict[str, list[str]]:
 
 	generated_items: list[str] = []
 	generated_boms: list[str] = []
-	reuse_rows = _reuse_end_pieces(layout)
-	pending_rows = [row for row in reuse_rows if _is_missing(getattr(row, "generated_end_piece_bom", None))]
+	pending_rows = _pending_rows(layout)
 
 	for row in pending_rows:
 		_apply_missing_strip_weight(layout, row)
@@ -143,15 +141,16 @@ def _apply_missing_strip_weight(layout: LayoutDocument, row: EndPieceRow) -> Non
 
 
 def _reuse_end_pieces(layout: LayoutDocument) -> list[EndPieceRow]:
+	return [row for row in getattr(layout, "end_pieces", []) or [] if _is_reuse(row)]
+
+
+def _pending_rows(layout: LayoutDocument) -> list[EndPieceRow]:
 	return [
 		row
-		for row in getattr(layout, "end_pieces", []) or []
-		if _is_reuse(row) and not _row_has_child_layout(row)
+		for row in _reuse_end_pieces(layout)
+		if _is_missing(getattr(row, "end_piece_item_code", None))
+		or _is_missing(getattr(row, "generated_end_piece_bom", None))
 	]
-
-
-def _row_has_child_layout(row: EndPieceRow) -> bool:
-	return bool(str(getattr(row, "child_layout", "") or "").strip())
 
 
 def _is_reuse(row: EndPieceRow) -> bool:
