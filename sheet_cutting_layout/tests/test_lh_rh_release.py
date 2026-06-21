@@ -28,6 +28,7 @@ class TestLhRhSchema(SheetCuttingLayoutTestCase):
 	def test_parent_lh_rh_fields_exist(self) -> None:
 		meta = frappe.get_meta("Sheet Cutting Layout")
 		self.assertEqual(meta.get_field("is_lh_rh").fieldtype, "Check")
+		self.assertEqual(meta.get_field("orientation").label, "Part Orientation")
 		self.assertEqual(meta.get_field("orientation").options, "\nLH\nRH")
 		self.assertEqual(meta.get_field("twin_finished_part").options, "Item")
 
