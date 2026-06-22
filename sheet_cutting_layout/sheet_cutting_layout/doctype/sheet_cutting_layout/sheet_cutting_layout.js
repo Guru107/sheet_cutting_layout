@@ -218,6 +218,15 @@ frappe.provide("sheet_cutting_layout");
 		if (hasValue(row.bom_scrap_quantity_kg)) {
 			updates.push(frappe.model.set_value(cdt, cdn, "bom_scrap_quantity_kg", null));
 		}
+		if (hasValue(row.strip_width_mm)) {
+			updates.push(frappe.model.set_value(cdt, cdn, "strip_width_mm", null));
+		}
+		if (hasValue(row.strip_length_mm)) {
+			updates.push(frappe.model.set_value(cdt, cdn, "strip_length_mm", null));
+		}
+		if (hasValue(row.strip_weight_kg)) {
+			updates.push(frappe.model.set_value(cdt, cdn, "strip_weight_kg", null));
+		}
 		return Promise.all(updates);
 	}
 

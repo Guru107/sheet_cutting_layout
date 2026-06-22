@@ -71,19 +71,19 @@
    {
     "action": "Reject",
     "allowed": "System Manager",
-    "next_state": "Rejected",
+    "next_state": "Draft",
     "state": "Submitted for Check"
    },
    {
     "action": "Reject",
     "allowed": "System Manager",
-    "next_state": "Rejected",
+    "next_state": "Draft",
     "state": "PM Approved"
    },
    {
     "action": "Reject",
     "allowed": "System Manager",
-    "next_state": "Rejected",
+    "next_state": "Draft",
     "state": "Approved by Purchase"
    },
    {

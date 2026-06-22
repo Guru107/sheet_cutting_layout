@@ -13,6 +13,7 @@ class EndPieceRow(Protocol):
 	width_mm: float | None
 	length_mm: float | None
 	weight_kg: float | None
+	strip_weight_kg: float | None
 	used_for_finished_part: str | None
 
 
@@ -112,12 +113,12 @@ def ensure_end_piece_item(
 		_repair_existing_item(
 			item_code,
 			layout,
-			weight_kg=getattr(row, "weight_kg", None),
+			weight_kg=_end_piece_item_weight(row),
 			row_idx=getattr(row, "idx", 0),
 		)
 		return item_code
 
-	weight_kg = getattr(row, "weight_kg", None)
+	weight_kg = _end_piece_item_weight(row)
 	if weight_kg is None or weight_kg <= 0:
 		_throw(_("Row {0}: End piece weight must be greater than zero").format(getattr(row, "idx", 0)))
 
@@ -197,9 +198,9 @@ def _repair_existing_item(
 		item.valuation_rate = raw_material_valuation_rate
 		changed = True
 
-	if _item_needs_required_uom_row(item, stock_uom="Kg"):
-		if weight_kg is None or weight_kg <= 0:
-			_throw(_("Row {0}: End piece weight must be greater than zero").format(row_idx))
+	if weight_kg is None or weight_kg <= 0:
+		_throw(_("Row {0}: End piece weight must be greater than zero").format(row_idx))
+	if _item_needs_required_uom_row(item, stock_uom="Kg", weight_kg=weight_kg):
 		_append_app_created_item_uoms(item, stock_uom="Kg", weight_kg=weight_kg)
 		changed = True
 
@@ -207,13 +208,19 @@ def _repair_existing_item(
 		item.save(ignore_permissions=True)
 
 
-def _item_needs_required_uom_row(item: object, *, stock_uom: str) -> bool:
+def _item_needs_required_uom_row(item: object, *, stock_uom: str, weight_kg: float) -> bool:
 	required_uom = "Nos" if stock_uom == "Kg" else "Kg" if stock_uom == "Nos" else None
 	if required_uom is None:
 		return True
+	required_factor = weight_kg if stock_uom == "Kg" else 1 / weight_kg
 	for row in getattr(item, "uoms", []) or []:
 		if _clean(getattr(row, "uom", None) if not isinstance(row, dict) else row.get("uom")) == required_uom:
-			return False
+			factor = (
+				getattr(row, "conversion_factor", None)
+				if not isinstance(row, dict)
+				else row.get("conversion_factor")
+			)
+			return float(factor or 0) != float(required_factor)
 	return True
 
 
@@ -246,6 +253,13 @@ def _end_piece_item_dimensions(row: EndPieceRow) -> tuple[object, object]:
 			getattr(row, "strip_length_mm", None) or getattr(row, "length_mm", None),
 		)
 	return getattr(row, "width_mm", None), getattr(row, "length_mm", None)
+
+
+def _end_piece_item_weight(row: EndPieceRow) -> object:
+	if (_clean(getattr(row, "disposition", None)) or "").casefold() == "reuse":
+		strip_weight = getattr(row, "strip_weight_kg", None)
+		return strip_weight if strip_weight is not None else getattr(row, "weight_kg", None)
+	return getattr(row, "weight_kg", None)
 
 
 def _is_positive_number(value: object) -> bool:

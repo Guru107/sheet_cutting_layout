@@ -47,7 +47,6 @@ class EndPiece:
 	end_piece_item_code: str | None = None
 	generated_end_piece_item: str | None = None
 	generated_end_piece_bom: str | None = None
-	child_layout: str | None = None
 	weight_kg: float | None = 2.5545
 	width_mm: float | None = 1250
 	length_mm: float | None = 260
@@ -86,6 +85,8 @@ class ExistingEndPiece(EndPiece):
 @dataclass
 class Layout:
 	finished_part_code: str | None = "AB12SHR"
+	is_lh_rh: int = 0
+	twin_finished_part: str | None = None
 	net_weight_per_part_kg: float | None = 11.004
 	generated_bom: str | None = None
 	finished_parts: list[FinishedPart] = field(default_factory=list)
@@ -127,7 +128,7 @@ class TestValidators(SheetCuttingLayoutTestCase):
 		import inspect
 		from pathlib import Path
 
-		from sheet_cutting_layout.services import bom_service, release_service, validators
+		from sheet_cutting_layout.services import bom_service, validators
 
 		legacy_field = "qty" + "_per_sheet"
 		repo_root = Path(__file__).resolve().parents[2]
@@ -135,12 +136,13 @@ class TestValidators(SheetCuttingLayoutTestCase):
 			"sheet_cutting_layout/sheet_cutting_layout/doctype/layout_end_piece/layout_end_piece.json"
 		)
 		consumption_spec = repo_root / "cypress/integration/sheet_cutting_layout_consumption.js"
+		release_service = repo_root / "sheet_cutting_layout/services/release_service.py"
 
 		validators_source = inspect.getsource(validators)
 		self.assertNotIn(legacy_field, validators_source)
 		self.assertNotIn("_validate_unreleased_legacy_end_piece_multiplicity", validators_source)
 		self.assertNotIn(legacy_field, inspect.getsource(bom_service))
-		self.assertNotIn(legacy_field, inspect.getsource(release_service))
+		self.assertNotIn(legacy_field, release_service.read_text())
 		self.assertNotIn(legacy_field, layout_end_piece_json.read_text())
 		self.assertNotIn(legacy_field, consumption_spec.read_text())
 
@@ -888,17 +890,19 @@ class TestValidators(SheetCuttingLayoutTestCase):
 		self.assertEqual(pending.end_piece_bom_status, "Pending")
 		self.assertEqual(generated.end_piece_bom_status, "Generated")
 
-	def test_apply_end_piece_bom_status_ignores_child_layout_reuse_rows(self) -> None:
-		layout = self._balanced_layout(
-			end_piece=EndPiece(
+	def test_apply_end_piece_bom_status_marks_reuse_rows_pending(self) -> None:
+		layout = Layout()
+		end_pieces = [
+			EndPiece(
+				disposition="Reuse",
 				end_piece_item_code="FG01SHR-EP-1x1250x260",
-				child_layout="SCL-CHILD",
+				generated_end_piece_bom=None,
 			)
-		)
+		]
 
-		self.validators.apply_end_piece_bom_status(layout, layout.end_pieces)
+		self.validators.apply_end_piece_bom_status(layout, end_pieces)
 
-		self.assertEqual(layout.end_piece_bom_status, "Not Required")
+		self.assertEqual(layout.end_piece_bom_status, "Pending")
 
 	def test_end_piece_item_code_cannot_change_after_generation(self) -> None:
 		end_piece = ExistingEndPiece(
@@ -957,26 +961,6 @@ class TestValidators(SheetCuttingLayoutTestCase):
 
 		self.validators.validate_sheet_cutting_layout(layout)
 		self.assertEqual(layout.end_piece_bom_status, "Pending")
-
-	def test_child_layout_raw_material_guard_uses_finished_part_code(self) -> None:
-		layout = Layout(finished_part_code="FG01SHR")
-		end_piece = EndPiece(used_for_finished_part="FG02SHR")
-		self.fake_frappe.db = SimpleNamespace(
-			get_value=lambda doctype, name, fieldname: "FG01SHR-EP-1x1250x260"
-		)
-
-		with patch.object(
-			self.validators,
-			"derive_end_piece_item_code_from_row",
-			return_value="FG01SHR-EP-1x1250x260",
-		) as derive:
-			self.validators._validate_child_raw_material(layout, end_piece, "SCL-CHILD")
-
-		derive.assert_called_once_with(
-			layout,
-			end_piece,
-			source_finished_part="FG01SHR",
-		)
 
 	def test_consumption_tracking_uses_gross_plus_end_piece_weight_and_sets_balanced(self) -> None:
 		layout = self._balanced_layout(end_piece=EndPiece(scrap_item="EP-SCRAP"))

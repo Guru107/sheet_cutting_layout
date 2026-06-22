@@ -77,7 +77,7 @@ class WorkflowStateMachine(RuleBasedStateMachine):
 		}
 
 		def update_expected() -> None:
-			self.expected_state = "Rejected"
+			self.expected_state = "Draft"
 
 		self._assert_transition(valid, self.machine.reject, update_expected)
 
@@ -101,9 +101,7 @@ class WorkflowStateMachine(RuleBasedStateMachine):
 			assert self.mr_released is True
 
 	@invariant()
-	def terminal_rejected_and_superseded_states_stay_valid(self) -> None:
-		if self.machine.state == "Rejected":
-			assert self.expected_state == "Rejected"
+	def terminal_superseded_state_stays_valid(self) -> None:
 		if self.machine.state == "Superseded":
 			assert self.expected_state == "Superseded"
 			assert self.was_released is True
@@ -226,6 +224,30 @@ class TestModelWorkflowStateMachine(SheetCuttingLayoutTestCase):
 		machine.release()
 
 		self.assertEqual(machine.state, "Released")
+
+	def test_reject_returns_approval_states_to_draft_for_resubmission(self) -> None:
+		paths = {
+			"Submitted for Check": [LayoutWorkflowModel.submit],
+			"PM Approved": [LayoutWorkflowModel.submit, LayoutWorkflowModel.project_manager_approves],
+			"Approved by Purchase": [
+				LayoutWorkflowModel.submit,
+				LayoutWorkflowModel.project_manager_approves,
+				LayoutWorkflowModel.purchase_approves,
+			],
+		}
+
+		for rejected_state, actions in paths.items():
+			with self.subTest(rejected_state=rejected_state):
+				machine = LayoutWorkflowModel()
+				for action in actions:
+					action(machine)
+				self.assertEqual(machine.state, rejected_state)
+
+				machine.reject()
+
+				self.assertEqual(machine.state, "Draft")
+				machine.submit()
+				self.assertEqual(machine.state, "Submitted for Check")
 
 	def test_state_machine_never_reaches_released_without_purchase_and_mr(self) -> None:
 		run_state_machine_as_test(WorkflowStateMachine, settings=STATE_MACHINE_SETTINGS)

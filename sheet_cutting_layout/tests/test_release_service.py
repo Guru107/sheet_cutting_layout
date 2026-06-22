@@ -348,6 +348,22 @@ class TestReleaseContracts(SheetCuttingLayoutTestCase):
 		assert workflow_states["Superseded"]["doc_status"] == "2"
 		assert "Cancel" not in workflow_states
 
+	def test_reject_workflow_transitions_return_to_draft(self) -> None:
+		workflow_path = Path(__file__).resolve().parents[1] / "fixtures" / "workflow.json"
+		workflow = json.loads(workflow_path.read_text(encoding="utf-8"))[0]
+		reject_transitions = [
+			transition for transition in workflow["transitions"] if transition["action"] == "Reject"
+		]
+
+		self.assertEqual(
+			{transition["state"]: transition["next_state"] for transition in reject_transitions},
+			{
+				"Submitted for Check": "Draft",
+				"PM Approved": "Draft",
+				"Approved by Purchase": "Draft",
+			},
+		)
+
 	def test_generated_release_artifact_fields_are_not_copied(self) -> None:
 		doctype_path = (
 			Path(__file__).resolve().parents[1]
@@ -1230,6 +1246,7 @@ class TestControllerWorkflow(ReleaseServiceIsolatedTestCase):
 		doc.generated_bom = "BOM-PART001SHR-001"
 		doc.before_cancel()
 
+		assert doc.ignore_linked_doctypes == ["BOM", "Sheet Cutting Layout"]
 		snapshot.assert_called_once_with(
 			doc,
 			action="Supersede",
@@ -1311,6 +1328,9 @@ class TestControllerWorkflow(ReleaseServiceIsolatedTestCase):
 		assert "strip_width_mm: updateEndPieceWeightsAndConsumption" in content
 		assert "strip_length_mm: updateEndPieceWeightsAndConsumption" in content
 		assert "strip_weight_kg: updateEndPieceReuseWeightsAndConsumption" in content
+		assert 'frappe.model.set_value(cdt, cdn, "strip_width_mm", null)' in content
+		assert 'frappe.model.set_value(cdt, cdn, "strip_length_mm", null)' in content
+		assert 'frappe.model.set_value(cdt, cdn, "strip_weight_kg", null)' in content
 
 
 def _new_sheet_cutting_layout_doc(sheet_cutting_layout_module: object):
@@ -1708,7 +1728,7 @@ class TestFrappeBomInsertAndEndPieces(ReleaseServiceIsolatedTestCase):
 				"stock_uom": "Kg",
 			},
 		]
-		assert round(layout.finished_parts[0].scrap_weight_kg, 6) == 17.047022
+		assert round(layout.finished_parts[0].scrap_weight_kg, 6) == 14.233142
 		assert layout.finished_parts[0].raw_material_weight_kg == 39.3
 
 	def test_default_release_persists_generated_end_piece_item_code_on_saved_layout(self) -> None:
@@ -2174,41 +2194,6 @@ class TestRevisioning(ReleaseServiceIsolatedTestCase):
 
 
 class TestBomLifecycle(ReleaseServiceIsolatedTestCase):
-	def test_cancel_descendant_layouts_preserves_existing_ignore_linked_doctypes(self) -> None:
-		from sheet_cutting_layout.services import release_service
-
-		cancelled: list[tuple[str, ...]] = []
-
-		class Descendant:
-			def __init__(self) -> None:
-				self.name = "SCL-CHILD"
-				self.docstatus = 1
-				self.status = "Released"
-				self.end_pieces: list[object] = []
-				self.ignore_linked_doctypes = ["Stock Entry"]
-
-			def cancel(self) -> None:
-				cancelled.append(tuple(self.ignore_linked_doctypes))
-				self.docstatus = 2
-
-		descendant = Descendant()
-		parent = SimpleNamespace(
-			name="SCL-PARENT",
-			end_pieces=[SimpleNamespace(child_layout="SCL-CHILD")],
-		)
-
-		class FrappeStub:
-			@staticmethod
-			def get_doc(doctype: str, name: str) -> object:
-				assert (doctype, name) == ("Sheet Cutting Layout", "SCL-CHILD")
-				return descendant
-
-		with patch.object(release_service, "frappe", FrappeStub):
-			result = release_service.cancel_descendant_layouts(parent)
-
-		self.assertEqual(result, ["SCL-CHILD"])
-		self.assertEqual(cancelled, [("Stock Entry", "BOM", "Sheet Cutting Layout")])
-
 	def test_retire_layout_cancels_unused_bom(self) -> None:
 		from sheet_cutting_layout.services import release_service
 

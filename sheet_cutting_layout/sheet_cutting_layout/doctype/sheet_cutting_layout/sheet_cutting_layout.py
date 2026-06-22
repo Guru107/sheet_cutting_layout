@@ -16,10 +16,8 @@ from sheet_cutting_layout.services.end_piece_bom_service import (
 )
 from sheet_cutting_layout.services.export_service import (
 	build_multi_sheet_workbook,
-	walk_layout_tree,
 )
 from sheet_cutting_layout.services.release_service import (
-	cancel_descendant_layouts,
 	release_layout,
 	retire_layout,
 )
@@ -42,6 +40,13 @@ _DRAFT_STATUS_SNAPSHOT_ACTIONS = {
 	"Approved by Purchase": PURCHASE_APPROVAL_ACTION,
 	"Rejected": REJECT_ACTION,
 }
+_REJECTABLE_STATUSES = frozenset(
+	{
+		"Submitted for Check",
+		"PM Approved",
+		"Approved by Purchase",
+	}
+)
 
 
 class SheetCuttingLayout(Document):
@@ -78,7 +83,6 @@ class SheetCuttingLayout(Document):
 		_record_workflow_snapshot(self, action=SUPERSEDE_ACTION)
 
 	def on_cancel(self) -> None:
-		cancel_descendant_layouts(self)
 		retire_layout(self)
 
 	def on_trash(self) -> None:
@@ -132,12 +136,9 @@ def _record_workflow_snapshot(doc: object, *, action: str) -> None:
 
 def _record_draft_workflow_snapshot(doc: object) -> None:
 	status = getattr(doc, "status", None)
-	action = _DRAFT_STATUS_SNAPSHOT_ACTIONS.get(status)
-	if not action:
-		return
-
 	previous_status = _previous_status(doc)
-	if previous_status in {None, status}:
+	action = _draft_workflow_snapshot_action(status=status, previous_status=previous_status)
+	if not action:
 		return
 
 	row = approval_snapshot_row(
@@ -149,6 +150,14 @@ def _record_draft_workflow_snapshot(doc: object) -> None:
 		return
 
 	_insert_approval_snapshot_row(doc, row=row)
+
+
+def _draft_workflow_snapshot_action(*, status: object, previous_status: object) -> str | None:
+	if previous_status in {None, status}:
+		return None
+	if status == "Draft" and previous_status in _REJECTABLE_STATUSES:
+		return REJECT_ACTION
+	return _DRAFT_STATUS_SNAPSHOT_ACTIONS.get(status)
 
 
 def _insert_approval_snapshot_row(doc: object, *, row: dict[str, object]) -> None:
@@ -311,15 +320,7 @@ def download_sheet_cutting_layout(name: str) -> None:
 	if callable(check_permission):
 		check_permission("read")
 
-	def fetch_child(child_name: str) -> object:
-		child = frappe.get_doc("Sheet Cutting Layout", child_name)
-		child_check_permission = getattr(child, "check_permission", None)
-		if callable(child_check_permission):
-			child_check_permission("read")
-		return child
-
-	layouts = walk_layout_tree(doc, fetch_child)
-	pages = [(layout.name, _export_layout_dict(layout)) for layout in layouts]
+	pages = [(doc.name, _export_layout_dict(doc))]
 	workbook = build_multi_sheet_workbook(pages)
 	stream = BytesIO()
 	workbook.save(stream)
