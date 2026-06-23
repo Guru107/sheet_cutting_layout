@@ -44,11 +44,15 @@ def preflight(bench: BenchTarget) -> list[str]:
 	return errors
 
 
-def coverage_xml_path(bench: BenchTarget) -> Path:
-	candidates = (
+def coverage_xml_candidates(bench: BenchTarget) -> tuple[Path, Path]:
+	return (
 		bench.root / "sites" / "coverage.xml",
 		bench.root / "coverage.xml",
 	)
+
+
+def coverage_xml_path(bench: BenchTarget) -> Path:
+	candidates = coverage_xml_candidates(bench)
 	for candidate in candidates:
 		if candidate.exists():
 			return candidate
@@ -60,6 +64,10 @@ def run_python_gate(bench: BenchTarget) -> int:
 	result_dir.mkdir(parents=True, exist_ok=True)
 	xml_copy = result_dir / f"{bench.label}-coverage.xml"
 	summary = result_dir / f"{bench.label}-summary.json"
+
+	for candidate in coverage_xml_candidates(bench):
+		if candidate.exists():
+			candidate.unlink()
 
 	code = run(
 		["bench", "--site", bench.site, "run-tests", "--app", APP, "--coverage"],
