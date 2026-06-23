@@ -321,12 +321,35 @@ def download_sheet_cutting_layout(name: str) -> None:
 		check_permission("read")
 
 	pages = [(doc.name, _export_layout_dict(doc))]
-	workbook = build_multi_sheet_workbook(pages)
+	workbook = build_multi_sheet_workbook(pages, header_settings=_export_header_settings())
 	stream = BytesIO()
 	workbook.save(stream)
 	frappe.response["filename"] = f"{doc.name}.xlsx"
 	frappe.response["filecontent"] = stream.getvalue()
 	frappe.response["type"] = "binary"
+
+
+def _export_header_settings() -> dict[str, object]:
+	settings = frappe.get_single("Sheet Cutting Layout Settings")
+	return {
+		"logo_path": _site_file_path(getattr(settings, "logo", None)),
+		"document_number": getattr(settings, "document_number", None),
+		"revision_number": getattr(settings, "revision_number", None),
+		"revision_date": getattr(settings, "revision_date", None),
+		"page_text": getattr(settings, "page_text", None),
+	}
+
+
+def _site_file_path(file_url: object) -> str:
+	if not file_url:
+		return ""
+	file_url = str(file_url)
+	filename = file_url.rsplit("/", 1)[-1]
+	if file_url.startswith("/private/files/"):
+		return frappe.get_site_path("private", "files", filename)
+	if file_url.startswith("/files/"):
+		return frappe.get_site_path("public", "files", filename)
+	return file_url
 
 
 def _export_layout_dict(doc: object) -> dict[str, object]:

@@ -1,0 +1,69 @@
+{
+ "actions": [],
+ "creation": "2026-06-23 00:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "excel_header_section",
+  "logo",
+  "document_number",
+  "revision_number",
+  "revision_date",
+  "page_text"
+ ],
+ "fields": [
+  {
+   "fieldname": "excel_header_section",
+   "fieldtype": "Section Break",
+   "label": "Excel Header"
+  },
+  {
+   "fieldname": "logo",
+   "fieldtype": "Attach Image",
+   "label": "Logo"
+  },
+  {
+   "fieldname": "document_number",
+   "fieldtype": "Data",
+   "label": "Document Number"
+  },
+  {
+   "fieldname": "revision_number",
+   "fieldtype": "Data",
+   "label": "Revision Number"
+  },
+  {
+   "fieldname": "revision_date",
+   "fieldtype": "Date",
+   "label": "Revision Date"
+  },
+  {
+   "default": "01 OF 01",
+   "fieldname": "page_text",
+   "fieldtype": "Data",
+   "label": "Page Text"
+  }
+ ],
+ "issingle": 1,
+ "links": [],
+ "modified": "2026-06-23 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Sheet Cutting Layout",
+ "name": "Sheet Cutting Layout Settings",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "print": 1,
+   "read": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}

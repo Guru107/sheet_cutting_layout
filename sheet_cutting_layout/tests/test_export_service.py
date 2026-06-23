@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import base64
 import io
+import tempfile
 
 from openpyxl import load_workbook
 
@@ -61,7 +63,8 @@ class TestApprovedIatfTemplate(SheetCuttingLayoutTestCase):
 		self.assertIn("G5:M5", {str(item) for item in worksheet.merged_cells.ranges})
 		self.assertIn("N5:Q5", {str(item) for item in worksheet.merged_cells.ranges})
 		self.assertIn("R39:U41", {str(item) for item in worksheet.merged_cells.ranges})
-		self.assertEqual(worksheet["Q1"].value, "DOC. NO.:  FRM/PRD/15")
+		self.assertEqual(worksheet["Q1"].value, "DOC. NO.: ")
+		self.assertEqual(len(getattr(worksheet, "_images", [])), 0)
 		self.assertEqual(worksheet["O7"].value, "BOM")
 		self.assertEqual(worksheet["Q7"].value, "Gross Wt")
 		self.assertEqual(worksheet["R7"].value, "F.g Wt")
@@ -396,6 +399,38 @@ class TestBuildCellMapEndPiecesAndGuards(SheetCuttingLayoutTestCase):
 
 
 class TestWorkbookRendering(SheetCuttingLayoutTestCase):
+	def test_header_settings_populate_document_cells_and_logo(self) -> None:
+		from sheet_cutting_layout.services.export_service import build_multi_sheet_workbook
+
+		with tempfile.NamedTemporaryFile(suffix=".png") as logo_file:
+			logo_file.write(
+				base64.b64decode(
+					"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGA"
+					"WjR9awAAAABJRU5ErkJggg=="
+				)
+			)
+			logo_file.flush()
+
+			workbook = build_multi_sheet_workbook(
+				[("Sheet", _base_layout())],
+				header_settings={
+					"logo_path": logo_file.name,
+					"document_number": "SCL/DOC/09",
+					"revision_number": "04",
+					"revision_date": "2026-06-23",
+					"page_text": "01 OF 02",
+				},
+			)
+			stream = io.BytesIO()
+			workbook.save(stream)
+
+		worksheet = load_workbook(io.BytesIO(stream.getvalue())).active
+		self.assertEqual(worksheet["Q1"].value, "DOC. NO.: SCL/DOC/09")
+		self.assertEqual(worksheet["Q2"].value, "REV. NO.: 04")
+		self.assertEqual(worksheet["Q3"].value, "REV DATE.: 23.06.2026")
+		self.assertEqual(worksheet["Q4"].value, "PAGE: 01 OF 02")
+		self.assertEqual(len(getattr(worksheet, "_images", [])), 1)
+
 	def test_renders_cells_into_template_and_returns_xlsx_bytes(self) -> None:
 		layout = _base_layout()
 		layout.update(
@@ -421,7 +456,7 @@ class TestWorkbookRendering(SheetCuttingLayoutTestCase):
 		self.assertEqual(worksheet["T6"].value, 31.44)
 		self.assertEqual(worksheet["K10"].value, 15.72)
 		self.assertEqual(worksheet["K14"].value, 2)
-		self.assertEqual(worksheet["Q1"].value, "DOC. NO.:  FRM/PRD/15")
+		self.assertEqual(worksheet["Q1"].value, "DOC. NO.:")
 
 	def test_empty_string_cells_clear_the_target_cell(self) -> None:
 		layout = _base_layout()
