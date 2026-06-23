@@ -13,6 +13,7 @@ cypress/screenshots/
 cypress/videos/
 cypress/downloads/
 cypress/results/
+coverage-results/
 .playwright-mcp/
 .superpowers/
 /001.png
