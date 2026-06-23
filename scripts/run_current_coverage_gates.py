@@ -139,6 +139,10 @@ def main() -> int:
 	parser.add_argument("--skip-e2e", action="store_true")
 	args = parser.parse_args()
 
+	if args.skip_python and args.skip_e2e:
+		print("At least one coverage gate must run; do not pass both --skip-python and --skip-e2e", file=sys.stderr)
+		return 2
+
 	targets = selected_benches(args.bench)
 	errors = [error for bench in targets for error in preflight(bench)]
 	if errors:
@@ -158,7 +162,11 @@ def main() -> int:
 		status = "PASS" if code == 0 else f"FAIL({code})"
 		print(f"{bench_label:7} {gate:6} {status}")
 
-	return 1 if any(code != 0 for _bench, _gate, code in results) else 0
+	if any(code == 2 for _bench, _gate, code in results):
+		return 2
+	if any(code != 0 for _bench, _gate, code in results):
+		return 1
+	return 0
 
 
 if __name__ == "__main__":
