@@ -101,6 +101,8 @@ def run_e2e_gate(bench: BenchTarget) -> int:
 	result_dir = APP_ROOT / "coverage-results" / "e2e"
 	result_dir.mkdir(parents=True, exist_ok=True)
 	report = result_dir / f"{bench.label}-flow-coverage.json"
+	if report.exists():
+		report.unlink()
 	env = os.environ.copy()
 	env["SCL_FLOW_COVERAGE_OUTPUT"] = str(report)
 
