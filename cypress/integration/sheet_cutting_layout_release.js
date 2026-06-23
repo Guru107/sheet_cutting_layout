@@ -41,27 +41,25 @@ describe("Sheet Cutting Layout release workflow", () => {
 			ensureScrollable: false,
 		});
 		cy.get("body").should(($body) => {
-			const normalizeText = ($elements) =>
-				$elements
-					.map((_, el) => Cypress.$(el).text())
-					.get()
-					.join(" ")
-					.replace(/\s+/g, " ")
-					.trim();
-			const fieldText = normalizeText(
-				Cypress.$($body)
-					.find('[data-fieldname="status"]:visible')
-					.find(":visible")
-					.addBack(":visible")
-			);
-			const headerText = normalizeText(
-				Cypress.$($body).find(
-					".page-head:visible, .title-area:visible, .layout-main-section .breadcrumb:visible"
+			const texts = Cypress.$($body)
+				.find(
+					[
+						'[data-fieldname="status"]:visible',
+						'[data-fieldname="status"] :visible',
+						".indicator-pill:visible",
+						".indicator:visible",
+						".form-status:visible",
+						".form-status :visible",
+						".document-status:visible",
+						".document-status :visible",
+					].join(",")
 				)
-			);
+				.map((_, el) => Cypress.$(el).text().replace(/\s+/g, " ").trim())
+				.get()
+				.filter(Boolean);
 			expect(
-				fieldText.includes(expectedStatus) || headerText.includes(expectedStatus),
-				`expected visible status UI to include ${expectedStatus}, got field="${fieldText}" header="${headerText}"`
+				texts.some((text) => text.includes(expectedStatus)),
+				`expected visible status UI to include ${expectedStatus}, got texts=${JSON.stringify(texts)}`
 			).to.equal(true);
 		});
 	}
