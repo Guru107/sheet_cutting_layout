@@ -75,7 +75,7 @@ def summarize(xml_path: Path) -> dict[str, object]:
 			}
 		)
 
-	percent = 100.0 if total_valid == 0 else total_covered / total_valid * 100
+	percent = 0.0 if total_valid == 0 else total_covered / total_valid * 100
 	return {
 		"percent": round(percent, 2),
 		"covered": total_covered,
@@ -101,6 +101,9 @@ def main() -> int:
 		args.report.write_text(json.dumps(summary, indent=2, sort_keys=True) + "\n")
 
 	print(f"Python coverage: {summary['percent']}% ({summary['covered']}/{summary['valid']} lines)")
+	if int(summary["valid"]) == 0:
+		print("No project-owned Python lines found in coverage XML", file=sys.stderr)
+		return 2
 	if float(summary["percent"]) <= args.threshold:
 		print(f"Coverage must be above {args.threshold}%. Lowest files:", file=sys.stderr)
 		for item in summary["files"][:10]:

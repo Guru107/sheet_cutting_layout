@@ -57,6 +57,9 @@ def main() -> int:
 
 	manifest = _load_manifest(args.manifest)
 	manifest_ids = [flow["id"] for flow in manifest]
+	if not manifest_ids:
+		print("manifest must define at least one current E2E flow", file=sys.stderr)
+		return 2
 	manifest_id_set = set(manifest_ids)
 	covered_ids = _load_report(args.report)
 	unknown_ids = sorted(set(covered_ids) - manifest_id_set)
@@ -68,7 +71,7 @@ def main() -> int:
 
 	covered_current_count = len({flow_id for flow_id in covered_ids if flow_id in manifest_id_set})
 	total_current_flows = len(manifest_ids)
-	percent = 100.0 if total_current_flows == 0 else covered_current_count / total_current_flows * 100
+	percent = covered_current_count / total_current_flows * 100
 	missing_ids = [flow_id for flow_id in manifest_ids if flow_id not in covered_ids]
 
 	print(f"E2E flow coverage: {covered_current_count}/{total_current_flows} " f"({percent:.2f}%)")
