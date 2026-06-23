@@ -8,12 +8,10 @@ from datetime import date, datetime
 
 from openpyxl import load_workbook
 from openpyxl.drawing.image import Image
+from openpyxl.utils.units import points_to_pixels
 
 _INVALID_SHEET_TITLE_CHARS = re.compile(r"[\\*?:/\[\]]")
 _MAX_SHEET_TITLE_LENGTH = 31
-# ponytail: fixed to the old A1:A4 logo box; add size fields only if users need tuning.
-_LOGO_WIDTH = 123
-_LOGO_HEIGHT = 130
 
 
 def build_cell_map(layout: Mapping[str, object]) -> dict[str, object]:
@@ -138,10 +136,33 @@ def _add_logo(worksheet: object, logo_path: str) -> None:
 		logo = Image(logo_path)
 	except (FileNotFoundError, OSError, ValueError):
 		return
-	logo.width = _LOGO_WIDTH
-	logo.height = _LOGO_HEIGHT
+	_fit_logo_to_a1_a4(worksheet, logo)
 	logo.anchor = "A1"
 	worksheet.add_image(logo)
+
+
+def _fit_logo_to_a1_a4(worksheet: object, logo: object) -> None:
+	if not getattr(logo, "width", 0) or not getattr(logo, "height", 0):
+		return
+	max_width = _column_width_pixels(worksheet, "A")
+	max_height = sum(_row_height_pixels(worksheet, row) for row in range(1, 5))
+	if max_width <= 0 or max_height <= 0:
+		return
+
+	scale = min(max_width / logo.width, max_height / logo.height, 1)
+	logo.width = max(1, int(logo.width * scale))
+	logo.height = max(1, int(logo.height * scale))
+
+
+def _column_width_pixels(worksheet: object, column: str) -> int:
+	width = worksheet.column_dimensions[column].width or worksheet.sheet_format.defaultColWidth or 8.43
+	# ponytail: Excel column-width math is approximate; enough to keep the logo inside A1:A4.
+	return int(width * 7 + 5)
+
+
+def _row_height_pixels(worksheet: object, row: int) -> int:
+	height = worksheet.row_dimensions[row].height or worksheet.sheet_format.defaultRowHeight or 15
+	return points_to_pixels(height)
 
 
 def _apply_cell_map(worksheet: object, layout: Mapping[str, object]) -> None:

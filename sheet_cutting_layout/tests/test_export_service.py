@@ -1,10 +1,13 @@
 from __future__ import annotations
 
-import base64
 import io
 import tempfile
+from xml.etree import ElementTree as ET
+from zipfile import ZipFile
 
 from openpyxl import load_workbook
+from openpyxl.utils.units import pixels_to_EMU, points_to_pixels
+from PIL import Image as PILImage
 
 from sheet_cutting_layout.tests.base import SheetCuttingLayoutTestCase
 
@@ -403,12 +406,7 @@ class TestWorkbookRendering(SheetCuttingLayoutTestCase):
 		from sheet_cutting_layout.services.export_service import build_multi_sheet_workbook
 
 		with tempfile.NamedTemporaryFile(suffix=".png") as logo_file:
-			logo_file.write(
-				base64.b64decode(
-					"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGA"
-					"WjR9awAAAABJRU5ErkJggg=="
-				)
-			)
+			PILImage.new("RGB", (200, 200), "red").save(logo_file, format="PNG")
 			logo_file.flush()
 
 			workbook = build_multi_sheet_workbook(
@@ -430,6 +428,15 @@ class TestWorkbookRendering(SheetCuttingLayoutTestCase):
 		self.assertEqual(worksheet["Q3"].value, "REV DATE.: 23.06.2026")
 		self.assertEqual(worksheet["Q4"].value, "PAGE: 01 OF 02")
 		self.assertEqual(len(getattr(worksheet, "_images", [])), 1)
+		logo_box_width = int((worksheet.column_dimensions["A"].width or 8.43) * 7 + 5)
+		logo_box_height = sum(
+			points_to_pixels(worksheet.row_dimensions[row].height or 15) for row in range(1, 5)
+		)
+		with ZipFile(io.BytesIO(stream.getvalue())) as archive:
+			drawing = ET.fromstring(archive.read("xl/drawings/drawing1.xml"))
+		extent = next(element for element in drawing.iter() if element.tag.endswith("ext"))
+		self.assertLessEqual(int(extent.attrib["cx"]), pixels_to_EMU(logo_box_width))
+		self.assertLessEqual(int(extent.attrib["cy"]), pixels_to_EMU(logo_box_height))
 
 	def test_renders_cells_into_template_and_returns_xlsx_bytes(self) -> None:
 		layout = _base_layout()
