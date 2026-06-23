@@ -281,6 +281,17 @@ class TestValidators(SheetCuttingLayoutTestCase):
 		self.assertEqual(layout.strip_thickness_mm, 2)
 		self.assertEqual(layout.weight_of_strip_kg, 5.109)
 
+	def test_parent_scrap_formula_leaves_value_unchanged_when_inputs_are_incomplete(self) -> None:
+		layout = SimpleNamespace(
+			gross_weight_per_part_kg=None,
+			net_weight_per_part_kg=1.25,
+			scrap_weight_per_part_kg=7.5,
+		)
+
+		self.validators.apply_parent_scrap_weight_per_part_formula(layout)
+
+		self.assertEqual(layout.scrap_weight_per_part_kg, 7.5)
+
 	def test_reuse_strip_fields_default_and_drive_weight(self) -> None:
 		layout = SimpleNamespace(sheet_thickness_mm=2.0)
 		row = SimpleNamespace(
@@ -325,6 +336,91 @@ class TestValidators(SheetCuttingLayoutTestCase):
 
 		with self.assertRaises(ValidationError):
 			self.validators.apply_end_piece_strip_weight_formulas(layout, [row])
+
+	def test_reuse_strip_dimensions_require_positive_values(self) -> None:
+		layout = SimpleNamespace(sheet_thickness_mm=2.0)
+
+		for strip_width_mm, strip_length_mm, message in (
+			(0.0, 300.0, "Strip width must be greater than zero"),
+			(200.0, 0.0, "Strip length must be greater than zero"),
+		):
+			with self.subTest(strip_width_mm=strip_width_mm, strip_length_mm=strip_length_mm):
+				row = SimpleNamespace(
+					disposition="Reuse",
+					width_mm=200.0,
+					length_mm=300.0,
+					strip_width_mm=strip_width_mm,
+					strip_length_mm=strip_length_mm,
+					strip_weight_kg=None,
+				)
+
+				with self.assertRaisesRegex(ValidationError, message):
+					self.validators.apply_end_piece_strip_weight_formulas(layout, [row])
+
+	def test_non_reuse_strip_weight_formula_skips_strip_defaults(self) -> None:
+		layout = SimpleNamespace(sheet_thickness_mm=2.0)
+		row = SimpleNamespace(
+			disposition="Scrap",
+			width_mm=200.0,
+			length_mm=300.0,
+			strip_width_mm=None,
+			strip_length_mm=None,
+			strip_weight_kg=None,
+		)
+
+		self.validators.apply_end_piece_strip_weight_formulas(layout, [row])
+
+		self.assertIsNone(row.strip_width_mm)
+		self.assertIsNone(row.strip_length_mm)
+		self.assertIsNone(row.strip_weight_kg)
+
+	def test_reuse_weight_formulas_skip_rows_without_positive_bom_quantity(self) -> None:
+		rows = [
+			SimpleNamespace(
+				disposition="Reuse",
+				strip_weight_kg=6.0,
+				bom_quantity=0,
+				net_weight_per_part_kg=1.0,
+				gross_weight_per_part_kg=99.0,
+				scrap_weight_per_part_kg=98.0,
+				bom_scrap_quantity_kg=97.0,
+			),
+			SimpleNamespace(
+				disposition="Reuse",
+				strip_weight_kg=6.0,
+				bom_quantity=None,
+				net_weight_per_part_kg=1.0,
+				gross_weight_per_part_kg=88.0,
+				scrap_weight_per_part_kg=87.0,
+				bom_scrap_quantity_kg=86.0,
+			),
+		]
+
+		self.validators.apply_end_piece_reuse_weight_formulas(rows)
+
+		self.assertEqual(rows[0].gross_weight_per_part_kg, 99.0)
+		self.assertEqual(rows[0].scrap_weight_per_part_kg, 98.0)
+		self.assertEqual(rows[0].bom_scrap_quantity_kg, 97.0)
+		self.assertEqual(rows[1].gross_weight_per_part_kg, 88.0)
+		self.assertEqual(rows[1].scrap_weight_per_part_kg, 87.0)
+		self.assertEqual(rows[1].bom_scrap_quantity_kg, 86.0)
+
+	def test_reuse_weight_formulas_set_gross_without_net_weight(self) -> None:
+		row = SimpleNamespace(
+			disposition="Reuse",
+			strip_weight_kg=6.0,
+			bom_quantity=3,
+			net_weight_per_part_kg=None,
+			gross_weight_per_part_kg=None,
+			scrap_weight_per_part_kg=12.0,
+			bom_scrap_quantity_kg=11.0,
+		)
+
+		self.validators.apply_end_piece_reuse_weight_formulas([row])
+
+		self.assertEqual(row.gross_weight_per_part_kg, 2.0)
+		self.assertEqual(row.scrap_weight_per_part_kg, 12.0)
+		self.assertEqual(row.bom_scrap_quantity_kg, 11.0)
 
 	def test_consumed_weight_uses_strip_for_reuse_and_total_weight_for_scrap(self) -> None:
 		layout = SimpleNamespace(
