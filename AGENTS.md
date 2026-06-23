@@ -31,6 +31,8 @@ flows through Frappe APIs or the Desk UI. Before opening a PR, run the dual-benc
 python scripts/run_current_coverage_gates.py
 ```
 
+Set `SCL_BENCH15_ROOT` and `SCL_BENCH16_ROOT` if your benches are outside `/root/workspace`.
+
 Each Python and Desk JS/E2E gate must be above 96% independently on bench15 and bench16.
 
 ## Commit & Pull Request Guidelines

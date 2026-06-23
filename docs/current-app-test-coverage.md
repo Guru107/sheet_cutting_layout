@@ -11,6 +11,8 @@ Run from the app repo:
 python scripts/run_current_coverage_gates.py
 ```
 
+If your benches are elsewhere, set `SCL_BENCH15_ROOT` and `SCL_BENCH16_ROOT`.
+
 The command runs four independent gates:
 
 1. bench15 Python coverage on `development.localhost`

@@ -14,6 +14,10 @@ APP_ROOT = Path(__file__).resolve().parents[1]
 THRESHOLD = "96"
 
 
+def bench_root(env_name: str, default: str) -> Path:
+	return Path(os.environ.get(env_name, default)).expanduser()
+
+
 @dataclass(frozen=True)
 class BenchTarget:
 	label: str
@@ -22,8 +26,10 @@ class BenchTarget:
 
 
 BENCHES = (
-	BenchTarget("bench15", Path("/root/workspace/bench15"), "development.localhost"),
-	BenchTarget("bench16", Path("/root/workspace/bench16"), "frappe16.localhost"),
+	BenchTarget(
+		"bench15", bench_root("SCL_BENCH15_ROOT", "/root/workspace/bench15"), "development.localhost"
+	),
+	BenchTarget("bench16", bench_root("SCL_BENCH16_ROOT", "/root/workspace/bench16"), "frappe16.localhost"),
 )
 
 
