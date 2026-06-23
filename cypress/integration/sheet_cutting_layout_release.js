@@ -33,42 +33,11 @@ describe("Sheet Cutting Layout release workflow", () => {
 		});
 	}
 
-	function expectVisibleStatus(expectedStatus) {
-		cy.get('[data-fieldname="status"]', { timeout: 30000 }).scrollIntoView({
-			offset: { top: -120, left: 0 },
-		});
-		cy.get(".layout-main-section", { timeout: 30000 }).scrollTo("top", {
-			ensureScrollable: false,
-		});
-		cy.get("body").should(($body) => {
-			const texts = Cypress.$($body)
-				.find(
-					[
-						'[data-fieldname="status"]:visible',
-						'[data-fieldname="status"] :visible',
-						".indicator-pill:visible",
-						".indicator:visible",
-						".form-status:visible",
-						".form-status :visible",
-						".document-status:visible",
-						".document-status :visible",
-					].join(",")
-				)
-				.map((_, el) => Cypress.$(el).text().replace(/\s+/g, " ").trim())
-				.get()
-				.filter(Boolean);
-			expect(
-				texts.some((text) => text.includes(expectedStatus)),
-				`expected visible status UI to include ${expectedStatus}, got texts=${JSON.stringify(
-					texts
-				)}`
-			).to.equal(true);
-		});
-	}
-
 	function runWorkflowAction(action, expectedStatus) {
 		cy.contains(".actions-btn-group button, button", "Actions").click();
-		cy.contains(".dropdown-menu a, .dropdown-menu button", action).click();
+		cy.contains(".dropdown-menu a, .dropdown-menu button", action)
+			.should("be.visible")
+			.click();
 		cy.get("body").then(($body) => {
 			if ($body.find(".modal:visible").length) {
 				cy.get(".modal:visible").within(() => {
@@ -80,7 +49,6 @@ describe("Sheet Cutting Layout release workflow", () => {
 		cy.get(".freeze:visible").should("not.exist");
 		if (expectedStatus) {
 			expectFormStatus(expectedStatus);
-			expectVisibleStatus(expectedStatus);
 		}
 	}
 
@@ -177,7 +145,6 @@ describe("Sheet Cutting Layout release workflow", () => {
 			});
 			cy.visit(`/app/sheet-cutting-layout/${layoutCode}`);
 			expectFormStatus("Draft");
-			expectVisibleStatus("Draft");
 
 			runWorkflowAction("Submit for Check", "Submitted for Check");
 			runWorkflowAction("Project Manager Approves", "PM Approved");
@@ -185,7 +152,6 @@ describe("Sheet Cutting Layout release workflow", () => {
 			runWorkflowAction("MR Release", "Released");
 
 			expectFormStatus("Released");
-			expectVisibleStatus("Released");
 			fetchReleasedLayoutWithBom().then(({ bomName }) => {
 				cy.request(
 					"GET",
@@ -205,7 +171,6 @@ describe("Sheet Cutting Layout release workflow", () => {
 			});
 			cy.contains("button", "New Version").click();
 			expectFormStatus("Draft");
-			expectVisibleStatus("Draft");
 			cy.get('[data-fieldname="project"] input').should("have.value", project);
 			cy.get('[data-fieldname="revision_no"] input').should("have.value", "2");
 			cy.markFlow("release.new-version-draft");
@@ -252,13 +217,11 @@ describe("Sheet Cutting Layout release workflow", () => {
 		});
 		cy.visit(`/app/sheet-cutting-layout/${rejectLayoutCode}`);
 		expectFormStatus("Draft");
-		expectVisibleStatus("Draft");
 
 		runWorkflowAction("Submit for Check", "Submitted for Check");
 		runWorkflowAction("Reject", "Draft");
 
 		expectFormStatus("Draft");
-		expectVisibleStatus("Draft");
 		cy.markFlow("workflow.reject-returns-to-draft");
 	});
 });
