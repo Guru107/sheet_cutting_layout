@@ -140,7 +140,10 @@ def main() -> int:
 	args = parser.parse_args()
 
 	if args.skip_python and args.skip_e2e:
-		print("At least one coverage gate must run; do not pass both --skip-python and --skip-e2e", file=sys.stderr)
+		print(
+			"At least one coverage gate must run; do not pass both --skip-python and --skip-e2e",
+			file=sys.stderr,
+		)
 		return 2
 
 	targets = selected_benches(args.bench)
