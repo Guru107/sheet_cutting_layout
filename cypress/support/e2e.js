@@ -43,3 +43,11 @@ Cypress.Commands.add("ensureHsnCode", (hsnCode) => {
 			});
 		});
 });
+
+const currentFlows = require("./current_flows.json");
+const currentFlowIds = new Set(currentFlows.map((flow) => flow.id));
+
+Cypress.Commands.add("markFlow", (flowId) => {
+	expect(currentFlowIds.has(flowId), `current E2E flow ID: ${flowId}`).to.equal(true);
+	return cy.task("markFlow", flowId, { log: false });
+});
