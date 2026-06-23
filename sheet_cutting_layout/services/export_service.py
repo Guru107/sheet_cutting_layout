@@ -4,8 +4,11 @@ import os
 import re
 from collections.abc import Mapping, Sequence
 from copy import copy as _copy
+from datetime import date, datetime
 
 from openpyxl import load_workbook
+from openpyxl.drawing.image import Image
+from openpyxl.utils.units import points_to_pixels
 
 _INVALID_SHEET_TITLE_CHARS = re.compile(r"[\\*?:/\[\]]")
 _MAX_SHEET_TITLE_LENGTH = 31
@@ -70,7 +73,10 @@ def unique_sheet_title(base: object, used: set[str]) -> str:
 	raise ValueError(f"Could not build a unique sheet title from {base!r}")
 
 
-def build_multi_sheet_workbook(pages: Sequence[tuple[object, Mapping[str, object]]]):
+def build_multi_sheet_workbook(
+	pages: Sequence[tuple[object, Mapping[str, object]]],
+	header_settings: Mapping[str, object] | None = None,
+):
 	"""Build one workbook with one templated worksheet per layout page."""
 	pages = list(pages)
 	if not pages:
@@ -90,9 +96,73 @@ def build_multi_sheet_workbook(pages: Sequence[tuple[object, Mapping[str, object
 			worksheet.title = title
 		else:
 			worksheet = _clone_template_worksheet(workbook, source_worksheet, title)
+		_apply_header_settings(worksheet, header_settings or {})
 		_apply_cell_map(worksheet, layout)
 
 	return workbook
+
+
+def _apply_header_settings(worksheet: object, settings: Mapping[str, object]) -> None:
+	worksheet["Q1"] = _header_value("DOC. NO.:", settings.get("document_number"))
+	worksheet["Q2"] = _header_value("REV. NO.:", settings.get("revision_number"))
+	worksheet["Q3"] = _header_value("REV DATE.:", _format_revision_date(settings.get("revision_date")))
+	worksheet["Q4"] = _header_value("PAGE:", settings.get("page_text"))
+
+	logo_path = _text(settings.get("logo_path")).strip()
+	if logo_path:
+		_add_logo(worksheet, logo_path)
+
+
+def _header_value(label: str, value: object) -> str:
+	value_text = _text(value).strip()
+	return f"{label} {value_text}" if value_text else label
+
+
+def _format_revision_date(value: object) -> object:
+	if isinstance(value, datetime):
+		return value.strftime("%d.%m.%Y")
+	if isinstance(value, date):
+		return value.strftime("%d.%m.%Y")
+	if isinstance(value, str):
+		try:
+			return date.fromisoformat(value).strftime("%d.%m.%Y")
+		except ValueError:
+			return value
+	return value
+
+
+def _add_logo(worksheet: object, logo_path: str) -> None:
+	try:
+		logo = Image(logo_path)
+	except (FileNotFoundError, OSError, ValueError):
+		return
+	_fit_logo_to_a1_a4(worksheet, logo)
+	logo.anchor = "A1"
+	worksheet.add_image(logo)
+
+
+def _fit_logo_to_a1_a4(worksheet: object, logo: object) -> None:
+	if not getattr(logo, "width", 0) or not getattr(logo, "height", 0):
+		return
+	max_width = _column_width_pixels(worksheet, "A")
+	max_height = sum(_row_height_pixels(worksheet, row) for row in range(1, 5))
+	if max_width <= 0 or max_height <= 0:
+		return
+
+	scale = min(max_width / logo.width, max_height / logo.height, 1)
+	logo.width = max(1, int(logo.width * scale))
+	logo.height = max(1, int(logo.height * scale))
+
+
+def _column_width_pixels(worksheet: object, column: str) -> int:
+	width = worksheet.column_dimensions[column].width or worksheet.sheet_format.defaultColWidth or 8.43
+	# ponytail: Excel column-width math is approximate; enough to keep the logo inside A1:A4.
+	return int(width * 7 + 5)
+
+
+def _row_height_pixels(worksheet: object, row: int) -> int:
+	height = worksheet.row_dimensions[row].height or worksheet.sheet_format.defaultRowHeight or 15
+	return points_to_pixels(height)
 
 
 def _apply_cell_map(worksheet: object, layout: Mapping[str, object]) -> None:

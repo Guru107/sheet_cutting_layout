@@ -163,6 +163,29 @@ class TestSheetCuttingLayoutExport(SheetCuttingLayoutTestCase):
 		self.assertIn(worksheet["Q9"].value, (None, ""))
 		self.assertIn(worksheet["U11"].value, (None, ""))
 
+	def test_download_uses_sheet_cutting_layout_settings_header(self) -> None:
+		from sheet_cutting_layout.sheet_cutting_layout.doctype.sheet_cutting_layout.sheet_cutting_layout import (
+			download_sheet_cutting_layout,
+		)
+
+		settings = frappe.get_single("Sheet Cutting Layout Settings")
+		settings.document_number = "SCL/DOC/09"
+		settings.revision_number = "04"
+		settings.revision_date = "2026-06-23"
+		settings.page_text = "01 OF 02"
+		settings.save(ignore_permissions=True)
+
+		layout_name = self._build_layout()
+		frappe.response.clear()
+
+		download_sheet_cutting_layout(layout_name)
+
+		worksheet = load_workbook(io.BytesIO(frappe.response["filecontent"])).active
+		self.assertEqual(worksheet["Q1"].value, "DOC. NO.: SCL/DOC/09")
+		self.assertEqual(worksheet["Q2"].value, "REV. NO.: 04")
+		self.assertEqual(worksheet["Q3"].value, "REV DATE.: 23.06.2026")
+		self.assertEqual(worksheet["Q4"].value, "PAGE: 01 OF 02")
+
 	def test_download_populates_end_piece_detail_from_system_snapshot(self) -> None:
 		from sheet_cutting_layout.sheet_cutting_layout.doctype.sheet_cutting_layout.sheet_cutting_layout import (
 			download_sheet_cutting_layout,

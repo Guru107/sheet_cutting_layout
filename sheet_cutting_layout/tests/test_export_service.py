@@ -1,8 +1,13 @@
 from __future__ import annotations
 
 import io
+import tempfile
+from xml.etree import ElementTree as ET
+from zipfile import ZipFile
 
 from openpyxl import load_workbook
+from openpyxl.utils.units import pixels_to_EMU, points_to_pixels
+from PIL import Image as PILImage
 
 from sheet_cutting_layout.tests.base import SheetCuttingLayoutTestCase
 
@@ -61,7 +66,8 @@ class TestApprovedIatfTemplate(SheetCuttingLayoutTestCase):
 		self.assertIn("G5:M5", {str(item) for item in worksheet.merged_cells.ranges})
 		self.assertIn("N5:Q5", {str(item) for item in worksheet.merged_cells.ranges})
 		self.assertIn("R39:U41", {str(item) for item in worksheet.merged_cells.ranges})
-		self.assertEqual(worksheet["Q1"].value, "DOC. NO.:  FRM/PRD/15")
+		self.assertEqual(worksheet["Q1"].value, "DOC. NO.: ")
+		self.assertEqual(len(getattr(worksheet, "_images", [])), 0)
 		self.assertEqual(worksheet["O7"].value, "BOM")
 		self.assertEqual(worksheet["Q7"].value, "Gross Wt")
 		self.assertEqual(worksheet["R7"].value, "F.g Wt")
@@ -396,6 +402,42 @@ class TestBuildCellMapEndPiecesAndGuards(SheetCuttingLayoutTestCase):
 
 
 class TestWorkbookRendering(SheetCuttingLayoutTestCase):
+	def test_header_settings_populate_document_cells_and_logo(self) -> None:
+		from sheet_cutting_layout.services.export_service import build_multi_sheet_workbook
+
+		with tempfile.NamedTemporaryFile(suffix=".png") as logo_file:
+			PILImage.new("RGB", (200, 200), "red").save(logo_file, format="PNG")
+			logo_file.flush()
+
+			workbook = build_multi_sheet_workbook(
+				[("Sheet", _base_layout())],
+				header_settings={
+					"logo_path": logo_file.name,
+					"document_number": "SCL/DOC/09",
+					"revision_number": "04",
+					"revision_date": "2026-06-23",
+					"page_text": "01 OF 02",
+				},
+			)
+			stream = io.BytesIO()
+			workbook.save(stream)
+
+		worksheet = load_workbook(io.BytesIO(stream.getvalue())).active
+		self.assertEqual(worksheet["Q1"].value, "DOC. NO.: SCL/DOC/09")
+		self.assertEqual(worksheet["Q2"].value, "REV. NO.: 04")
+		self.assertEqual(worksheet["Q3"].value, "REV DATE.: 23.06.2026")
+		self.assertEqual(worksheet["Q4"].value, "PAGE: 01 OF 02")
+		self.assertEqual(len(getattr(worksheet, "_images", [])), 1)
+		logo_box_width = int((worksheet.column_dimensions["A"].width or 8.43) * 7 + 5)
+		logo_box_height = sum(
+			points_to_pixels(worksheet.row_dimensions[row].height or 15) for row in range(1, 5)
+		)
+		with ZipFile(io.BytesIO(stream.getvalue())) as archive:
+			drawing = ET.fromstring(archive.read("xl/drawings/drawing1.xml"))
+		extent = next(element for element in drawing.iter() if element.tag.endswith("ext"))
+		self.assertLessEqual(int(extent.attrib["cx"]), pixels_to_EMU(logo_box_width))
+		self.assertLessEqual(int(extent.attrib["cy"]), pixels_to_EMU(logo_box_height))
+
 	def test_renders_cells_into_template_and_returns_xlsx_bytes(self) -> None:
 		layout = _base_layout()
 		layout.update(
@@ -421,7 +463,7 @@ class TestWorkbookRendering(SheetCuttingLayoutTestCase):
 		self.assertEqual(worksheet["T6"].value, 31.44)
 		self.assertEqual(worksheet["K10"].value, 15.72)
 		self.assertEqual(worksheet["K14"].value, 2)
-		self.assertEqual(worksheet["Q1"].value, "DOC. NO.:  FRM/PRD/15")
+		self.assertEqual(worksheet["Q1"].value, "DOC. NO.:")
 
 	def test_empty_string_cells_clear_the_target_cell(self) -> None:
 		layout = _base_layout()
