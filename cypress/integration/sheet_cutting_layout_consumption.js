@@ -138,5 +138,6 @@ describe("Sheet Cutting Layout consumption tracking", () => {
 		cy.wait("@saveLayout", { timeout: 30000 }).its("response.statusCode").should("eq", 200);
 		cy.get(".freeze:visible").should("not.exist");
 		cy.contains('[data-fieldname="status"]', "Draft");
+		cy.markFlow("consumption.balanced-layout-calculates-and-saves");
 	});
 });

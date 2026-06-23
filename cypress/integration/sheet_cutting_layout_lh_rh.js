@@ -131,6 +131,7 @@ describe("Sheet Cutting Layout LH/RH symmetric parts", () => {
 				expect(win.cur_frm.doc.orientation || "").to.equal("");
 				expect(win.cur_frm.doc.twin_finished_part || "").to.equal("");
 			});
+			cy.markFlow("lh-rh.toggle-fields");
 		}
 	);
 
@@ -191,6 +192,7 @@ describe("Sheet Cutting Layout LH/RH symmetric parts", () => {
 						expect(Boolean(bom.is_active)).to.equal(true);
 					});
 				});
+				cy.markFlow("lh-rh.release-two-boms");
 			});
 		}
 	);

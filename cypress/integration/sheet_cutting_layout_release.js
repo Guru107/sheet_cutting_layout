@@ -1,6 +1,7 @@
 describe("Sheet Cutting Layout release workflow", () => {
 	const suffix = Date.now();
 	const layoutCode = `SCLCY${suffix}`;
+	const rejectLayoutCode = `SCLREJECTCY${suffix}`;
 	const project = `SCLPROJCY${suffix}`;
 	const rawMaterialItem = `SCLRMCY${suffix}`;
 	const processScrapItem = `SCLSCRAPCY${suffix}`;
@@ -157,12 +158,63 @@ describe("Sheet Cutting Layout release workflow", () => {
 					expect(Boolean(message.is_active)).to.equal(true);
 					expect(message.items[0].item_code).to.equal(rawMaterialItem);
 					expect(Number(message.items[0].qty)).to.be.closeTo(31.44, 0.001);
+					cy.markFlow("release.single-part-generates-bom");
 				});
 			});
 			cy.contains("button", "New Version").click();
 			cy.contains('[data-fieldname="status"]', "Draft");
 			cy.get('[data-fieldname="project"] input').should("have.value", project);
 			cy.get('[data-fieldname="revision_no"] input').should("have.value", "2");
+			cy.markFlow("release.new-version-draft");
+		}
+	);
+
+	it("returns a submitted-for-check layout to Draft when rejected", { retries: 0 }, () => {
+		cy.call("frappe.client.insert", {
+			doc: {
+				doctype: "Sheet Cutting Layout",
+				layout_code: rejectLayoutCode,
+				project: projectName,
+				revision_no: 1,
+				is_active: 0,
+				status: "Draft",
+				raw_material_item: rawMaterialItem,
+				process_scrap_item: processScrapItem,
+				sheet_thickness_mm: 2,
+				sheet_width_mm: 1000,
+				sheet_length_mm: 2000,
+				weight_per_sheet_kg: 31.44,
+				strip_thickness_mm: 2,
+				strip_width_mm: 1000,
+				strip_length_mm: 1000,
+				weight_of_strip_kg: 15.72,
+				parts_per_strip: 1,
+				no_of_strips: 2,
+				parts_per_sheet: 2,
+				finished_part_code: finishedPartItem,
+				net_weight_per_part_kg: 15.52,
+				gross_weight_per_part_kg: 15.72,
+				scrap_weight_per_part_kg: 0.2,
+				finished_parts: [
+					{
+						doctype: "Layout Finished Part",
+						finished_part_item: finishedPartItem,
+						parts_per_sheet: 2,
+						net_weight_per_part_kg: 15.52,
+						gross_weight_per_part_kg: 15.72,
+						scrap_weight_per_part_kg: 0.2,
+					},
+				],
+			},
+		});
+		cy.visit(`/app/sheet-cutting-layout/${rejectLayoutCode}`);
+		cy.contains('[data-fieldname="status"]', "Draft");
+
+		runWorkflowAction("Submit for Check", "Submitted for Check");
+		runWorkflowAction("Reject", "Draft");
+
+		cy.contains('[data-fieldname="status"]', "Draft");
+		cy.markFlow("workflow.reject-returns-to-draft");
 		}
 	);
 });
