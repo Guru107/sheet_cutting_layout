@@ -86,7 +86,9 @@ describe("Sheet Cutting Layout LH/RH symmetric parts", () => {
 				.filter(Boolean);
 			expect(
 				texts.some((text) => text.includes(expectedStatus)),
-				`expected visible status UI to include ${expectedStatus}, got texts=${JSON.stringify(texts)}`
+				`expected visible status UI to include ${expectedStatus}, got texts=${JSON.stringify(
+					texts
+				)}`
 			).to.equal(true);
 		});
 	}

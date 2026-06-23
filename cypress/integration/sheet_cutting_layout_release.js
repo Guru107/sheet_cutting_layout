@@ -59,7 +59,9 @@ describe("Sheet Cutting Layout release workflow", () => {
 				.filter(Boolean);
 			expect(
 				texts.some((text) => text.includes(expectedStatus)),
-				`expected visible status UI to include ${expectedStatus}, got texts=${JSON.stringify(texts)}`
+				`expected visible status UI to include ${expectedStatus}, got texts=${JSON.stringify(
+					texts
+				)}`
 			).to.equal(true);
 		});
 	}
@@ -258,6 +260,5 @@ describe("Sheet Cutting Layout release workflow", () => {
 		expectFormStatus("Draft");
 		expectVisibleStatus("Draft");
 		cy.markFlow("workflow.reject-returns-to-draft");
-		}
-	);
+	});
 });

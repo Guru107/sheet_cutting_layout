@@ -71,10 +71,7 @@ def main() -> int:
 	percent = 100.0 if total_current_flows == 0 else covered_current_count / total_current_flows * 100
 	missing_ids = [flow_id for flow_id in manifest_ids if flow_id not in covered_ids]
 
-	print(
-		f"E2E flow coverage: {covered_current_count}/{total_current_flows} "
-		f"({percent:.2f}%)"
-	)
+	print(f"E2E flow coverage: {covered_current_count}/{total_current_flows} " f"({percent:.2f}%)")
 	if missing_ids:
 		for flow_id in missing_ids:
 			print(flow_id)
