@@ -54,6 +54,12 @@ describe("Sheet Cutting Layout LH/RH symmetric parts", () => {
 		};
 	}
 
+	function expectFormStatus(expectedStatus) {
+		cy.window().should((win) => {
+			expect(win.cur_frm.doc.status).to.equal(expectedStatus);
+		});
+	}
+
 	function fetchReleasedLhRhLayout(attempt = 0) {
 		return cy
 			.request(
@@ -111,7 +117,7 @@ describe("Sheet Cutting Layout LH/RH symmetric parts", () => {
 			cy.on("uncaught:exception", ignoreKnownFinishedPartsRace);
 			cy.call("frappe.client.insert", { doc: strip(toggleLayoutCode) });
 			cy.visit(`/app/sheet-cutting-layout/${toggleLayoutCode}`);
-			cy.contains('[data-fieldname="status"]', "Draft");
+			expectFormStatus("Draft");
 
 			// Checking is_lh_rh must default orientation to LH (updateLhRhFields).
 			cy.get('[data-fieldname="is_lh_rh"] input[type="checkbox"]').check({ force: true });

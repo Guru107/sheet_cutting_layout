@@ -11,6 +11,12 @@ describe("Sheet Cutting Layout IATF export", () => {
 		"sheet_cutting_layout.sheet_cutting_layout.doctype.sheet_cutting_layout." +
 		"sheet_cutting_layout.download_sheet_cutting_layout";
 
+	function expectFormStatus(expectedStatus) {
+		cy.window().should((win) => {
+			expect(win.cur_frm.doc.status).to.equal(expectedStatus);
+		});
+	}
+
 	before(() => {
 		cy.login();
 		cy.ensureHsnCode("720890");
@@ -69,7 +75,7 @@ describe("Sheet Cutting Layout IATF export", () => {
 			const layoutName = message.name;
 
 			cy.visit(`/app/sheet-cutting-layout/${layoutName}`);
-			cy.contains('[data-fieldname="status"]', "Draft");
+			expectFormStatus("Draft");
 			cy.contains("button", "Download Layout (Excel)").should("exist");
 
 			cy.request({

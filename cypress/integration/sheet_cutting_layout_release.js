@@ -27,6 +27,12 @@ describe("Sheet Cutting Layout release workflow", () => {
 			.type(`${value}`);
 	}
 
+	function expectFormStatus(expectedStatus) {
+		cy.window().should((win) => {
+			expect(win.cur_frm.doc.status).to.equal(expectedStatus);
+		});
+	}
+
 	function runWorkflowAction(action, expectedStatus) {
 		cy.contains(".actions-btn-group button, button", "Actions").click();
 		cy.contains(".dropdown-menu a, .dropdown-menu button", action).click();
@@ -40,7 +46,7 @@ describe("Sheet Cutting Layout release workflow", () => {
 		cy.get(".modal:visible").should("not.exist");
 		cy.get(".freeze:visible").should("not.exist");
 		if (expectedStatus) {
-			cy.contains('[data-fieldname="status"]', expectedStatus);
+			expectFormStatus(expectedStatus);
 		}
 	}
 
@@ -136,14 +142,14 @@ describe("Sheet Cutting Layout release workflow", () => {
 				},
 			});
 			cy.visit(`/app/sheet-cutting-layout/${layoutCode}`);
-			cy.contains('[data-fieldname="status"]', "Draft");
+			expectFormStatus("Draft");
 
 			runWorkflowAction("Submit for Check", "Submitted for Check");
 			runWorkflowAction("Project Manager Approves", "PM Approved");
 			runWorkflowAction("Purchase Approves", "Approved by Purchase");
 			runWorkflowAction("MR Release", "Released");
 
-			cy.contains('[data-fieldname="status"]', "Released");
+			expectFormStatus("Released");
 			fetchReleasedLayoutWithBom().then(({ bomName }) => {
 				cy.request(
 					"GET",
@@ -162,7 +168,7 @@ describe("Sheet Cutting Layout release workflow", () => {
 				});
 			});
 			cy.contains("button", "New Version").click();
-			cy.contains('[data-fieldname="status"]', "Draft");
+			expectFormStatus("Draft");
 			cy.get('[data-fieldname="project"] input').should("have.value", project);
 			cy.get('[data-fieldname="revision_no"] input').should("have.value", "2");
 			cy.markFlow("release.new-version-draft");
@@ -208,12 +214,12 @@ describe("Sheet Cutting Layout release workflow", () => {
 			},
 		});
 		cy.visit(`/app/sheet-cutting-layout/${rejectLayoutCode}`);
-		cy.contains('[data-fieldname="status"]', "Draft");
+		expectFormStatus("Draft");
 
 		runWorkflowAction("Submit for Check", "Submitted for Check");
 		runWorkflowAction("Reject", "Draft");
 
-		cy.contains('[data-fieldname="status"]', "Draft");
+		expectFormStatus("Draft");
 		cy.markFlow("workflow.reject-returns-to-draft");
 		}
 	);
