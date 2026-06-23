@@ -17,6 +17,39 @@ describe("Sheet Cutting Layout IATF export", () => {
 		});
 	}
 
+	function expectVisibleStatus(expectedStatus) {
+		cy.get('[data-fieldname="status"]', { timeout: 30000 }).scrollIntoView({
+			offset: { top: -120, left: 0 },
+		});
+		cy.get(".layout-main-section", { timeout: 30000 }).scrollTo("top", {
+			ensureScrollable: false,
+		});
+		cy.get("body").should(($body) => {
+			const normalizeText = ($elements) =>
+				$elements
+					.map((_, el) => Cypress.$(el).text())
+					.get()
+					.join(" ")
+					.replace(/\s+/g, " ")
+					.trim();
+			const fieldText = normalizeText(
+				Cypress.$($body)
+					.find('[data-fieldname="status"]:visible')
+					.find(":visible")
+					.addBack(":visible")
+			);
+			const headerText = normalizeText(
+				Cypress.$($body).find(
+					".page-head:visible, .title-area:visible, .layout-main-section .breadcrumb:visible"
+				)
+			);
+			expect(
+				fieldText.includes(expectedStatus) || headerText.includes(expectedStatus),
+				`expected visible status UI to include ${expectedStatus}, got field="${fieldText}" header="${headerText}"`
+			).to.equal(true);
+		});
+	}
+
 	before(() => {
 		cy.login();
 		cy.ensureHsnCode("720890");
@@ -76,6 +109,7 @@ describe("Sheet Cutting Layout IATF export", () => {
 
 			cy.visit(`/app/sheet-cutting-layout/${layoutName}`);
 			expectFormStatus("Draft");
+			expectVisibleStatus("Draft");
 			cy.contains("button", "Download Layout (Excel)").should("exist");
 
 			cy.request({

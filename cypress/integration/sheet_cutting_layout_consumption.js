@@ -46,6 +46,39 @@ describe("Sheet Cutting Layout consumption tracking", () => {
 		});
 	}
 
+	function expectVisibleStatus(expectedStatus) {
+		cy.get('[data-fieldname="status"]', { timeout: 30000 }).scrollIntoView({
+			offset: { top: -120, left: 0 },
+		});
+		cy.get(".layout-main-section", { timeout: 30000 }).scrollTo("top", {
+			ensureScrollable: false,
+		});
+		cy.get("body").should(($body) => {
+			const normalizeText = ($elements) =>
+				$elements
+					.map((_, el) => Cypress.$(el).text())
+					.get()
+					.join(" ")
+					.replace(/\s+/g, " ")
+					.trim();
+			const fieldText = normalizeText(
+				Cypress.$($body)
+					.find('[data-fieldname="status"]:visible')
+					.find(":visible")
+					.addBack(":visible")
+			);
+			const headerText = normalizeText(
+				Cypress.$($body).find(
+					".page-head:visible, .title-area:visible, .layout-main-section .breadcrumb:visible"
+				)
+			);
+			expect(
+				fieldText.includes(expectedStatus) || headerText.includes(expectedStatus),
+				`expected visible status UI to include ${expectedStatus}, got field="${fieldText}" header="${headerText}"`
+			).to.equal(true);
+		});
+	}
+
 	function setDocField(fieldname, value) {
 		cy.window().then((win) =>
 			win.frappe.model.set_value(win.cur_frm.doctype, win.cur_frm.docname, fieldname, value)
@@ -144,6 +177,7 @@ describe("Sheet Cutting Layout consumption tracking", () => {
 		cy.wait("@saveLayout", { timeout: 30000 }).its("response.statusCode").should("eq", 200);
 		cy.get(".freeze:visible").should("not.exist");
 		expectFormStatus("Draft");
+		expectVisibleStatus("Draft");
 		cy.markFlow("consumption.balanced-layout-calculates-and-saves");
 	});
 });
