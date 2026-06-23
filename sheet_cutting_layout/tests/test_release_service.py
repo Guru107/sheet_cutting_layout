@@ -348,6 +348,23 @@ class TestReleaseContracts(SheetCuttingLayoutTestCase):
 		assert workflow_states["Superseded"]["doc_status"] == "2"
 		assert "Cancel" not in workflow_states
 
+	def test_workflow_status_fields_are_hidden_from_users(self) -> None:
+		doctype_path = (
+			Path(__file__).resolve().parents[1]
+			/ "sheet_cutting_layout"
+			/ "doctype"
+			/ "sheet_cutting_layout"
+			/ "sheet_cutting_layout.json"
+		)
+		fields = {
+			row["fieldname"]: row
+			for row in json.loads(doctype_path.read_text(encoding="utf-8"))["fields"]
+			if "fieldname" in row
+		}
+
+		assert fields["workflow_section"]["hidden"] == 1
+		assert fields["status"]["hidden"] == 1
+
 	def test_reject_workflow_transitions_return_to_draft(self) -> None:
 		workflow_path = Path(__file__).resolve().parents[1] / "fixtures" / "workflow.json"
 		workflow = json.loads(workflow_path.read_text(encoding="utf-8"))[0]
