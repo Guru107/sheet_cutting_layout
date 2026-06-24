@@ -33,8 +33,13 @@ def ensure_item_group() -> str:
 
 
 def ensure_project() -> str:
+	doc: dict[str, object] = {"doctype": "Project", "project_name": "SCL-TEST-PROJECT"}
+	if frappe.get_meta("Project", cached=True).has_field("company"):
+		doc["company"] = frappe.defaults.get_global_default("company") or frappe.db.get_value(
+			"Company", {}, "name"
+		)
 	return insert_if_missing(
-		{"doctype": "Project", "project_name": "SCL-TEST-PROJECT"},
+		doc,
 		"project_name",
 		exists_filters={"project_name": "SCL-TEST-PROJECT"},
 	)
