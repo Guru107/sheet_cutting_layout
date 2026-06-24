@@ -166,13 +166,13 @@ describe("Sheet Cutting Layout release workflow", () => {
 					expect(Boolean(message.is_active)).to.equal(true);
 					expect(message.items[0].item_code).to.equal(rawMaterialItem);
 					expect(Number(message.items[0].qty)).to.be.closeTo(31.44, 0.001);
-					cy.markFlow("release.single-part-generates-bom");
 				});
 			});
 			cy.contains("button", "New Version").click();
 			expectFormStatus("Draft");
 			cy.get('[data-fieldname="project"] input').should("have.value", project);
 			cy.get('[data-fieldname="revision_no"] input').should("have.value", "2");
+			cy.markFlow("release.single-part-generates-bom");
 			cy.markFlow("release.new-version-draft");
 		}
 	);

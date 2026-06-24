@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import ast
 import fnmatch
 import json
 import sys
@@ -9,6 +10,8 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 
 DEFAULT_THRESHOLD = 96.0
+DEFAULT_FILE_THRESHOLD = 90.0
+APP_ROOT = Path(__file__).resolve().parents[1]
 
 EXCLUDED_PATTERNS = (
 	"sheet_cutting_layout/__init__.py",
@@ -31,8 +34,31 @@ def _matches(filename: str, patterns: tuple[str, ...]) -> bool:
 	return any(fnmatch.fnmatch(filename, pattern) for pattern in patterns)
 
 
+def _is_pass_only_file(filename: str) -> bool:
+	path = Path(filename)
+	if not path.is_absolute():
+		path = APP_ROOT / path
+	try:
+		tree = ast.parse(path.read_text())
+	except (OSError, SyntaxError):
+		return False
+
+	body = [
+		node
+		for node in tree.body
+		if not isinstance(node, ast.Import | ast.ImportFrom)
+		and not (isinstance(node, ast.Expr) and isinstance(node.value, ast.Constant))
+	]
+	return bool(body) and all(
+		isinstance(node, ast.ClassDef) and len(node.body) == 1 and isinstance(node.body[0], ast.Pass)
+		for node in body
+	)
+
+
 def _is_excluded(filename: str) -> bool:
-	return filename in PASS_THROUGH_DOCTYPES or _matches(filename, EXCLUDED_PATTERNS)
+	return _matches(filename, EXCLUDED_PATTERNS) or (
+		filename in PASS_THROUGH_DOCTYPES and _is_pass_only_file(filename)
+	)
 
 
 def _line_numbers(class_node: ET.Element) -> tuple[int, int, list[int]]:
@@ -88,6 +114,7 @@ def main() -> int:
 	parser = argparse.ArgumentParser()
 	parser.add_argument("--xml", required=True, type=Path)
 	parser.add_argument("--threshold", default=DEFAULT_THRESHOLD, type=float)
+	parser.add_argument("--file-threshold", default=DEFAULT_FILE_THRESHOLD, type=float)
 	parser.add_argument("--report", type=Path)
 	args = parser.parse_args()
 
@@ -107,6 +134,13 @@ def main() -> int:
 	if float(summary["percent"]) <= args.threshold:
 		print(f"Coverage must be above {args.threshold}%. Lowest files:", file=sys.stderr)
 		for item in summary["files"][:10]:
+			missing = ",".join(str(line) for line in item["missing"][:20])
+			print(f"  {item['percent']}% {item['file']} missing {missing}", file=sys.stderr)
+		return 1
+	low_files = [item for item in summary["files"] if float(item["percent"]) < args.file_threshold]
+	if low_files:
+		print(f"Each included file must be at least {args.file_threshold}% covered:", file=sys.stderr)
+		for item in low_files[:10]:
 			missing = ",".join(str(line) for line in item["missing"][:20])
 			print(f"  {item['percent']}% {item['file']} missing {missing}", file=sys.stderr)
 		return 1

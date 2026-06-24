@@ -938,15 +938,11 @@ writing a cosmetic test.
 
 - [ ] **Step 3: If an E2E gate is at or below 96%, inspect missing flow IDs**
 
-Run:
+Run the focused E2E gates so the checker sees the current run ID:
 
 ```bash
-python scripts/check_e2e_flow_coverage.py \
-  --report coverage-results/e2e/bench15-flow-coverage.json \
-  --threshold 96 || true
-python scripts/check_e2e_flow_coverage.py \
-  --report coverage-results/e2e/bench16-flow-coverage.json \
-  --threshold 96 || true
+python scripts/run_current_coverage_gates.py --bench bench15 --skip-python || true
+python scripts/run_current_coverage_gates.py --bench bench16 --skip-python || true
 ```
 
 For each missing current-flow ID, either fix the existing current spec so the flow marks after its

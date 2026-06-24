@@ -119,7 +119,7 @@ describe("Sheet Cutting Layout IATF export", () => {
 			}).then((response) => {
 				expect(response.status).to.equal(200);
 				expect(response.headers["content-disposition"]).to.contain(".xlsx");
-				expect(response.body.length).to.be.greaterThan(0);
+				expect(response.body.length).to.be.greaterThan(1000);
 				expect(response.body.slice(0, 2)).to.equal("PK");
 				cy.markFlow("export.single-layout-downloads-xlsx");
 			});

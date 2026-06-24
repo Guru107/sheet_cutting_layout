@@ -6,6 +6,7 @@ import os
 import shutil
 import subprocess
 import sys
+import uuid
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -14,8 +15,11 @@ APP_ROOT = Path(__file__).resolve().parents[1]
 THRESHOLD = "96"
 
 
-def bench_root(env_name: str, default: str) -> Path:
-	return Path(os.environ.get(env_name, default)).expanduser()
+def bench_root(env_name: str, label: str) -> Path:
+	if configured := os.environ.get(env_name):
+		return Path(configured).expanduser()
+	documented = Path.home() / "Workspace" / label
+	return documented if documented.exists() else Path("/root/workspace") / label
 
 
 @dataclass(frozen=True)
@@ -26,10 +30,8 @@ class BenchTarget:
 
 
 BENCHES = (
-	BenchTarget(
-		"bench15", bench_root("SCL_BENCH15_ROOT", "/root/workspace/bench15"), "development.localhost"
-	),
-	BenchTarget("bench16", bench_root("SCL_BENCH16_ROOT", "/root/workspace/bench16"), "frappe16.localhost"),
+	BenchTarget("bench15", bench_root("SCL_BENCH15_ROOT", "bench15"), "development.localhost"),
+	BenchTarget("bench16", bench_root("SCL_BENCH16_ROOT", "bench16"), "frappe16.localhost"),
 )
 
 
@@ -109,8 +111,10 @@ def run_e2e_gate(bench: BenchTarget) -> int:
 	report = result_dir / f"{bench.label}-flow-coverage.json"
 	if report.exists():
 		report.unlink()
+	run_id = uuid.uuid4().hex
 	env = os.environ.copy()
 	env["SCL_FLOW_COVERAGE_OUTPUT"] = str(report)
+	env["SCL_FLOW_COVERAGE_RUN_ID"] = run_id
 
 	code = run(
 		["bench", "--site", bench.site, "run-ui-tests", "--headless", APP],
@@ -129,6 +133,8 @@ def run_e2e_gate(bench: BenchTarget) -> int:
 			str(report),
 			"--threshold",
 			THRESHOLD,
+			"--run-id",
+			run_id,
 		],
 		cwd=APP_ROOT,
 	)

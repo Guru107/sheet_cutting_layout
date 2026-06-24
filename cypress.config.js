@@ -2,7 +2,7 @@ const fs = require("fs");
 const path = require("path");
 const currentFlows = require("./cypress/support/current_flows.json");
 
-function writeFlowReport(outputPath, covered) {
+function writeFlowReport(outputPath, covered, runId) {
 	const coveredIds = [...covered].sort();
 	const manifestIds = currentFlows.map((flow) => flow.id);
 	const missing = manifestIds.filter((flowId) => !covered.has(flowId)).sort();
@@ -12,6 +12,7 @@ function writeFlowReport(outputPath, covered) {
 		outputPath,
 		JSON.stringify(
 			{
+				runId,
 				total: currentFlows.length,
 				covered: coveredIds,
 				missing,
@@ -45,8 +46,9 @@ module.exports = {
 			const outputPath =
 				process.env.SCL_FLOW_COVERAGE_OUTPUT ||
 				path.join("cypress", "results", "current-flow-coverage.json");
+			const runId = process.env.SCL_FLOW_COVERAGE_RUN_ID || Date.now().toString();
 
-			writeFlowReport(outputPath, covered);
+			writeFlowReport(outputPath, covered, runId);
 
 			on("task", {
 				markFlow(flowId) {
@@ -54,13 +56,13 @@ module.exports = {
 						throw new Error(`Unknown current E2E flow ID: ${flowId}`);
 					}
 					covered.add(flowId);
-					writeFlowReport(outputPath, covered);
+					writeFlowReport(outputPath, covered, runId);
 					return null;
 				},
 			});
 
 			on("after:run", () => {
-				writeFlowReport(outputPath, covered);
+				writeFlowReport(outputPath, covered, runId);
 			});
 		},
 	},

@@ -142,42 +142,48 @@ describe("Sheet Cutting Layout consumption tracking", () => {
 		cy.login();
 	});
 
-	it("shows balanced consumption for the customer-provided 1250 x 2500 x 1.6 layout", () => {
-		cy.visit("/app/sheet-cutting-layout/new-sheet-cutting-layout-1");
+	it(
+		"shows balanced consumption for the customer-provided 1250 x 2500 x 1.6 layout",
+		{ retries: 0 },
+		() => {
+			cy.visit("/app/sheet-cutting-layout/new-sheet-cutting-layout-1");
 
-		setField("layout_code", layoutCode);
-		setDocField("project", projectName);
-		setField("revision_no", 1);
-		setDocField("raw_material_item", rawMaterialItem);
-		setDocField("process_scrap_item", processScrapItem);
-		setField("sheet_width_mm", 1250);
-		setField("sheet_length_mm", 2500);
-		setField("sheet_thickness_mm", 1.6);
-		setField("strip_width_mm", 1250);
-		setField("strip_length_mm", 211);
-		setField("no_of_strips", 11);
-		setField("parts_per_strip", 7);
-		setDocField("finished_part_code", finishedPartItem);
-		setField("net_weight_per_part_kg", 0.288846);
-		recalculateLayoutFields();
-		expectFieldNumber("strip_thickness_mm", 1.6, 0.001);
+			setField("layout_code", layoutCode);
+			setDocField("project", projectName);
+			setField("revision_no", 1);
+			setDocField("raw_material_item", rawMaterialItem);
+			setDocField("process_scrap_item", processScrapItem);
+			setField("sheet_width_mm", 1250);
+			setField("sheet_length_mm", 2500);
+			setField("sheet_thickness_mm", 1.6);
+			setField("strip_width_mm", 1250);
+			setField("strip_length_mm", 211);
+			setField("no_of_strips", 11);
+			setField("parts_per_strip", 7);
+			setDocField("finished_part_code", finishedPartItem);
+			setField("net_weight_per_part_kg", 0.288846);
+			recalculateLayoutFields();
+			expectFieldNumber("strip_thickness_mm", 1.6, 0.001);
 
-		addEndPiece();
+			addEndPiece();
 
-		expectFieldNumber("weight_per_sheet_kg", 39.3, 0.5);
-		expectFieldNumber("weight_of_strip_kg", 3.31692, 0.01);
-		expectFieldNumber("consumed_weight_kg", 39.3, 0.5);
-		expectFieldNumber("leftover_weight_kg", 0);
-		expectFieldValue("consumption_status", "Balanced");
+			expectFieldNumber("weight_per_sheet_kg", 39.3, 0.5);
+			expectFieldNumber("weight_of_strip_kg", 3.31692, 0.01);
+			expectFieldNumber("consumed_weight_kg", 39.3, 0.5);
+			expectFieldNumber("leftover_weight_kg", 0);
+			expectFieldValue("consumption_status", "Balanced");
 
-		cy.intercept("POST", "/api/method/frappe.desk.form.save.savedocs").as("saveLayout");
-		cy.window().then((win) => {
-			win.cur_frm.save();
-		});
-		cy.wait("@saveLayout", { timeout: 30000 }).its("response.statusCode").should("eq", 200);
-		cy.get(".freeze:visible").should("not.exist");
-		expectFormStatus("Draft");
-		expectVisibleStatus("Draft");
-		cy.markFlow("consumption.balanced-layout-calculates-and-saves");
-	});
+			cy.intercept("POST", "/api/method/frappe.desk.form.save.savedocs").as("saveLayout");
+			cy.window().then((win) => {
+				win.cur_frm.save();
+			});
+			cy.wait("@saveLayout", { timeout: 30000 })
+				.its("response.statusCode")
+				.should("eq", 200);
+			cy.get(".freeze:visible").should("not.exist");
+			expectFormStatus("Draft");
+			expectVisibleStatus("Draft");
+			cy.markFlow("consumption.balanced-layout-calculates-and-saves");
+		}
+	);
 });
