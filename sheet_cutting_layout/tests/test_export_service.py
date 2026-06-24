@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import io
 import tempfile
+from datetime import date, datetime
 from xml.etree import ElementTree as ET
 from zipfile import ZipFile
 
@@ -156,6 +157,16 @@ class TestBuildCellMapLhRhLabels(SheetCuttingLayoutTestCase):
 		cells = build_cell_map(layout)
 
 		self.assertEqual(cells["N5"], "Part Number:-0102AAG06400SHR")
+
+	def test_lh_rh_without_part_names_uses_base_name_suffix(self) -> None:
+		from sheet_cutting_layout.services.export_service import build_cell_map
+
+		layout = _base_layout()
+		layout.update({"is_lh_rh": True, "part_names": []})
+
+		cells = build_cell_map(layout)
+
+		self.assertEqual(cells["G5"], "Part Name:-Brkt bumper top LH & RH")
 
 
 class TestBuildCellMapEndPiecesAndGuards(SheetCuttingLayoutTestCase):
@@ -400,8 +411,40 @@ class TestBuildCellMapEndPiecesAndGuards(SheetCuttingLayoutTestCase):
 		for value in cells.values():
 			self.assertNotEqual(value, "None")
 
+	def test_non_numeric_bom_products_render_blank_totals(self) -> None:
+		from sheet_cutting_layout.services.export_service import build_cell_map
+
+		layout = _base_layout()
+		layout["gross_weight_per_part_kg"] = "bad"
+		layout["parts_per_sheet"] = "also-bad"
+		layout["end_pieces"] = [
+			{
+				"disposition": "Reuse",
+				"used_for_finished_part": "0102AAG06400SHR",
+				"gross_weight_per_part_kg": "bad",
+				"net_weight_per_part_kg": 0.4,
+				"scrap_weight_per_part_kg": 0.07,
+				"bom_quantity": "still-bad",
+			}
+		]
+
+		cells = build_cell_map(layout)
+
+		self.assertEqual(cells["Q8"], "bad")
+		self.assertEqual(cells["T8"], "also-bad")
+		self.assertEqual(cells["U8"], "")
+		self.assertEqual(cells["Q9"], "bad")
+		self.assertEqual(cells["T9"], "still-bad")
+		self.assertEqual(cells["U9"], "")
+
 
 class TestWorkbookRendering(SheetCuttingLayoutTestCase):
+	def test_build_multi_sheet_workbook_rejects_empty_pages(self) -> None:
+		from sheet_cutting_layout.services.export_service import build_multi_sheet_workbook
+
+		with self.assertRaisesRegex(ValueError, "at least one layout page"):
+			build_multi_sheet_workbook([])
+
 	def test_header_settings_populate_document_cells_and_logo(self) -> None:
 		from sheet_cutting_layout.services.export_service import build_multi_sheet_workbook
 
@@ -437,6 +480,88 @@ class TestWorkbookRendering(SheetCuttingLayoutTestCase):
 		extent = next(element for element in drawing.iter() if element.tag.endswith("ext"))
 		self.assertLessEqual(int(extent.attrib["cx"]), pixels_to_EMU(logo_box_width))
 		self.assertLessEqual(int(extent.attrib["cy"]), pixels_to_EMU(logo_box_height))
+
+	def test_header_settings_ignore_missing_logo_and_format_date_inputs(self) -> None:
+		from sheet_cutting_layout.services.export_service import build_multi_sheet_workbook
+
+		workbook = build_multi_sheet_workbook(
+			[("Sheet", _base_layout())],
+			header_settings={
+				"logo_path": "/tmp/definitely-missing-logo.png",
+				"document_number": "SCL/DOC/10",
+				"revision_number": "05",
+				"revision_date": datetime(2026, 6, 23, 8, 30),
+				"page_text": "02 OF 02",
+			},
+		)
+
+		worksheet = workbook.active
+		self.assertEqual(worksheet["Q1"].value, "DOC. NO.: SCL/DOC/10")
+		self.assertEqual(worksheet["Q2"].value, "REV. NO.: 05")
+		self.assertEqual(worksheet["Q3"].value, "REV DATE.: 23.06.2026")
+		self.assertEqual(worksheet["Q4"].value, "PAGE: 02 OF 02")
+		self.assertEqual(len(getattr(worksheet, "_images", [])), 0)
+
+	def test_header_settings_preserve_non_iso_revision_date_strings(self) -> None:
+		from sheet_cutting_layout.services.export_service import build_multi_sheet_workbook
+
+		workbook = build_multi_sheet_workbook(
+			[("Sheet", _base_layout())],
+			header_settings={"revision_date": "June 23, 2026"},
+		)
+
+		self.assertEqual(workbook.active["Q3"].value, "REV DATE.: June 23, 2026")
+
+	def test_header_settings_format_date_objects(self) -> None:
+		from sheet_cutting_layout.services.export_service import build_multi_sheet_workbook
+
+		workbook = build_multi_sheet_workbook(
+			[("Sheet", _base_layout())],
+			header_settings={"revision_date": date(2026, 6, 23)},
+		)
+
+		self.assertEqual(workbook.active["Q3"].value, "REV DATE.: 23.06.2026")
+
+	def test_multi_sheet_workbook_uses_excel_safe_unique_titles(self) -> None:
+		from sheet_cutting_layout.services.export_service import build_multi_sheet_workbook
+
+		workbook = build_multi_sheet_workbook(
+			[
+				("  Layout/One*?[]  ", _base_layout()),
+				("Layout/One*?[]", _base_layout()),
+				("X" * 40, _base_layout()),
+				("X" * 40, _base_layout()),
+			]
+		)
+
+		self.assertEqual(
+			workbook.sheetnames,
+			[
+				"Layout_One____",
+				"Layout_One____ (2)",
+				"X" * 31,
+				f"{'X' * 27} (2)",
+			],
+		)
+
+	def test_multi_sheet_workbook_clones_template_structure_for_extra_pages(self) -> None:
+		from sheet_cutting_layout.services.export_service import build_multi_sheet_workbook
+
+		workbook = build_multi_sheet_workbook([("Sheet 1", _base_layout()), ("Sheet 2", _base_layout())])
+
+		first = workbook["Sheet 1"]
+		second = workbook["Sheet 2"]
+		self.assertEqual(first["Q1"].value, "DOC. NO.:")
+		self.assertEqual(second["Q1"].value, "DOC. NO.:")
+		self.assertEqual(first.page_setup.orientation, second.page_setup.orientation)
+		self.assertEqual(str(first.page_setup.paperSize), str(second.page_setup.paperSize))
+		self.assertEqual(
+			{str(item) for item in first.merged_cells.ranges},
+			{str(item) for item in second.merged_cells.ranges},
+		)
+		self.assertEqual(first["R39"].value, second["R39"].value)
+		self.assertEqual(first.column_dimensions["A"].width, second.column_dimensions["A"].width)
+		self.assertEqual(first.row_dimensions[1].height, second.row_dimensions[1].height)
 
 	def test_renders_cells_into_template_and_returns_xlsx_bytes(self) -> None:
 		layout = _base_layout()

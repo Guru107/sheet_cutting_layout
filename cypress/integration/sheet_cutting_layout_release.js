@@ -1,6 +1,7 @@
 describe("Sheet Cutting Layout release workflow", () => {
 	const suffix = Date.now();
 	const layoutCode = `SCLCY${suffix}`;
+	const rejectLayoutCode = `SCLREJECTCY${suffix}`;
 	const project = `SCLPROJCY${suffix}`;
 	const rawMaterialItem = `SCLRMCY${suffix}`;
 	const processScrapItem = `SCLSCRAPCY${suffix}`;
@@ -26,9 +27,17 @@ describe("Sheet Cutting Layout release workflow", () => {
 			.type(`${value}`);
 	}
 
+	function expectFormStatus(expectedStatus) {
+		cy.window().should((win) => {
+			expect(win.cur_frm.doc.status).to.equal(expectedStatus);
+		});
+	}
+
 	function runWorkflowAction(action, expectedStatus) {
 		cy.contains(".actions-btn-group button, button", "Actions").click();
-		cy.contains(".dropdown-menu a, .dropdown-menu button", action).click();
+		cy.contains(".dropdown-menu a, .dropdown-menu button", action)
+			.should("be.visible")
+			.click();
 		cy.get("body").then(($body) => {
 			if ($body.find(".modal:visible").length) {
 				cy.get(".modal:visible").within(() => {
@@ -39,7 +48,7 @@ describe("Sheet Cutting Layout release workflow", () => {
 		cy.get(".modal:visible").should("not.exist");
 		cy.get(".freeze:visible").should("not.exist");
 		if (expectedStatus) {
-			cy.contains('[data-fieldname="status"]', expectedStatus);
+			expectFormStatus(expectedStatus);
 		}
 	}
 
@@ -135,14 +144,14 @@ describe("Sheet Cutting Layout release workflow", () => {
 				},
 			});
 			cy.visit(`/app/sheet-cutting-layout/${layoutCode}`);
-			cy.contains('[data-fieldname="status"]', "Draft");
+			expectFormStatus("Draft");
 
 			runWorkflowAction("Submit for Check", "Submitted for Check");
 			runWorkflowAction("Project Manager Approves", "PM Approved");
 			runWorkflowAction("Purchase Approves", "Approved by Purchase");
 			runWorkflowAction("MR Release", "Released");
 
-			cy.contains('[data-fieldname="status"]', "Released");
+			expectFormStatus("Released");
 			fetchReleasedLayoutWithBom().then(({ bomName }) => {
 				cy.request(
 					"GET",
@@ -160,9 +169,59 @@ describe("Sheet Cutting Layout release workflow", () => {
 				});
 			});
 			cy.contains("button", "New Version").click();
-			cy.contains('[data-fieldname="status"]', "Draft");
+			expectFormStatus("Draft");
 			cy.get('[data-fieldname="project"] input').should("have.value", project);
 			cy.get('[data-fieldname="revision_no"] input').should("have.value", "2");
+			cy.markFlow("release.single-part-generates-bom");
+			cy.markFlow("release.new-version-draft");
 		}
 	);
+
+	it("returns a submitted-for-check layout to Draft when rejected", { retries: 0 }, () => {
+		cy.call("frappe.client.insert", {
+			doc: {
+				doctype: "Sheet Cutting Layout",
+				layout_code: rejectLayoutCode,
+				project: projectName,
+				revision_no: 1,
+				is_active: 0,
+				status: "Draft",
+				raw_material_item: rawMaterialItem,
+				process_scrap_item: processScrapItem,
+				sheet_thickness_mm: 2,
+				sheet_width_mm: 1000,
+				sheet_length_mm: 2000,
+				weight_per_sheet_kg: 31.44,
+				strip_thickness_mm: 2,
+				strip_width_mm: 1000,
+				strip_length_mm: 1000,
+				weight_of_strip_kg: 15.72,
+				parts_per_strip: 1,
+				no_of_strips: 2,
+				parts_per_sheet: 2,
+				finished_part_code: finishedPartItem,
+				net_weight_per_part_kg: 15.52,
+				gross_weight_per_part_kg: 15.72,
+				scrap_weight_per_part_kg: 0.2,
+				finished_parts: [
+					{
+						doctype: "Layout Finished Part",
+						finished_part_item: finishedPartItem,
+						parts_per_sheet: 2,
+						net_weight_per_part_kg: 15.52,
+						gross_weight_per_part_kg: 15.72,
+						scrap_weight_per_part_kg: 0.2,
+					},
+				],
+			},
+		});
+		cy.visit(`/app/sheet-cutting-layout/${rejectLayoutCode}`);
+		expectFormStatus("Draft");
+
+		runWorkflowAction("Submit for Check", "Submitted for Check");
+		runWorkflowAction("Reject", "Draft");
+
+		expectFormStatus("Draft");
+		cy.markFlow("workflow.reject-returns-to-draft");
+	});
 });

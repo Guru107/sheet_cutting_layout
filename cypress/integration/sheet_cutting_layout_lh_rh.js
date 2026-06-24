@@ -54,6 +54,45 @@ describe("Sheet Cutting Layout LH/RH symmetric parts", () => {
 		};
 	}
 
+	function expectFormStatus(expectedStatus) {
+		cy.window().should((win) => {
+			expect(win.cur_frm.doc.status).to.equal(expectedStatus);
+		});
+	}
+
+	function expectVisibleStatus(expectedStatus) {
+		cy.get('[data-fieldname="status"]', { timeout: 30000 }).scrollIntoView({
+			offset: { top: -120, left: 0 },
+		});
+		cy.get(".layout-main-section", { timeout: 30000 }).scrollTo("top", {
+			ensureScrollable: false,
+		});
+		cy.get("body").should(($body) => {
+			const texts = Cypress.$($body)
+				.find(
+					[
+						'[data-fieldname="status"]:visible',
+						'[data-fieldname="status"] :visible',
+						".indicator-pill:visible",
+						".indicator:visible",
+						".form-status:visible",
+						".form-status :visible",
+						".document-status:visible",
+						".document-status :visible",
+					].join(",")
+				)
+				.map((_, el) => Cypress.$(el).text().replace(/\s+/g, " ").trim())
+				.get()
+				.filter(Boolean);
+			expect(
+				texts.some((text) => text.includes(expectedStatus)),
+				`expected visible status UI to include ${expectedStatus}, got texts=${JSON.stringify(
+					texts
+				)}`
+			).to.equal(true);
+		});
+	}
+
 	function fetchReleasedLhRhLayout(attempt = 0) {
 		return cy
 			.request(
@@ -111,7 +150,8 @@ describe("Sheet Cutting Layout LH/RH symmetric parts", () => {
 			cy.on("uncaught:exception", ignoreKnownFinishedPartsRace);
 			cy.call("frappe.client.insert", { doc: strip(toggleLayoutCode) });
 			cy.visit(`/app/sheet-cutting-layout/${toggleLayoutCode}`);
-			cy.contains('[data-fieldname="status"]', "Draft");
+			expectFormStatus("Draft");
+			expectVisibleStatus("Draft");
 
 			// Checking is_lh_rh must default orientation to LH (updateLhRhFields).
 			cy.get('[data-fieldname="is_lh_rh"] input[type="checkbox"]').check({ force: true });
@@ -131,6 +171,7 @@ describe("Sheet Cutting Layout LH/RH symmetric parts", () => {
 				expect(win.cur_frm.doc.orientation || "").to.equal("");
 				expect(win.cur_frm.doc.twin_finished_part || "").to.equal("");
 			});
+			cy.markFlow("lh-rh.toggle-fields");
 		}
 	);
 
@@ -191,6 +232,7 @@ describe("Sheet Cutting Layout LH/RH symmetric parts", () => {
 						expect(Boolean(bom.is_active)).to.equal(true);
 					});
 				});
+				cy.markFlow("lh-rh.release-two-boms");
 			});
 		}
 	);

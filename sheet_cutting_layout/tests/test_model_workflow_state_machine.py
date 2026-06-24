@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from datetime import datetime
+from types import SimpleNamespace
 
 import frappe
 from hypothesis import settings
@@ -10,7 +12,7 @@ from sheet_cutting_layout.services.versioning import (
 	create_revision,
 	finalize_new_revision_release,
 )
-from sheet_cutting_layout.services.workflow import LayoutWorkflowModel
+from sheet_cutting_layout.services.workflow import LayoutWorkflowModel, record_approval_snapshot
 from sheet_cutting_layout.tests.base import SheetCuttingLayoutTestCase
 
 STATE_MACHINE_SETTINGS = settings(
@@ -248,6 +250,57 @@ class TestModelWorkflowStateMachine(SheetCuttingLayoutTestCase):
 				self.assertEqual(machine.state, "Draft")
 				machine.submit()
 				self.assertEqual(machine.state, "Submitted for Check")
+
+	def test_supersede_moves_released_layout_to_superseded(self) -> None:
+		machine = LayoutWorkflowModel()
+		machine.submit()
+		machine.project_manager_approves()
+		machine.purchase_approves()
+		machine.release()
+
+		machine.supersede()
+
+		self.assertEqual(machine.state, "Superseded")
+
+	def test_record_approval_snapshot_returns_false_for_unknown_action(self) -> None:
+		doc = SimpleNamespace(approval_snapshot=[])
+
+		recorded = record_approval_snapshot(
+			doc,
+			action="Unknown Action",
+			approver="qa@example.com",
+			decision_time=datetime(2026, 6, 23, 8, 30),
+		)
+
+		self.assertFalse(recorded)
+		self.assertEqual(doc.approval_snapshot, [])
+
+	def test_record_approval_snapshot_prefers_append_when_available(self) -> None:
+		class AppendOnlyDoc:
+			def __init__(self) -> None:
+				self.approval_snapshot = []
+				self.calls: list[tuple[str, dict[str, object]]] = []
+
+			def append(self, fieldname: str, row: dict[str, object]) -> None:
+				self.calls.append((fieldname, row))
+
+		doc = AppendOnlyDoc()
+		recorded = record_approval_snapshot(
+			doc,
+			action="MR Release",
+			approver="mr@example.com",
+			decision_time=datetime(2026, 6, 23, 8, 30),
+		)
+
+		self.assertTrue(recorded)
+		self.assertEqual(len(doc.calls), 1)
+		fieldname, row = doc.calls[0]
+		self.assertEqual(fieldname, "approval_snapshot")
+		self.assertEqual(row["step_name"], "MR Approval")
+		self.assertEqual(row["decision"], "Approved")
+		self.assertEqual(row["approver"], "mr@example.com")
+		self.assertEqual(row["decision_time"], datetime(2026, 6, 23, 8, 30))
+		self.assertEqual(doc.approval_snapshot, [])
 
 	def test_state_machine_never_reaches_released_without_purchase_and_mr(self) -> None:
 		run_state_machine_as_test(WorkflowStateMachine, settings=STATE_MACHINE_SETTINGS)

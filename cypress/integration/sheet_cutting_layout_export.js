@@ -11,6 +11,45 @@ describe("Sheet Cutting Layout IATF export", () => {
 		"sheet_cutting_layout.sheet_cutting_layout.doctype.sheet_cutting_layout." +
 		"sheet_cutting_layout.download_sheet_cutting_layout";
 
+	function expectFormStatus(expectedStatus) {
+		cy.window().should((win) => {
+			expect(win.cur_frm.doc.status).to.equal(expectedStatus);
+		});
+	}
+
+	function expectVisibleStatus(expectedStatus) {
+		cy.get('[data-fieldname="status"]', { timeout: 30000 }).scrollIntoView({
+			offset: { top: -120, left: 0 },
+		});
+		cy.get(".layout-main-section", { timeout: 30000 }).scrollTo("top", {
+			ensureScrollable: false,
+		});
+		cy.get("body").should(($body) => {
+			const texts = Cypress.$($body)
+				.find(
+					[
+						'[data-fieldname="status"]:visible',
+						'[data-fieldname="status"] :visible',
+						".indicator-pill:visible",
+						".indicator:visible",
+						".form-status:visible",
+						".form-status :visible",
+						".document-status:visible",
+						".document-status :visible",
+					].join(",")
+				)
+				.map((_, el) => Cypress.$(el).text().replace(/\s+/g, " ").trim())
+				.get()
+				.filter(Boolean);
+			expect(
+				texts.some((text) => text.includes(expectedStatus)),
+				`expected visible status UI to include ${expectedStatus}, got texts=${JSON.stringify(
+					texts
+				)}`
+			).to.equal(true);
+		});
+	}
+
 	before(() => {
 		cy.login();
 		cy.ensureHsnCode("720890");
@@ -69,7 +108,8 @@ describe("Sheet Cutting Layout IATF export", () => {
 			const layoutName = message.name;
 
 			cy.visit(`/app/sheet-cutting-layout/${layoutName}`);
-			cy.contains('[data-fieldname="status"]', "Draft");
+			expectFormStatus("Draft");
+			expectVisibleStatus("Draft");
 			cy.contains("button", "Download Layout (Excel)").should("exist");
 
 			cy.request({
@@ -79,8 +119,9 @@ describe("Sheet Cutting Layout IATF export", () => {
 			}).then((response) => {
 				expect(response.status).to.equal(200);
 				expect(response.headers["content-disposition"]).to.contain(".xlsx");
-				expect(response.body.length).to.be.greaterThan(0);
+				expect(response.body.length).to.be.greaterThan(1000);
 				expect(response.body.slice(0, 2)).to.equal("PK");
+				cy.markFlow("export.single-layout-downloads-xlsx");
 			});
 		});
 	});

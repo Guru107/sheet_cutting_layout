@@ -22,10 +22,22 @@ Run bench commands from a local bench root, such as `~/Workspace/bench15` or `~/
 
 ## Testing Guidelines
 
-No test suite exists yet. Add focused Frappe tests alongside the feature module they exercise, using
-`test_*.py` filenames. Prefer tests that verify document behavior, calculations, permissions, and
-patches through Frappe APIs instead of isolated mocks. Run
-`bench --site <site-name> run-tests --app sheet_cutting_layout` before opening a PR.
+The app has Frappe-native Python tests and Cypress Desk tests. Add focused tests alongside the module
+they exercise, using `test_*.py` filenames for Python and current-flow IDs for Cypress. Prefer tests
+that verify document behavior, calculations, permissions, workflow, patches, and user-visible Desk
+flows through Frappe APIs or the Desk UI. Before opening a PR, run the dual-bench coverage gate:
+
+```bash
+python scripts/run_current_coverage_gates.py
+```
+
+The runner uses `~/Workspace` benches when present and falls back to `/root/workspace`; set
+`SCL_BENCH15_ROOT` and `SCL_BENCH16_ROOT` for any other layout.
+
+These gates are not enforced in CI; run them locally before opening a PR.
+
+Each Python and Desk JS/E2E gate must be above 96% independently on bench15 and bench16; included
+Python files must also stay at or above 90%.
 
 ## Commit & Pull Request Guidelines
 

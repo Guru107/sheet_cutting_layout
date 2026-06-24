@@ -1,0 +1,9 @@
+[
+  {"id":"consumption.balanced-layout-calculates-and-saves","label":"Balanced layout calculations persist from the Desk form"},
+  {"id":"export.single-layout-downloads-xlsx","label":"Single-layout IATF export downloads a non-empty XLSX"},
+  {"id":"lh-rh.toggle-fields","label":"LH/RH toggle defaults and clears paired fields"},
+  {"id":"lh-rh.release-two-boms","label":"LH/RH release creates separate active BOMs for both parts"},
+  {"id":"release.single-part-generates-bom","label":"Release creates an active Shearing BOM for the finished part"},
+  {"id":"release.new-version-draft","label":"Released layout can create the next draft revision"},
+  {"id":"workflow.reject-returns-to-draft","label":"Rejected in-review layout returns to Draft"}
+]
