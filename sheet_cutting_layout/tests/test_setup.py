@@ -16,6 +16,16 @@ def _call_erpnext_before_tests() -> None:
 		before_tests()
 
 
+def _ensure_erpnext_test_master_data() -> None:
+	if frappe.db.a_row_exists("Company"):
+		return
+
+	try:
+		import_module("erpnext.tests.utils")
+	except ImportError:
+		return
+
+
 def _ensure_gender_records() -> None:
 	for gender in ("Male", "Female", "Other"):
 		if frappe.db.exists("Gender", gender):
@@ -39,6 +49,7 @@ def _ensure_transit_warehouse_type() -> None:
 def before_tests() -> None:
 	"""Bootstrap missing ERPNext test records for CI test-site runs."""
 	_call_erpnext_before_tests()
+	_ensure_erpnext_test_master_data()
 	_ensure_gender_records()
 	_ensure_transit_warehouse_type()
 	# This app's tests create their live records explicitly. Frappe's automatic
