@@ -17,7 +17,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        frappe-version: [version-15, version-16]
+        include:
+          - frappe-version: version-15
+            python-version: '3.11'
+          - frappe-version: version-16
+            python-version: '3.12'
     name: Server (${{ matrix.frappe-version }})
 
     services:
@@ -49,7 +53,7 @@ jobs:
       - name: Setup Python
         uses: actions/setup-python@v4
         with:
-          python-version: '3.11'
+          python-version: ${{ matrix.python-version }}
 
       - name: Setup Node
         uses: actions/setup-node@v3
