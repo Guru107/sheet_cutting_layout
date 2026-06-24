@@ -21,7 +21,7 @@ jobs:
           - frappe-version: version-15
             python-version: '3.11'
           - frappe-version: version-16
-            python-version: '3.12'
+            python-version: '3.14'
     name: Server (${{ matrix.frappe-version }})
 
     services:
