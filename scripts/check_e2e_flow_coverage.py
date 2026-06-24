@@ -69,7 +69,7 @@ def main() -> int:
 			"report run ID required; use run_current_coverage_gates.py for current E2E gates", file=sys.stderr
 		)
 		return 2
-	if args.run_id and report.get("runId") != args.run_id:
+	if report.get("runId") != args.run_id:
 		print("report run ID does not match current E2E run", file=sys.stderr)
 		return 2
 	covered_ids = report["covered"]

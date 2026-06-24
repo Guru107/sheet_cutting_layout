@@ -455,10 +455,11 @@ Run:
 
 ```bash
 mkdir -p cypress/results
-printf '{"covered":[]}\n' > cypress/results/current-flow-coverage.json
+printf '{"runId":"test","covered":[]}\n' > cypress/results/current-flow-coverage.json
 python scripts/check_e2e_flow_coverage.py \
   --report cypress/results/current-flow-coverage.json \
-  --threshold 96
+  --threshold 96 \
+  --run-id test
 ```
 
 Expected: FAIL and list all seven current flow IDs as missing.
