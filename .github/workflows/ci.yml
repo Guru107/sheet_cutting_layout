@@ -20,8 +20,10 @@ jobs:
         include:
           - frappe-version: version-15
             python-version: '3.11'
+            node-version: 18
           - frappe-version: version-16
             python-version: '3.14'
+            node-version: 24
     name: Server (${{ matrix.frappe-version }})
 
     services:
@@ -58,7 +60,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v3
         with:
-          node-version: 18
+          node-version: ${{ matrix.node-version }}
           check-latest: true
 
       - name: Cache pip
