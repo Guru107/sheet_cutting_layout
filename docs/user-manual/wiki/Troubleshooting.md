@@ -165,3 +165,7 @@ Use the screenshots to match what you see on screen with the correct next action
 - A layout in `Released`
 - A layout in `Superseded`
 - A released LH/RH layout showing separate finished-part BOM references
+
+![Approved but not yet active example](assets/submit-and-approve-layouts__approval-complete__approved-by-purchase.png)
+
+![Released LH/RH BOM-reference example](assets/lh-rh-layouts__released-bom-references__released.png)

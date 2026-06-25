@@ -47,3 +47,5 @@ The screenshots on this page help users distinguish the version-replacement flow
 - A replacement layout being prepared in `Draft`
 - The `Supersede` action
 - An older layout in `Superseded`
+
+![Released layout with New Version available](assets/export-and-download__download-layout-excel__released.png)

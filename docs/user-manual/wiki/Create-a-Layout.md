@@ -46,3 +46,5 @@ The screenshots on this page help a `Projects User` recognize the normal draftin
 - Opening a new layout
 - A layout being filled in as `Draft`
 - A completed draft ready for submission
+
+![Draft layout example](assets/create-layout__filled-draft__draft.png)

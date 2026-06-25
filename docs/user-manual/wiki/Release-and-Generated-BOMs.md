@@ -45,3 +45,5 @@ The screenshots on this page help users confirm the release stage visually, incl
 - The `MR Release` action
 - A layout in `Released`
 - A released layout showing generated BOM references
+
+![Released layout with BOM links](assets/release-and-generated-boms__generated-bom-links__released.png)

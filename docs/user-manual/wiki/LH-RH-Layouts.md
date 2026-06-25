@@ -58,3 +58,5 @@ Use the screenshots to confirm that the LH/RH pair is being handled as one layou
 - The workflow actions `Submit for Check`, `Project Manager Approves`, `Purchase Approves`, and `MR Release`
 - A paired layout in `Released`
 - A released LH/RH layout showing separate finished-part BOM references for both sides
+
+![Released LH/RH layout example](assets/lh-rh-layouts__released-bom-references__released.png)

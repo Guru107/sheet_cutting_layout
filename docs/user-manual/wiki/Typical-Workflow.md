@@ -63,3 +63,7 @@ This page shows the main workflow checkpoints so you can quickly recognize where
 - A layout in `Approved by Purchase`
 - A released layout in `Released`
 - A retired layout in `Superseded`
+
+![Approved by Purchase example](assets/submit-and-approve-layouts__approval-complete__approved-by-purchase.png)
+
+![Released layout example](assets/release-and-generated-boms__generated-bom-links__released.png)

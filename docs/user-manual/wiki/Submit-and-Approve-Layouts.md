@@ -54,3 +54,5 @@ The screenshots on this page help users recognize where a layout sits in the app
 - A layout in `PM Approved`
 - A layout in `Approved by Purchase`
 - A rejected layout returned to `Draft`
+
+![Approval flow example](assets/submit-and-approve-layouts__approval-complete__approved-by-purchase.png)

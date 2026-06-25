@@ -56,3 +56,5 @@ Use the screenshots to confirm that you are working from the correct `Released` 
 - The `Generate End Piece BOMs` action on a released layout
 - A released layout showing generated end-piece BOM references
 - A related record view showing the generated end-piece result
+
+![Generated end-piece BOM example](assets/end-piece-bom-generation__generated-end-piece-boms__released.png)

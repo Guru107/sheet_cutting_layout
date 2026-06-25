@@ -54,3 +54,5 @@ Use the screenshots to confirm that you are exporting from the correct version b
 - A layout in `Superseded`
 - The `Download Layout (Excel)` action
 - A downloaded workbook being reviewed before sharing or printing
+
+![Download action on a released layout](assets/export-and-download__download-layout-excel__released.png)
