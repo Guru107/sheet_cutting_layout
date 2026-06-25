@@ -300,7 +300,7 @@ class TestSheetCuttingLayoutController(SheetCuttingLayoutTestCase):
 		doc = object.__new__(controller.SheetCuttingLayout)
 		doc.doctype = "Sheet Cutting Layout"
 		doc.name = "SCL-TEST-REJECTED"
-		doc.status = "Rejected"
+		doc.status = "Draft"
 
 		with (
 			patch.object(controller.frappe.db, "get_all", return_value=[]) as get_all,
