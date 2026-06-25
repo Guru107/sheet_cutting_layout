@@ -2,11 +2,11 @@
 
 ## When To Use This Page
 
-Use this page when a released layout needs to be replaced by a newer version. It is for users who need to understand when to create a new version, why released layouts should stay controlled, and how an older released layout is retired.
+Use this page when a released layout needs to be replaced by a newer version. It is for users who need to understand when to use `New Version`, why released layouts should stay controlled, and how an older released layout is retired.
 
 ## Before You Begin
 
-Before making changes after release, confirm whether the current layout is already `Released`. If it is, treat that layout as the approved version currently in use. Plan the replacement carefully so the new version can move through review and release before the older one is retired.
+Before making changes after release, confirm whether the current layout is already `Released`. If it is, treat that layout as the approved version currently in use. Plan the replacement so the new version can move through review and release before the older one is retired.
 
 The key user-facing states in this process are `Draft`, `Released`, and `Superseded`.
 
@@ -22,11 +22,11 @@ The key user-facing states in this process are `Draft`, `Released`, and `Superse
 
 3. Move the replacement layout through the normal workflow.
 
-   Start the replacement in `Draft`, send it through the approval path, and release it when it is ready. This keeps the version history easy to follow and helps every role work from the correct layout.
+   Review the carried-forward details in the new `Draft`, update the parts that changed, and make sure the replacement is ready before sending it forward. Then move it through the normal approval path and release it when it is ready. This keeps the version history easy to follow and helps every role work from the correct layout.
 
-4. Use `Supersede` to retire the older released layout when the replacement is ready.
+4. The `MR Coordinator` uses `Supersede` to retire the older released layout when the replacement is ready.
 
-   `Supersede` is the action used to retire an older released layout once a replacement is ready for use. After `Supersede` is applied, the older layout changes from `Released` to `Superseded`.
+   `Supersede` is the action used to retire an older released layout once a replacement is ready for use. After `Supersede` is applied, the older layout changes from `Released` to `Superseded`. In practice, this is the step that makes it clear which released layout should no longer be used.
 
 ## What Happens Next
 

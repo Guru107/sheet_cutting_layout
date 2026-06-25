@@ -24,11 +24,11 @@ Before release, confirm that the layout has already reached `Approved by Purchas
 
 4. Review the generated BOM references shown on the released layout.
 
-   After release, users should expect the released layout to show generated BOM references. In day-to-day work, these references help users identify the BOMs linked to the released layout without needing to treat release as only a paperwork step.
+   After release, users should expect the released layout to show generated BOM references for the BOMs linked to that released version. In practice, checking these references helps you confirm that the expected BOM records are now tied to the correct released layout, which makes it easier to open the right BOMs, avoid confusion with older versions, and confirm the release is ready for downstream use.
 
 ## What Happens Next
 
-Once a layout is `Released`, it becomes the active approved version for normal use. Teams should work from that released version until a business change requires a replacement. If a replacement is needed later, users should create a new version rather than editing the released layout directly.
+Once a layout is `Released`, it becomes the active approved version for normal use. Teams should work from that released version until a business change requires a replacement. If a replacement is needed later, users should use `New Version` rather than editing the released layout directly.
 
 ## Common Mistakes
 

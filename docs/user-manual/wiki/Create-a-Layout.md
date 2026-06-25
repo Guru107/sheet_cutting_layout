@@ -18,7 +18,7 @@ At this stage, the layout should remain in `Draft` while you complete and review
 
 2. Fill the core layout details.
 
-   Enter the main information your team uses to identify and understand the layout. Focus on the details that help other users review the layout confidently, such as the job reference, item details, planned sheet use, and any notes needed for the next team member.
+   Enter the main information your team uses to identify and understand the layout. Focus on the details that help other users review the layout confidently, such as the job reference, item details, planned sheet use, and any notes needed for the next team member. Before moving on, confirm that the layout clearly matches the intended part or project and that the quantities or sheet-use details reflect the work you expect this layout to cover.
 
 3. Save the draft.
 
@@ -26,7 +26,7 @@ At this stage, the layout should remain in `Draft` while you complete and review
 
 4. Review the draft before submission.
 
-   Read through the layout carefully before sending it forward. Check that the key details are complete, the information is easy to understand, and the draft reflects the version you want reviewers to approve. If something looks unclear, correct it while the layout is still in `Draft`.
+   Read through the layout carefully before sending it forward. Check that the key details are complete, the information is easy to understand, and the draft reflects the version you want reviewers to approve. In practice, it helps to confirm that the job or item reference is correct, the main quantities still match your source information, and any notes a reviewer would need are already included. If something looks unclear, correct it while the layout is still in `Draft`.
 
 ## What Happens Next
 
