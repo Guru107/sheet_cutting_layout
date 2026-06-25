@@ -38,6 +38,8 @@ def create_revision(old_layout: RevisionLayoutT) -> RevisionLayoutT:
 
 	new_layout = _copy_layout(old_layout)
 	new_layout.name = ""
+	if hasattr(new_layout, "docstatus"):
+		new_layout.docstatus = 0
 	new_layout.revision_no = old_layout.revision_no + 1
 	if hasattr(new_layout, "layout_code"):
 		new_layout.layout_code = _revision_layout_code(
