@@ -18,7 +18,6 @@ fixtures = [
 					"PM Approved",
 					"Approved by Purchase",
 					"Released",
-					"Rejected",
 					"Superseded",
 				],
 			]

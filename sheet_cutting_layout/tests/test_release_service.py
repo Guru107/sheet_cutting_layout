@@ -249,7 +249,6 @@ class TestReleaseContracts(SheetCuttingLayoutTestCase):
 							"PM Approved",
 							"Approved by Purchase",
 							"Released",
-							"Rejected",
 							"Superseded",
 						],
 					]
@@ -1165,7 +1164,7 @@ class TestControllerWorkflow(ReleaseServiceIsolatedTestCase):
 
 		doc = _new_sheet_cutting_layout_doc(sheet_cutting_layout)
 		doc.name = "SCL-REJECTED"
-		doc.status = "Rejected"
+		doc.status = "Draft"
 
 		doc.on_trash()
 

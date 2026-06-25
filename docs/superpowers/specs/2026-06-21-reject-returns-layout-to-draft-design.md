@@ -26,6 +26,8 @@ The current status will no longer show `Rejected`. This is intentional: the late
 
 The existing `Rejected` workflow state can remain in fixtures for compatibility with old records and status options. Removing it is unnecessary for this behavior and would create migration risk without solving the editability issue.
 
+> **Update (2026-06-25):** The unreachable `Rejected` *status* was removed from the workflow fixture, the `Workflow State` fixture, the `status` Select options, and the `hooks.py` fixture filter. No transition produced it after this change, and no layout in any environment carried it, so the removal is config-only with no data migration. The `Rejection` / `Rejected` approval-snapshot **decision** value is unchanged and still records rejections.
+
 ## Data Flow
 
 1. Approver clicks `Reject`.
