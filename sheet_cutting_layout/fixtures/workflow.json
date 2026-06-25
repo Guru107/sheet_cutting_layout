@@ -47,6 +47,7 @@
       {
         "action": "Submit for Check",
         "allowed": "Projects User",
+        "allow_self_approval": 1,
         "next_state": "Submitted for Check",
         "state": "Draft"
       },

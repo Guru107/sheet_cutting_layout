@@ -28,13 +28,13 @@ class TestSheetCuttingLayoutPermissions(FrappeTestCase):
 		self.assertEqual(draft_roles, {"Projects User"})
 
 		allowed_roles = {
-			transition.allowed
+			(transition.allowed, int(getattr(transition, "allow_self_approval", 0) or 0))
 			for transition in workflow.transitions
 			if transition.state == "Draft"
 			and transition.action == "Submit for Check"
 			and transition.next_state == "Submitted for Check"
 		}
-		self.assertEqual(allowed_roles, {"Projects User"})
+		self.assertEqual(allowed_roles, {("Projects User", 1)})
 
 	def test_mr_coordinator_can_submit_and_cancel(self) -> None:
 		permissions = frappe.get_meta("Sheet Cutting Layout").permissions
