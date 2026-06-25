@@ -34,7 +34,7 @@ If a released layout is later retired, its final user-facing state becomes `Supe
 
 5. The `MR Coordinator` performs `MR Release`.
 
-   This moves the layout to `Released`. After release, the layout is treated as the active approved version for use. If a change is needed later, users should create a new version instead of editing the released record directly.
+   This moves the layout to `Released`. After release, the layout becomes the active approved version for use.
 
 6. The `MR Coordinator` uses `Supersede` when a released layout must be retired.
 
@@ -50,13 +50,12 @@ When a change is needed after release, the recommended process is to create a ne
 
 - Submitting too early before the draft has been fully reviewed by the `Projects User`.
 - Assuming `PM Approved` means the layout is already released. It still needs purchase approval and release.
-- Trying to update a released layout directly instead of creating a new version for the change.
 - Using `Supersede` too early before the replacement layout is ready for use.
 - Forgetting that each role acts at a different stage, so the next step may depend on another user taking over.
 
 ## Screenshots
 
-Add real screenshots from the live system for the main handoff points on this page. A useful set usually includes:
+This page shows the main workflow checkpoints so you can quickly recognize where a layout is in the process.
 
 - A draft layout in `Draft`
 - A layout in `Submitted for Check`
@@ -64,5 +63,3 @@ Add real screenshots from the live system for the main handoff points on this pa
 - A layout in `Approved by Purchase`
 - A released layout in `Released`
 - A retired layout in `Superseded`
-
-If you add image files later, keep them in the wiki assets area and name them clearly so users can tell which workflow step each screenshot represents.
