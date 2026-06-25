@@ -3,7 +3,7 @@ app_title = "Sheet Cutting Layout"
 app_publisher = "Gurudatt Kulkarni"
 app_description = "A module for creating Sheet Cutting Layout for Press Parts"
 app_email = "connect@gurudatt.in"
-app_license = "mit"
+app_license = "agpl-3.0"
 
 fixtures = [
 	{
