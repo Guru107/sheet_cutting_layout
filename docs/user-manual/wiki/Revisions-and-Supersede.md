@@ -12,9 +12,9 @@ The key user-facing states in this process are `Draft`, `Released`, and `Superse
 
 ## Steps
 
-1. Create a new version when the released layout needs a real change.
+1. Use `New Version` when the released layout needs a real change.
 
-   A new version is appropriate when the released layout no longer matches the work that should be used going forward. This keeps the replacement clear and allows the new layout to be reviewed and approved properly.
+   `New Version` is appropriate when the released layout no longer matches the work that should be used going forward. This keeps the replacement clear and allows the new layout to be reviewed and approved properly.
 
 2. Do not edit a `Released` layout directly.
 
@@ -34,7 +34,7 @@ After the older layout is marked `Superseded`, users should stop treating it as 
 
 ## Common Mistakes
 
-- Editing a `Released` layout directly instead of creating a new version in `Draft`.
+- Editing a `Released` layout directly instead of using `New Version` to start a replacement in `Draft`.
 - Using `Supersede` before the replacement layout is actually ready for use.
 - Forgetting that `Superseded` means the older released layout has been retired.
 - Creating version changes informally, which makes it harder for other users to know which layout is current.
