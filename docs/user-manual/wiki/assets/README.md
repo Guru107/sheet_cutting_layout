@@ -4,7 +4,7 @@ Use real screenshots from the live app only.
 
 Canonical filename template:
 
-`<page-or-flow>-<step>-<state?>-<index?>.png`
+`<page-or-flow>__<step>__<state?>__<index?>.png`
 
 Segment meanings:
 
@@ -23,8 +23,8 @@ Rules:
 
 Examples:
 
-- `typical-workflow-draft.png`
-- `typical-workflow-submitted.png`
-- `create-layout-filled-draft.png`
-- `release-generated-bom-links.png`
-- `release-generated-bom-links-01.png`
+- `typical-workflow__overview__draft.png`
+- `typical-workflow__overview__submitted.png`
+- `create-layout__filled__draft.png`
+- `release__generated-bom-links.png`
+- `release__generated-bom-links__01.png`
