@@ -10,7 +10,6 @@ LayoutWorkflowState = Literal[
 	"PM Approved",
 	"Approved by Purchase",
 	"Released",
-	"Rejected",
 	"Superseded",
 ]
 
