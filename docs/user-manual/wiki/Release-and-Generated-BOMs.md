@@ -39,7 +39,7 @@ Once a layout is `Released`, it becomes the active approved version for normal u
 
 ## Screenshots
 
-This page should show the release stage clearly so users can confirm the layout is ready and then active:
+The screenshots on this page help users confirm the release stage visually, including when a layout is ready for `MR Release`, when it becomes `Released`, and where to look for generated BOM references afterward.
 
 - A layout in `Approved by Purchase`
 - The `MR Release` action

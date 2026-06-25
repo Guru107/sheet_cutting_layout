@@ -41,7 +41,7 @@ After the older layout is marked `Superseded`, users should stop treating it as 
 
 ## Screenshots
 
-This page should show the version-replacement flow so users can distinguish the old and new records:
+The screenshots on this page help users distinguish the version-replacement flow, including how to recognize an older `Released` layout, a replacement in `Draft`, and a retired layout in `Superseded`.
 
 - An older layout in `Released`
 - A replacement layout being prepared in `Draft`

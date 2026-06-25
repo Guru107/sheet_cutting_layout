@@ -47,7 +47,7 @@ After the layout reaches `Approved by Purchase`, it is ready for release by the 
 
 ## Screenshots
 
-This page should show each approval checkpoint so users can confirm where the layout is in the flow:
+The screenshots on this page help users recognize where a layout sits in the approval flow and which status to expect after each action by the `Projects User`, `Projects Manager`, and `Purchase Manager`.
 
 - A layout in `Draft` before `Submit for Check`
 - A layout in `Submitted for Check`

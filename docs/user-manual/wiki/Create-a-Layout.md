@@ -41,7 +41,7 @@ Once the draft is complete and reviewed, the `Projects User` can move it forward
 
 ## Screenshots
 
-This page should show the main points a `Projects User` should recognize while preparing a draft:
+The screenshots on this page help a `Projects User` recognize the normal drafting checkpoints, from opening a new layout to confirming that the record is saved and ready to review before submission.
 
 - Opening a new layout
 - A layout being filled in as `Draft`
