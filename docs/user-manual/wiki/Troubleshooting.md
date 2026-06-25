@@ -100,6 +100,46 @@ Also confirm whether the layout issue is about workflow progress, version select
 
    This helps explain why some follow-up BOM references may or may not be visible yet.
 
+5. If the expected generated BOM references are not visible after release, pause and confirm that you are looking at the correct released version.
+
+   A common cause is checking an older layout, a draft, or the wrong released record. If the correct released layout is open and the expected references are still missing, stop downstream use until the released result is reviewed by the responsible business user.
+
+### End-piece BOM generation did not complete
+
+1. Confirm that you started from the correct `Released` layout.
+
+   End-piece BOM generation should be run from the released record that the team intends to use, not from an earlier version.
+
+2. Review the end-piece rows again before retrying.
+
+   Make sure the end pieces you expect to carry forward are clearly the reusable ones on that released layout and are not being treated as scrap.
+
+3. Check whether any generated end-piece references appeared only partially.
+
+   If some expected results are still missing, do not assume the step finished correctly. Stop and review the released layout carefully before trying to continue downstream work.
+
+4. If needed, ask the responsible business user to review the released layout before trying again.
+
+   This is the safest next step when the generation result is incomplete or unclear.
+
+### Export or download did not behave as expected
+
+1. Confirm that you opened the correct layout before using the download or export action.
+
+   Many export problems come from starting on the wrong version, especially when both current and older layouts are available.
+
+2. Try the download or export action again from the layout you want.
+
+   Make sure you are using the action from the exact record you intend to share or print.
+
+3. Check the downloaded workbook before sending it on.
+
+   If the file content does not match the layout you expected, return to the layout list, open the correct record, and export again.
+
+4. If no usable workbook is produced, stop and keep others from using an uncertain file.
+
+   It is better to retry from the correct layout than to circulate a workbook that may represent the wrong version.
+
 ## What Happens Next
 
 After identifying the issue, users should continue from the correct workflow step, version, or released record. In most cases, the next action is to correct the draft, use the proper workflow action, switch to the correct `Released` version, or start a controlled revision with `New Version`.

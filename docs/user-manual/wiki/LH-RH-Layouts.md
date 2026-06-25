@@ -2,11 +2,11 @@
 
 ## When To Use This Page
 
-Use this page when a layout covers paired left-hand and right-hand parts that belong together. This is most useful for the `Projects User`, `Projects Manager`, `Purchase Manager`, and `MR Coordinator` when they need to move one paired layout through the normal approval and release flow without splitting the work into separate records too early.
+Use this page for the more specialized case where one layout covers a matched left-hand and right-hand part pair that must stay aligned. This is most useful for the `Projects User`, `Projects Manager`, `Purchase Manager`, and `MR Coordinator` when they need to move one paired layout through the normal approval and release flow without splitting the work into separate records too early.
 
 ## Before You Begin
 
-Before starting, confirm that the layout really represents a left-hand and right-hand pair that should stay together as one controlled layout flow. Users should treat the pair as one layout for drafting, review, approval, and release.
+Before starting, confirm that the layout really represents a left-hand and right-hand pair that should stay together as one controlled layout flow. This page is not for ordinary single-part layouts. Users should treat the pair as one layout for drafting, review, approval, and release.
 
 If the layout is still moving through review, expect it to follow the normal workflow:
 
@@ -17,6 +17,8 @@ If the layout is still moving through review, expect it to follow the normal wor
 1. Build and review the LH/RH pair as one layout.
 
    Keep both sides together in the same controlled flow so everyone reviews the same version at the same time. This helps the team avoid approving one side while accidentally working from an older or incomplete version of the other side.
+
+   While preparing the pair, confirm the user-facing details that distinguish the two sides are clear and complete, such as which part is LH, which part is RH, and whether the paired result matches what the team expects to release together.
 
 2. Move the layout through the standard approval actions.
 

@@ -10,6 +10,8 @@ Before generating end-piece BOMs, confirm that the layout is already `Released`.
 
 Also confirm that the end pieces are truly intended for reuse. If the end pieces are not meant to be reused, this step is usually not needed.
 
+On the released layout, look for the end-piece rows that are being kept for future use rather than treated as scrap. In practical terms, users should be able to tell that these rows are intended to remain useful material and should become follow-up records after generation.
+
 ## Steps
 
 1. Open the correct released layout.
@@ -18,7 +20,7 @@ Also confirm that the end pieces are truly intended for reuse. If the end pieces
 
 2. Confirm that the end pieces should be reused.
 
-   Review the layout with the business need in mind. If the end pieces are expected to support future use, then this is the right time to generate the related BOMs from the released layout.
+   Review the layout with the business need in mind. If the end pieces are expected to support future use, then this is the right time to generate the related BOMs from the released layout. Before continuing, make sure the reusable end-piece rows are the ones you expect to carry forward and are not being treated the same way as scrap-only rows.
 
 3. Run end-piece BOM generation from the released layout.
 

@@ -22,7 +22,7 @@ If more than one version exists, slow down and verify whether the current record
 
 3. Download the workbook from the layout.
 
-   The export gives you the practical workbook output for that layout version so you can review it outside the system, share it with other users, or print it when needed.
+   Use the download or export action from the layout you already have open. That action gives you the practical workbook output for that layout version so you can review it outside the system, share it with other users, or print it when needed.
 
 4. Review the downloaded workbook before sending it on.
 
