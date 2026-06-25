@@ -7,11 +7,11 @@
   "override_status": 0,
   "send_email_alert": 0,
   "states": [
-   {
-    "allow_edit": "System Manager",
-    "doc_status": "0",
-    "state": "Draft"
-   },
+      {
+        "allow_edit": "Projects User",
+        "doc_status": "0",
+        "state": "Draft"
+      },
    {
     "allow_edit": "System Manager",
     "doc_status": "0",
@@ -44,12 +44,13 @@
    }
   ],
   "transitions": [
-   {
-    "action": "Submit for Check",
-    "allowed": "System Manager",
-    "next_state": "Submitted for Check",
-    "state": "Draft"
-   },
+      {
+        "action": "Submit for Check",
+        "allowed": "Projects User",
+        "allow_self_approval": 1,
+        "next_state": "Submitted for Check",
+        "state": "Draft"
+      },
    {
     "action": "Project Manager Approves",
     "allowed": "Projects Manager",

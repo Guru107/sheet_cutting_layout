@@ -7,7 +7,7 @@ from frappe.tests.utils import FrappeTestCase
 class TestSheetCuttingLayoutPermissions(FrappeTestCase):
 	def test_workflow_roles_can_read_and_write(self) -> None:
 		permissions = frappe.get_meta("Sheet Cutting Layout").permissions
-		for role in ("Projects Manager", "Purchase Manager", "MR Coordinator"):
+		for role in ("Projects User", "Projects Manager", "Purchase Manager", "MR Coordinator"):
 			with self.subTest(role=role):
 				self.assertTrue(any(permission.role == role for permission in permissions))
 				self.assertTrue(
@@ -16,6 +16,25 @@ class TestSheetCuttingLayoutPermissions(FrappeTestCase):
 				self.assertTrue(
 					any(permission.role == role and permission.write for permission in permissions)
 				)
+
+	def test_projects_user_can_create_and_submit_draft_layouts(self) -> None:
+		permissions = frappe.get_meta("Sheet Cutting Layout").permissions
+		self.assertTrue(
+			any(permission.role == "Projects User" and permission.create for permission in permissions)
+		)
+
+		workflow = frappe.get_doc("Workflow", "Sheet Cutting Layout Approval Workflow")
+		draft_roles = {state.allow_edit for state in workflow.states if state.state == "Draft"}
+		self.assertEqual(draft_roles, {"Projects User"})
+
+		allowed_roles = {
+			(transition.allowed, int(getattr(transition, "allow_self_approval", 0) or 0))
+			for transition in workflow.transitions
+			if transition.state == "Draft"
+			and transition.action == "Submit for Check"
+			and transition.next_state == "Submitted for Check"
+		}
+		self.assertEqual(allowed_roles, {("Projects User", 1)})
 
 	def test_mr_coordinator_can_submit_and_cancel(self) -> None:
 		permissions = frappe.get_meta("Sheet Cutting Layout").permissions
