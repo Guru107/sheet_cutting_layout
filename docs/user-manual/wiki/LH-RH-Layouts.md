@@ -50,7 +50,7 @@ If a released LH/RH layout needs a change later, do not change it in place. Use 
 
 ## Screenshots
 
-The screenshots on this page should help users recognize a paired LH/RH layout before release and confirm the separate finished-part BOM references after the layout becomes `Released`.
+Use the screenshots to confirm that the LH/RH pair is being handled as one layout through approval and release, and then to confirm that the released result shows separate finished-part BOM references for the two sides. The most important visual checkpoints are the paired layout before release, the `Released` status, and the separate side-specific references visible after release.
 
 - A paired LH/RH layout in `Draft`
 - The workflow actions `Submit for Check`, `Project Manager Approves`, `Purchase Approves`, and `MR Release`

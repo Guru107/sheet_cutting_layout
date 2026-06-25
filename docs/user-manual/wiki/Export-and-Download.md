@@ -48,7 +48,7 @@ If you later discover that the wrong version was downloaded, return to the layou
 
 ## Screenshots
 
-The screenshots on this page should help users recognize the correct layout version before export and confirm what to check in the workbook before sharing or printing.
+Use the screenshots to confirm that you are exporting from the correct version before download and to check the workbook before it is shared or printed. The main visual checkpoints are the layout status, especially `Released` or `Superseded`, the workbook download action, and the final workbook review before it leaves your hands.
 
 - A layout in `Released`
 - A layout in `Superseded`

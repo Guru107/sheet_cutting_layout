@@ -48,7 +48,7 @@ If something looks incorrect, stop before using those results downstream and con
 
 ## Screenshots
 
-The screenshots on this page should help users confirm that they are on the correct `Released` layout, show where to run end-piece BOM generation, and show what the generated end-piece references look like afterward.
+Use the screenshots to confirm that you are working from the correct `Released` layout before generating anything, and then to verify the visible end-piece BOM references afterward. The key visual checkpoints are the released status, the generation action on that released record, and the follow-up references that appear once generation is complete.
 
 - A layout in `Released`
 - The end-piece BOM generation action on a released layout

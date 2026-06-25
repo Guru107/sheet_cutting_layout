@@ -117,7 +117,7 @@ If the problem still remains after those checks, gather the layout name, current
 
 ## Screenshots
 
-The screenshots on this page should help users match common problems to the correct next step, especially around workflow status, version selection, and released BOM references.
+Use the screenshots to match what you see on screen with the correct next action. Focus on the visible status first, then confirm whether the layout is still in review, already `Released`, already `Superseded`, or showing released BOM references that need to be checked more closely.
 
 - A layout in `Draft`
 - A layout returned to `Draft` after `Reject`
