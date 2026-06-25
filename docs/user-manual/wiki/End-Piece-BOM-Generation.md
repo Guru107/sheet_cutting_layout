@@ -24,7 +24,7 @@ On the released layout, look for the end-piece rows that are being kept for futu
 
 3. Run end-piece BOM generation from the released layout.
 
-   Start the generation step only after confirming both the layout version and the reuse decision. This keeps the follow-up records tied to the correct released source.
+   Use `Generate End Piece BOMs` only after confirming both the layout version and the reuse decision. This keeps the follow-up records tied to the correct released source.
 
 4. Review what appears after generation.
 

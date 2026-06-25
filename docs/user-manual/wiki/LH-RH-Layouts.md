@@ -2,7 +2,7 @@
 
 ## When To Use This Page
 
-Use this page for the more specialized case where one layout covers a matched left-hand and right-hand part pair that must stay aligned. This is most useful for the `Projects User`, `Projects Manager`, `Purchase Manager`, and `MR Coordinator` when they need to move one paired layout through the normal approval and release flow without splitting the work into separate records too early.
+Use this page for an advanced paired-layout case where one layout covers a matched left-hand and right-hand part pair that must stay aligned. This is most useful for the `Projects User`, `Projects Manager`, `Purchase Manager`, and `MR Coordinator` when they need to move one paired layout through the normal approval and release flow without splitting the work into separate records too early.
 
 ## Before You Begin
 
@@ -18,7 +18,7 @@ If the layout is still moving through review, expect it to follow the normal wor
 
    Keep both sides together in the same controlled flow so everyone reviews the same version at the same time. This helps the team avoid approving one side while accidentally working from an older or incomplete version of the other side.
 
-   While preparing the pair, confirm the user-facing details that distinguish the two sides are clear and complete, such as which part is LH, which part is RH, and whether the paired result matches what the team expects to release together.
+   While preparing the pair, confirm that the user-facing fields `Symmetric LH/RH Part`, `Part Orientation`, and `Twin Finished Part` are filled in clearly and match what the team expects to release together. In practical terms, users should be able to tell which side they are looking at, how that side is identified, and which finished part is its matching pair.
 
 2. Move the layout through the standard approval actions.
 
