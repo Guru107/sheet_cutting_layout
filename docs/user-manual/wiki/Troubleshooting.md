@@ -124,11 +124,11 @@ Also confirm whether the layout issue is about workflow progress, version select
 
 ### Export or download did not behave as expected
 
-1. Confirm that you opened the correct layout before using the download or export action.
+1. Confirm that you opened the correct layout before using `Download Layout (Excel)`.
 
    Many export problems come from starting on the wrong version, especially when both current and older layouts are available.
 
-2. Try the download or export action again from the layout you want.
+2. Try `Download Layout (Excel)` again from the layout you want.
 
    Make sure you are using the action from the exact record you intend to share or print.
 
