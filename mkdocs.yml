@@ -1,0 +1,17 @@
+site_name: Sheet Cutting Layout Docs
+site_description: User manual for the Sheet Cutting Layout Frappe app
+docs_dir: docs/user-manual/wiki
+site_dir: site
+theme:
+  name: readthedocs
+nav:
+  - Home: Home.md
+  - Typical Workflow: Typical-Workflow.md
+  - Create a Layout: Create-a-Layout.md
+  - Submit and Approve Layouts: Submit-and-Approve-Layouts.md
+  - Release and Generated BOMs: Release-and-Generated-BOMs.md
+  - Revisions and Supersede: Revisions-and-Supersede.md
+  - LH/RH Layouts: LH-RH-Layouts.md
+  - End Piece BOM Generation: End-Piece-BOM-Generation.md
+  - Export and Download: Export-and-Download.md
+  - Troubleshooting: Troubleshooting.md
