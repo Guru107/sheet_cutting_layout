@@ -30,11 +30,14 @@ jobs:
       - uses: pre-commit/action@v3.0.1
 
       - name: Download Semgrep rules
-        run: git clone --depth 1 https://github.com/frappe/semgrep-rules.git frappe-semgrep-rules
+        run: |
+          git clone https://github.com/frappe/semgrep-rules.git frappe-semgrep-rules
+          cd frappe-semgrep-rules
+          git checkout --detach 3011799f0ed91be48dc70e8e2a480142e106df7e
 
       - name: Run Semgrep rules
         run: |
-          pip install semgrep
+          pip install semgrep==1.168.0
           semgrep ci --config ./frappe-semgrep-rules/rules --config r/python.lang.correctness
 
   release-metadata:
