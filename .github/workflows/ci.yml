@@ -5,15 +5,17 @@ on:
   push:
     branches:
       - develop
+      - release/v1
   pull_request:
 
 concurrency:
-  group: develop-sheet_cutting_layout-${{ github.event.number }}
+  group: develop-sheet_cutting_layout-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   tests:
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
@@ -89,7 +91,7 @@ jobs:
 
       - name: Setup
         run: |
-          pip install frappe-bench
+          pip install frappe-bench==5.31.0
           bench init --frappe-branch ${{ matrix.frappe-version }} --skip-redis-config-generation --skip-assets --python "$(which python)" ~/frappe-bench
           mariadb --host 127.0.0.1 --port 3306 -u root -proot -e "SET GLOBAL character_set_server = 'utf8mb4'"
           mariadb --host 127.0.0.1 --port 3306 -u root -proot -e "SET GLOBAL collation_server = 'utf8mb4_unicode_ci'"
