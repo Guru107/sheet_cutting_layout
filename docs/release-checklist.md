@@ -22,14 +22,14 @@
 ```bash
 git checkout release/v1
 git pull --ff-only origin release/v1
-git tag -a v1.0.0 -m "v1.0.0"
-git push origin v1.0.0
+git tag -a v1.x.y -m "v1.x.y"  # replace with the actual release tag
+git push origin v1.x.y
 ```
 
 ## Verify The Published Release
 
 ```bash
-gh release view v1.0.0
+gh release view v1.x.y  # replace with the actual release tag
 ```
 
 Confirm:
