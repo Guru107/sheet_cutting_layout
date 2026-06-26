@@ -10,6 +10,7 @@ APP_ROOT = Path(__file__).resolve().parents[1]
 VERSION_FILE = APP_ROOT / "sheet_cutting_layout" / "__init__.py"
 CHANGELOG_FILE = APP_ROOT / "CHANGELOG.md"
 SEMVER_RE = re.compile(r"^\d+\.\d+\.\d+$")
+UNRELEASED_HEADING_RE = re.compile(r"^[ \t]{0,3}##\s+\[Unreleased\]\s*$", re.MULTILINE)
 
 
 def extract_version(path: Path) -> str:
@@ -25,13 +26,17 @@ def is_semver(value: str) -> bool:
 
 def require_unreleased_section(path: Path) -> None:
 	content = path.read_text(encoding="utf-8")
-	if "## [Unreleased]" not in content:
+	if not UNRELEASED_HEADING_RE.search(content):
 		raise ValueError("CHANGELOG.md must contain an Unreleased section")
 
 
 def require_changelog_heading(path: Path, version: str) -> None:
 	content = path.read_text(encoding="utf-8")
-	if f"## [{version}] -" not in content:
+	heading_re = re.compile(
+		rf"^[ \t]{{0,3}}##\s+\[{re.escape(version)}\]\s+-\s+.+$",
+		re.MULTILINE,
+	)
+	if not heading_re.search(content):
 		raise ValueError(f"CHANGELOG.md must contain a heading for version {version}")
 
 
@@ -49,8 +54,12 @@ def main() -> int:
 		print(f"Version is not semantic: {version}", file=sys.stderr)
 		return 1
 
-	require_unreleased_section(CHANGELOG_FILE)
-	require_changelog_heading(CHANGELOG_FILE, version)
+	try:
+		require_unreleased_section(CHANGELOG_FILE)
+		require_changelog_heading(CHANGELOG_FILE, version)
+	except (FileNotFoundError, ValueError) as exc:
+		print(str(exc), file=sys.stderr)
+		return 1
 
 	if args.tag:
 		tag_version = normalize_tag(args.tag)
