@@ -26,9 +26,9 @@ The approval path is:
 
    After project approval, the layout moves to purchase-side review. When the `Purchase Manager` is satisfied, using `Purchase Approves` changes the status from `PM Approved` to `Approved by Purchase`.
 
-4. If a layout needs to be sent back, involve a `System Manager` to use `Reject` so it returns to `Draft`.
+4. If a layout needs to be sent back, use `Reject` so it returns to `Draft`.
 
-   In the current workflow, `Reject` is a `System Manager` action. If the `Projects Manager` or `Purchase Manager` finds an issue, they should record the needed corrections and ask a `System Manager` to return the layout to `Draft`.
+   In the current workflow, the reviewer at that stage can use `Reject` directly. A `Projects Manager` can reject from `Submitted for Check`, a `Purchase Manager` can reject from `PM Approved`, and the `MR Coordinator` can reject from `Approved by Purchase`.
 
 5. Continue the work after a rejection.
 
