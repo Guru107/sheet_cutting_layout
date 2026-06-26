@@ -21,8 +21,8 @@ jobs:
         with:
           python-version: '3.10'
 
-      - name: Fetch stable branch
-        run: git fetch origin release/v1 --depth=1
+      - name: Fetch stable branch history
+        run: git fetch origin release/v1
 
       - name: Verify tag commit is on release/v1
         run: |

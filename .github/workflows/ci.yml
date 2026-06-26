@@ -9,7 +9,7 @@ on:
   pull_request:
 
 concurrency:
-  group: develop-sheet_cutting_layout-${{ github.event.number }}
+  group: develop-sheet_cutting_layout-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
