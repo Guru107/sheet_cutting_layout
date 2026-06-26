@@ -14,6 +14,8 @@ DEFAULT_FILE_THRESHOLD = 90.0
 APP_ROOT = Path(__file__).resolve().parents[1]
 
 EXCLUDED_PATTERNS = (
+	"scripts/*.py",
+	"scripts/tests/*",
 	"sheet_cutting_layout/__init__.py",
 	"sheet_cutting_layout/**/__init__.py",
 	"sheet_cutting_layout/config/*",
