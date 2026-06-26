@@ -379,6 +379,14 @@ class TestReleaseContracts(SheetCuttingLayoutTestCase):
 				"Approved by Purchase": "Draft",
 			},
 		)
+		self.assertEqual(
+			{transition["state"]: transition["allowed"] for transition in reject_transitions},
+			{
+				"Submitted for Check": "Projects Manager",
+				"PM Approved": "Purchase Manager",
+				"Approved by Purchase": "MR Coordinator",
+			},
+		)
 
 	def test_generated_release_artifact_fields_are_not_copied(self) -> None:
 		doctype_path = (
