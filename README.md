@@ -26,6 +26,24 @@ Local bench roots used in this repo are typically:
 - `~/Workspace/bench15`
 - `~/Workspace/bench16`
 
+## Release Management
+
+- `develop` is the integration branch
+- `release/v1` is the stable branch for all `1.x` releases
+- create release tags such as `v1.0.0` from `release/v1` only
+- promote tested changes from `develop` into `release/v1`; do not do feature work directly on the stable branch
+
+Before tagging a release:
+
+```bash
+python -m unittest scripts.tests.test_check_release_metadata -v
+python scripts/check_release_metadata.py
+pre-commit run --all-files
+python scripts/run_current_coverage_gates.py
+```
+
+See `docs/release-checklist.md` for the operator checklist and rollback flow.
+
 ## Development Setup
 
 This repository uses a repo-local virtualenv for tooling. Bench still manages Frappe and ERPNext.
