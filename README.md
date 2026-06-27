@@ -11,20 +11,11 @@ Frappe/ERPNext app for controlled sheet cutting layout releases for press parts.
 - Export released layouts as `.xlsx` workbooks.
 - Keep generated BOM references on the layout and audit them on save.
 
-## Installation
+## Development And Operations Docs
 
-Run bench commands from a local bench root such as `~/Workspace/bench15` or `~/Workspace/bench16`.
-
-```bash
-bench get-app <repo-url> --branch develop
-bench --site <site-name> install-app sheet_cutting_layout
-bench --site <site-name> migrate
-```
-
-Local bench roots used in this repo are typically:
-
-- `~/Workspace/bench15`
-- `~/Workspace/bench16`
+- Setup and local bench install: `docs/development-setup.md`
+- Release procedure: `docs/release-checklist.md`
+- Contributor workflow: `AGENTS.md`
 
 ## Release Management
 
@@ -43,26 +34,6 @@ python scripts/run_current_coverage_gates.py
 ```
 
 See `docs/release-checklist.md` for the operator checklist and rollback flow.
-
-## Development Setup
-
-This repository uses a repo-local virtualenv for tooling. Bench still manages Frappe and ERPNext.
-
-```bash
-git clone <repo-url>
-cd sheet_cutting_layout
-cp .env.example .env
-./scripts/setup_dev.sh
-source .venv/bin/activate
-```
-
-What `scripts/setup_dev.sh` does:
-
-- creates `.venv` if missing
-- installs the editable package plus dev dependencies from `pyproject.toml`
-- installs `pre-commit`
-
-The optional `.env` file is for local-only bench and MariaDB values. Do not commit secrets or site config.
 
 ## Repository Shape
 
