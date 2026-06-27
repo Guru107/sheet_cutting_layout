@@ -39,3 +39,9 @@ After that, move to the page that matches the task you need to complete today:
 - [End Piece BOM Generation](End-Piece-BOM-Generation.md)
 - [Export and Download](Export-and-Download.md)
 - [Troubleshooting](Troubleshooting.md)
+
+## Module Settings
+
+`Sheet Cutting Layout Settings` is a single-record setup used only for the exported Excel header. It lets a `System Manager` maintain the logo, document number, revision number, revision date, and page text that appear when users run `Download Layout (Excel)`.
+
+These settings do not control layout calculations, approval flow, release behavior, BOM generation, or revision logic. For the user-facing export impact, see [Export and Download](Export-and-Download.md).
