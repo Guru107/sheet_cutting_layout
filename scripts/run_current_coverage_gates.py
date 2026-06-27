@@ -35,12 +35,6 @@ BENCHES = (
 )
 
 
-def run(command: list[str], *, cwd: Path, env: dict[str, str] | None = None) -> int:
-	print(f"\n$ cd {cwd} && {' '.join(command)}")
-	completed = subprocess.run(command, cwd=cwd, env=env)
-	return completed.returncode
-
-
 def preflight(bench: BenchTarget) -> list[str]:
 	errors: list[str] = []
 	if not bench.root.exists():
@@ -77,32 +71,31 @@ def run_python_gate(bench: BenchTarget) -> int:
 		if candidate.exists():
 			candidate.unlink()
 
-	code = run(
-		["bench", "--site", bench.site, "run-tests", "--app", APP, "--coverage"],
-		cwd=bench.root,
-	)
-	if code != 0:
+	command = ["bench", "--site", bench.site, "run-tests", "--app", APP, "--coverage"]
+	print(f"\n$ cd {bench.root} && {' '.join(command)}")
+	completed = subprocess.run(command, cwd=bench.root)
+	if completed.returncode != 0:
 		print(f"{bench.label}: Python tests failed before coverage could be checked", file=sys.stderr)
-		return code
+		return completed.returncode
 
 	xml_path = coverage_xml_path(bench)
 	if not xml_path.exists():
 		print(f"{bench.label}: expected coverage XML not found at {xml_path}", file=sys.stderr)
 		return 2
 	shutil.copyfile(xml_path, xml_copy)
-	return run(
-		[
-			sys.executable,
-			str(APP_ROOT / "scripts" / "check_python_coverage.py"),
-			"--xml",
-			str(xml_copy),
-			"--threshold",
-			THRESHOLD,
-			"--report",
-			str(summary),
-		],
-		cwd=APP_ROOT,
-	)
+	check_command = [
+		sys.executable,
+		str(APP_ROOT / "scripts" / "check_python_coverage.py"),
+		"--xml",
+		str(xml_copy),
+		"--threshold",
+		THRESHOLD,
+		"--report",
+		str(summary),
+	]
+	print(f"\n$ cd {APP_ROOT} && {' '.join(check_command)}")
+	completed = subprocess.run(check_command, cwd=APP_ROOT)
+	return completed.returncode
 
 
 def run_e2e_gate(bench: BenchTarget) -> int:
@@ -116,28 +109,26 @@ def run_e2e_gate(bench: BenchTarget) -> int:
 	env["SCL_FLOW_COVERAGE_OUTPUT"] = str(report)
 	env["SCL_FLOW_COVERAGE_RUN_ID"] = run_id
 
-	code = run(
-		["bench", "--site", bench.site, "run-ui-tests", "--headless", APP],
-		cwd=bench.root,
-		env=env,
-	)
-	if code != 0:
+	command = ["bench", "--site", bench.site, "run-ui-tests", "--headless", APP]
+	print(f"\n$ cd {bench.root} && {' '.join(command)}")
+	completed = subprocess.run(command, cwd=bench.root, env=env)
+	if completed.returncode != 0:
 		print(f"{bench.label}: Cypress tests failed before flow coverage could be checked", file=sys.stderr)
-		return code
+		return completed.returncode
 
-	return run(
-		[
-			sys.executable,
-			str(APP_ROOT / "scripts" / "check_e2e_flow_coverage.py"),
-			"--report",
-			str(report),
-			"--threshold",
-			THRESHOLD,
-			"--run-id",
-			run_id,
-		],
-		cwd=APP_ROOT,
-	)
+	check_command = [
+		sys.executable,
+		str(APP_ROOT / "scripts" / "check_e2e_flow_coverage.py"),
+		"--report",
+		str(report),
+		"--threshold",
+		THRESHOLD,
+		"--run-id",
+		run_id,
+	]
+	print(f"\n$ cd {APP_ROOT} && {' '.join(check_command)}")
+	completed = subprocess.run(check_command, cwd=APP_ROOT)
+	return completed.returncode
 
 
 def selected_benches(name: str) -> tuple[BenchTarget, ...]:
