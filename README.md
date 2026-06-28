@@ -58,4 +58,4 @@ rate before release or end-piece BOM generation can succeed.
 
 ## User Documentation
 
-- User manual: `docs/user-manual/wiki/Home.md`
+- User manual: `docs/user-manual/wiki/`
