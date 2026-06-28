@@ -8,6 +8,7 @@ focused docs for details:
 - [Project Overview](docs/project-overview.md)
 - [Coding Conventions](docs/coding-conventions.md)
 - [Development Philosophy](docs/development-philosophy.md)
+- [Developer Operations](docs/developer-operations.md)
 
 ## Build, Test, and Development Commands
 
