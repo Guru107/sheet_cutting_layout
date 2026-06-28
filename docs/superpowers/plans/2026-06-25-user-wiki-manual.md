@@ -13,7 +13,7 @@
 ## File Structure
 
 **Create:**
-- `docs/user-manual/wiki/Home.md`
+- `docs/user-manual/wiki/index.md`
 - `docs/user-manual/wiki/Typical-Workflow.md`
 - `docs/user-manual/wiki/Create-a-Layout.md`
 - `docs/user-manual/wiki/Submit-and-Approve-Layouts.md`
@@ -96,11 +96,11 @@ git commit -m "docs: add wiki manual workspace"
 ### Task 2: Draft The Landing Page
 
 **Files:**
-- Create: `docs/user-manual/wiki/Home.md`
+- Create: `docs/user-manual/wiki/index.md`
 
 - [ ] **Step 1: Write the landing page**
 
-Write `docs/user-manual/wiki/Home.md` with this structure:
+Write `docs/user-manual/wiki/index.md` with this structure:
 
 ```md
 # Sheet Cutting Layout User Manual
@@ -141,7 +141,7 @@ Sheet Cutting Layout helps your team create, review, approve, release, and updat
 Run:
 
 ```bash
-sed -n '1,220p' docs/user-manual/wiki/Home.md
+sed -n '1,220p' docs/user-manual/wiki/index.md
 ```
 
 Expected: all links point to sibling Markdown files by name.
@@ -149,7 +149,7 @@ Expected: all links point to sibling Markdown files by name.
 - [ ] **Step 3: Commit**
 
 ```bash
-git add docs/user-manual/wiki/Home.md
+git add docs/user-manual/wiki/index.md
 git commit -m "docs: add wiki home page draft"
 ```
 
@@ -546,7 +546,7 @@ git commit -m "docs: polish wiki manual draft"
 Map local files to final wiki page names:
 
 ```text
-Home.md -> Home
+index.md -> Home
 Typical-Workflow.md -> Typical-Workflow
 Create-a-Layout.md -> Create-a-Layout
 Submit-and-Approve-Layouts.md -> Submit-and-Approve-Layouts

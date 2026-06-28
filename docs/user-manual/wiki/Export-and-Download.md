@@ -10,6 +10,30 @@ Before downloading, confirm that you are on the correct layout and the correct v
 
 If more than one version exists, slow down and verify whether the current record is `Draft`, `Submitted for Check`, `PM Approved`, `Approved by Purchase`, `Released`, or `Superseded`. This prevents users from sharing or printing the wrong version.
 
+## Sheet Cutting Layout Settings
+
+The exported workbook header is driven by the single DocType `Sheet Cutting Layout Settings`. A `System Manager` can maintain these values:
+
+- `Logo`
+- `Document Number`
+- `Revision Number`
+- `Revision Date`
+- `Page Text`
+
+When a user runs `Download Layout (Excel)`, the module reads those settings and places them into the workbook header area. In practice this affects the logo in the top-left area and the header labels on the right side such as `DOC. NO.`, `REV. NO.`, `REV DATE.`, and `PAGE`.
+
+Trade-off: these settings give one shared export header for the whole site, which keeps the export simple and consistent. They do not vary by layout, project, customer, workflow state, or revision.
+
+What these settings do not affect:
+
+- Layout calculations
+- Approval or rejection flow
+- Release or supersede behavior
+- Generated BOM creation
+- End piece BOM generation
+
+If the settings are blank, the workbook still downloads. The corresponding header labels remain, but their values can be empty. If the configured logo file is missing or invalid, the workbook downloads without the logo.
+
 ## Steps
 
 1. Open the layout you want to export.
@@ -43,6 +67,8 @@ If you later discover that the wrong version was downloaded, return to the layou
 - Downloading from the first matching layout without checking the version.
 - Sharing a workbook from `Draft` when the team actually needs the `Released` record.
 - Using a workbook from a `Superseded` layout as if it were current.
+- Editing `Sheet Cutting Layout Settings` and expecting workflow, BOM behavior, or calculations to change.
+- Forgetting that export header settings are shared across the site, not per layout.
 - Printing or sharing the workbook without doing a quick final review.
 - Assuming every downloaded workbook represents the final approved layout.
 
