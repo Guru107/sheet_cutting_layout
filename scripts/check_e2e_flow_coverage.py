@@ -66,7 +66,7 @@ def main() -> int:
 	report = _load_report(args.report)
 	if not args.run_id:
 		print(
-			"report run ID required; use run_current_coverage_gates.sh for current E2E gates",
+			"report run ID required; use scripts/run_current_coverage_gates.sh for current E2E gates",
 			file=sys.stderr,
 		)
 		return 2
