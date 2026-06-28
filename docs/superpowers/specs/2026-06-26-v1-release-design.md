@@ -246,7 +246,10 @@ Required local verification before tagging:
 
 - `pre-commit run --all-files`
 - focused app tests appropriate to the promoted changes
-- `python scripts/run_current_coverage_gates.py`
+- `scripts/run_current_coverage_gates.sh`
+
+2026-06-28 update: the coverage gate runner is intentionally shell-based for the Frappe marketplace
+audit. Avoid reintroducing Python subprocess orchestration for this release check.
 
 Required CI verification on `release/v1`:
 

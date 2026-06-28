@@ -4,6 +4,11 @@ Date: 2026-06-23
 Status: Ready for user review  
 Scope: Gap-driven unit, integration, and E2E coverage for the current live Sheet Cutting Layout app on Frappe v15 and v16
 
+> **2026-06-28 marketplace-audit update:** The coverage-gate orchestration is now the shell runner
+> `scripts/run_current_coverage_gates.sh`, not a Python subprocess wrapper. The Python scripts remain
+> data checkers only; the shell runner executes `bench` and checker commands directly while keeping
+> the same four independent gates and command flags.
+
 ## 1. Problem And Goal
 
 The app already has Frappe-native Python tests and Cypress E2E specs, but the coverage gate is not
