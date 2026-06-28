@@ -13,8 +13,8 @@ focused docs for details:
 
 Run bench commands from a local bench root, such as `~/Workspace/bench15` or `~/Workspace/bench16`.
 
-- `bench get-app <repo-url> --branch develop`: install this app into a bench.
-- `bench --site <site-name> install-app sheet_cutting_layout`: install the app on a site.
+- Use Frappe Bench to add this app into a local bench.
+- Enable the app on the target site through the local bench workflow.
 - `bench --site <site-name> migrate`: apply schema changes and patches.
 - `bench --site <site-name> run-tests --app sheet_cutting_layout`: run app tests.
 - `pre-commit install`: enable local formatting and lint checks from the app directory.
