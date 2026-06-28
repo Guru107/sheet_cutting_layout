@@ -6,7 +6,7 @@ The format follows Keep a Changelog, adapted to stay lightweight for this repo.
 
 ## [Unreleased]
 
-## [1.0.0] - 2026-06-27
+## [1.0.1] - 2026-06-28
 
 ### Added
 
@@ -20,7 +20,7 @@ The format follows Keep a Changelog, adapted to stay lightweight for this repo.
 
 ### Changed
 
-- app version promoted from `0.0.1` to `1.0.0`
+- app version promoted from `0.0.1` to `1.0.1`
 - CI now validates release metadata on the stable branch
 - release metadata now declares the supported Frappe Cloud version range
 - marketplace-facing `README.md` now focuses on end-user product behavior and links to dedicated user documentation
