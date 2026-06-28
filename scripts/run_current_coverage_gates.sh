@@ -114,7 +114,8 @@ run_python_gate() {
 	result_dir="$APP_ROOT/coverage-results/python"
 	xml_copy="$result_dir/$label-coverage.xml"
 	summary="$result_dir/$label-summary.json"
-	mkdir -p "$result_dir"
+	mkdir -p "$result_dir" || return 2
+	rm -f "$xml_copy" "$summary"
 
 	rm -f "$root/sites/coverage.xml" "$root/coverage.xml"
 
@@ -132,7 +133,10 @@ run_python_gate() {
 		printf '%s: expected coverage XML not found at %s\n' "$label" "$xml_path" >&2
 		return 2
 	fi
-	cp "$xml_path" "$xml_copy"
+	cp "$xml_path" "$xml_copy" || {
+		printf '%s: failed to copy coverage XML to %s\n' "$label" "$xml_copy" >&2
+		return 2
+	}
 
 	local check_command=(
 		"$PYTHON_BIN"
