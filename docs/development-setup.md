@@ -2,18 +2,15 @@
 
 Run bench commands from a local bench root such as `~/Workspace/bench15` or `~/Workspace/bench16`.
 
-## Install The App Into A Bench
+## Add The App To A Bench
 
-```bash
-bench get-app <repo-url> --branch develop
-bench --site <site-name> install-app sheet_cutting_layout
-bench --site <site-name> migrate
-```
+Use Frappe Bench to add this app to your local bench, enable it on the target site, and run the site
+migration. Keep site-specific commands in your local runbook instead of this marketplace-facing
+repository description.
 
 ## Repo Tooling Setup
 
 ```bash
-git clone <repo-url>
 cd sheet_cutting_layout
 cp .env.example .env
 ./scripts/setup_dev.sh
