@@ -28,7 +28,7 @@ that verify document behavior, calculations, permissions, workflow, patches, and
 flows through Frappe APIs or the Desk UI. Before opening a PR, run the dual-bench coverage gate:
 
 ```bash
-python scripts/run_current_coverage_gates.py
+scripts/run_current_coverage_gates.sh
 ```
 
 The runner uses `~/Workspace` benches when present and falls back to `/root/workspace`; set

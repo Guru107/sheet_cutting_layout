@@ -30,7 +30,7 @@ Before tagging a release:
 python -m unittest scripts.tests.test_check_release_metadata -v
 python scripts/check_release_metadata.py
 pre-commit run --all-files
-python scripts/run_current_coverage_gates.py
+scripts/run_current_coverage_gates.sh
 ```
 
 See `docs/release-checklist.md` for the operator checklist and rollback flow.
@@ -90,7 +90,7 @@ pre-commit run --all-files
 Full current-behavior coverage gate:
 
 ```bash
-python scripts/run_current_coverage_gates.py
+scripts/run_current_coverage_gates.sh
 ```
 
 The gate runs four checks:
