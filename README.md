@@ -36,8 +36,8 @@ Finished part item codes must be alphanumeric and end with `SHR`. Each layout us
 finished part input (`finished_part_code`) plus `net_weight_per_part_kg`; the app derives
 `gross_weight_per_part_kg`, `scrap_weight_per_part_kg`, and `parts_per_sheet`.
 
-MR Release creates native ERPNext shearing BOM references from the approved layout. BOM quantity is
-based on `parts_per_sheet`, raw material quantity is the full sheet weight in Kg, process scrap uses
+MR Release creates native ERPNext shearing BOM references from the approved layout. BOM quantity equals `parts_per_sheet`,
+raw material quantity is the full sheet weight in Kg, process scrap uses
 `process_scrap_item`, and reusable end pieces are handled separately from scrap-only rows.
 
 LH/RH layouts produce separate finished-part BOM references for the left-hand and right-hand parts
