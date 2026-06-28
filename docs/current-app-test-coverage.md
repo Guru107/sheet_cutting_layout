@@ -8,7 +8,7 @@ Removed `child_layout` and recursive end-piece flows are not part of the active 
 Run from the app repo:
 
 ```bash
-python scripts/run_current_coverage_gates.py
+scripts/run_current_coverage_gates.sh
 ```
 
 The runner uses `~/Workspace/bench15` and `~/Workspace/bench16` when they exist, then falls back to
@@ -27,10 +27,10 @@ is not accepted.
 ## Focused Commands
 
 ```bash
-python scripts/run_current_coverage_gates.py --bench bench15 --skip-e2e
-python scripts/run_current_coverage_gates.py --bench bench16 --skip-e2e
-python scripts/run_current_coverage_gates.py --bench bench15 --skip-python
-python scripts/run_current_coverage_gates.py --bench bench16 --skip-python
+scripts/run_current_coverage_gates.sh --bench bench15 --skip-e2e
+scripts/run_current_coverage_gates.sh --bench bench16 --skip-e2e
+scripts/run_current_coverage_gates.sh --bench bench15 --skip-python
+scripts/run_current_coverage_gates.sh --bench bench16 --skip-python
 ```
 
 ## Current E2E Flow IDs

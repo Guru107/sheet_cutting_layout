@@ -10,6 +10,13 @@
 
 ---
 
+> **2026-06-28 marketplace-audit update:** The runner portion of this historical plan has been
+> superseded. Do not implement the Python `scripts/run_current_coverage_gates.py` / `subprocess`
+> orchestration shown below. The current approach is an executable shell runner,
+> `scripts/run_current_coverage_gates.sh`, which invokes `bench` and the Python checker scripts
+> directly with quoted Bash arrays while preserving the same bench selection, skip flags, preflight
+> checks, summary, and exit-code semantics.
+
 ## File Structure
 
 - Delete: `cypress/integration/sheet_cutting_layout_recursive_end_piece.js`  
@@ -22,8 +29,8 @@
   Parse Frappe `coverage.xml`, apply project-owned exclusions, and fail when coverage is at or below 96%.
 - Create: `scripts/check_e2e_flow_coverage.py`  
   Parse the current-flow manifest and Cypress run report, fail on unknown IDs or at-or-below-96% flow coverage.
-- Create: `scripts/run_current_coverage_gates.py`  
-  Run all four gates: Python v15, Python v16, E2E v15, E2E v16.
+- Superseded: `scripts/run_current_coverage_gates.py`
+  The current runner is `scripts/run_current_coverage_gates.sh`; it runs all four gates without Python subprocess orchestration.
 - Create: `cypress/support/current_flows.json`  
   Current live Desk flow manifest.
 - Modify: `cypress.config.js`  
@@ -603,8 +610,11 @@ git commit -m "test: mark current e2e flows"
 
 ## Task 5: Add Dual-Bench Coverage Gate Runner
 
+> **2026-06-28 update:** This task is retained as historical context only. The implemented runner is
+> `scripts/run_current_coverage_gates.sh`, not the Python subprocess-based runner below.
+
 **Files:**
-- Create: `scripts/run_current_coverage_gates.py`
+- Create: `scripts/run_current_coverage_gates.sh`
 - Modify: `.gitignore`
 
 - [ ] **Step 1: Create the runner**
