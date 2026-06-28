@@ -14,7 +14,7 @@
 4. Run `pre-commit run --all-files`
 5. Run `python -m unittest scripts.tests.test_check_release_metadata -v`
 6. Run `python scripts/check_release_metadata.py`
-7. Run `python scripts/run_current_coverage_gates.py`
+7. Run `scripts/run_current_coverage_gates.sh`
 8. Confirm GitHub Actions passed on `release/v1`
 
 ## Cut The Tag

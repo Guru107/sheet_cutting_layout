@@ -66,7 +66,8 @@ def main() -> int:
 	report = _load_report(args.report)
 	if not args.run_id:
 		print(
-			"report run ID required; use run_current_coverage_gates.py for current E2E gates", file=sys.stderr
+			"report run ID required; use scripts/run_current_coverage_gates.sh for current E2E gates",
+			file=sys.stderr,
 		)
 		return 2
 	if report.get("runId") != args.run_id:
@@ -85,7 +86,7 @@ def main() -> int:
 	percent = covered_current_count / total_current_flows * 100
 	missing_ids = [flow_id for flow_id in manifest_ids if flow_id not in covered_ids]
 
-	print(f"E2E flow coverage: {covered_current_count}/{total_current_flows} " f"({percent:.2f}%)")
+	print(f"E2E flow coverage: {covered_current_count}/{total_current_flows} ({percent:.2f}%)")
 	if missing_ids:
 		for flow_id in missing_ids:
 			print(flow_id)
