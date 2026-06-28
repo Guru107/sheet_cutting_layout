@@ -13,7 +13,7 @@ Frappe/ERPNext app for controlled sheet cutting layout releases for press parts.
 
 ## Development And Operations Docs
 
-- Setup and local bench install: `docs/development-setup.md`
+- Developer setup notes: `docs/development-setup.md`
 - Release procedure: `docs/release-checklist.md`
 - Contributor workflow: `AGENTS.md`
 
