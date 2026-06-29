@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib
 import importlib.util
+from types import ModuleType
 from unittest.mock import patch
 
 from sheet_cutting_layout.tests.base import SheetCuttingLayoutTestCase
@@ -16,9 +17,18 @@ class _Meta:
 
 
 class TestInstall(SheetCuttingLayoutTestCase):
-	def _install_module(self):
+	def _install_module(self) -> ModuleType:
 		self.assertIsNotNone(importlib.util.find_spec("sheet_cutting_layout.install"))
 		return importlib.import_module("sheet_cutting_layout.install")
+
+	def test_create_missing_bom_custom_fields_exposes_real_meta_fields(self) -> None:
+		install = self._install_module()
+
+		install.create_missing_bom_custom_fields()
+		meta = install.frappe.get_meta("BOM", cached=False)
+
+		for field in install.BOM_CUSTOM_FIELDS:
+			self.assertTrue(meta.has_field(field["fieldname"]))
 
 	def test_create_missing_bom_custom_fields_creates_both_fields_when_absent(self) -> None:
 		install = self._install_module()

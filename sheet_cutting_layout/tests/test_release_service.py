@@ -266,6 +266,8 @@ class TestReleaseContracts(SheetCuttingLayoutTestCase):
 		transition_actions = {transition["action"] for transition in workflow["transitions"]}
 		fixture_actions = {row["workflow_action_name"] for row in action_masters}
 
+		assert len(action_masters) == len(fixture_actions)
+		assert len(action_masters) == len({row["name"] for row in action_masters})
 		assert fixture_actions == transition_actions
 
 	def test_parent_finished_part_code_is_item_link(self) -> None:
