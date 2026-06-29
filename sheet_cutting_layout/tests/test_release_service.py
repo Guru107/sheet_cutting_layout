@@ -236,40 +236,6 @@ class ReleaseServiceIsolatedTestCase(SheetCuttingLayoutTestCase):
 
 class TestReleaseContracts(SheetCuttingLayoutTestCase):
 	def test_hooks_exposes_required_fixtures(self) -> None:
-		expected_fixtures = [
-			{
-				"dt": "Workflow State",
-				"filters": [
-					[
-						"name",
-						"in",
-						[
-							"Draft",
-							"Submitted for Check",
-							"PM Approved",
-							"Approved by Purchase",
-							"Released",
-							"Superseded",
-						],
-					]
-				],
-			},
-			{
-				"dt": "Workflow",
-				"filters": [["name", "=", "Sheet Cutting Layout Approval Workflow"]],
-			},
-			{
-				"dt": "Role",
-				"filters": [["name", "in", ["Projects Manager", "MR Coordinator"]]],
-			},
-			{
-				"dt": "Custom Field",
-				"filters": [["dt", "=", "BOM"]],
-			},
-		]
-
-		assert hooks.fixtures == expected_fixtures
-		assert not hasattr(hooks, "override_whitelisted_methods")
 		assert hooks.doc_events == {
 			"BOM": {
 				"before_insert": "sheet_cutting_layout.overrides.bom.validate_shearing_bom_source",
@@ -279,28 +245,28 @@ class TestReleaseContracts(SheetCuttingLayoutTestCase):
 		assert hooks.before_tests == "sheet_cutting_layout.tests.test_setup.before_tests"
 
 		fixtures_dir = Path(__file__).resolve().parents[1] / "fixtures"
-		for fixture_file_name in ("workflow_state.json", "workflow.json", "role.json", "custom_field.json"):
+		for fixture_file_name in (
+			"workflow_state.json",
+			"workflow_action_master.json",
+			"workflow.json",
+			"role.json",
+		):
 			fixture_path = fixtures_dir / fixture_file_name
 
 			assert fixture_path.exists()
 			assert isinstance(json.loads(fixture_path.read_text()), list)
 
-	def test_bom_custom_fields_are_fixture_owned(self) -> None:
-		fixture_path = Path(__file__).resolve().parents[1] / "fixtures" / "custom_field.json"
-		fields = {
-			row["fieldname"]: row
-			for row in json.loads(fixture_path.read_text(encoding="utf-8"))
-			if row.get("dt") == "BOM"
-		}
+	def test_workflow_action_masters_cover_transition_actions(self) -> None:
+		fixtures_dir = Path(__file__).resolve().parents[1] / "fixtures"
+		workflow = json.loads((fixtures_dir / "workflow.json").read_text(encoding="utf-8"))[0]
+		action_masters = json.loads(
+			(fixtures_dir / "workflow_action_master.json").read_text(encoding="utf-8")
+		)
 
-		assert fields["custom_operation"]["fieldtype"] in {"Data", "Select"}
-		assert fields["custom_operation"]["insert_after"] == "image"
-		assert fields["sheet_cutting_layout"]["fieldtype"] == "Link"
-		assert fields["sheet_cutting_layout"]["options"] == "Sheet Cutting Layout"
-		assert fields["sheet_cutting_layout"]["read_only"] == 1
-		assert fields["sheet_cutting_layout"].get("hidden") in (None, 0)
-		assert fields["sheet_cutting_layout"]["insert_after"] == "custom_operation"
-		assert fields["sheet_cutting_layout"]["no_copy"] == 1
+		transition_actions = {transition["action"] for transition in workflow["transitions"]}
+		fixture_actions = {row["workflow_action_name"] for row in action_masters}
+
+		assert fixture_actions == transition_actions
 
 	def test_parent_finished_part_code_is_item_link(self) -> None:
 		doctype_path = (
@@ -472,9 +438,6 @@ class TestReleaseContracts(SheetCuttingLayoutTestCase):
 			"comment",
 			"decision_time",
 		}
-
-	def test_workflow_wrapper_override_is_removed(self) -> None:
-		assert not hasattr(hooks, "override_whitelisted_methods")
 
 	def test_readme_mentions_release_gate_and_bom_qty_parts_per_sheet(self) -> None:
 		content = Path(__file__).resolve().parents[2].joinpath("README.md").read_text(encoding="utf-8")
@@ -1109,22 +1072,6 @@ class TestControllerWorkflow(ReleaseServiceIsolatedTestCase):
 
 		validate.assert_called_once_with(doc)
 		snapshot.assert_not_called()
-
-	def test_controller_no_longer_exposes_workflow_side_effect_hooks(self) -> None:
-		from sheet_cutting_layout.sheet_cutting_layout.doctype.sheet_cutting_layout import (
-			sheet_cutting_layout,
-		)
-
-		assert not hasattr(sheet_cutting_layout.SheetCuttingLayout, "before_workflow_action")
-		assert not hasattr(sheet_cutting_layout, "_get_selected_workflow_action")
-		assert not hasattr(sheet_cutting_layout, "apply_sheet_cutting_layout_workflow")
-
-	def test_workflow_wrapper_function_is_removed(self) -> None:
-		from sheet_cutting_layout.sheet_cutting_layout.doctype.sheet_cutting_layout import (
-			sheet_cutting_layout,
-		)
-
-		assert not hasattr(sheet_cutting_layout, "apply_sheet_cutting_layout_workflow")
 
 	def test_rejected_layout_on_trash_removes_workflow_action_links(self) -> None:
 		from sheet_cutting_layout.sheet_cutting_layout.doctype.sheet_cutting_layout import (

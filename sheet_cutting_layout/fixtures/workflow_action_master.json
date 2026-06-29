@@ -1,0 +1,32 @@
+[
+ {
+  "doctype": "Workflow Action Master",
+  "name": "Submit for Check",
+  "workflow_action_name": "Submit for Check"
+ },
+ {
+  "doctype": "Workflow Action Master",
+  "name": "Project Manager Approves",
+  "workflow_action_name": "Project Manager Approves"
+ },
+ {
+  "doctype": "Workflow Action Master",
+  "name": "Purchase Approves",
+  "workflow_action_name": "Purchase Approves"
+ },
+ {
+  "doctype": "Workflow Action Master",
+  "name": "MR Release",
+  "workflow_action_name": "MR Release"
+ },
+ {
+  "doctype": "Workflow Action Master",
+  "name": "Reject",
+  "workflow_action_name": "Reject"
+ },
+ {
+  "doctype": "Workflow Action Master",
+  "name": "Supersede",
+  "workflow_action_name": "Supersede"
+ }
+]
