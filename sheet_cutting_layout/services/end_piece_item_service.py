@@ -127,7 +127,7 @@ def ensure_end_piece_item(
 	item.item_name = item_code
 	item.description = _build_item_description(layout, row)
 	item.item_group = _get_value("Item", getattr(layout, "raw_material_item", None), "item_group")
-	item.valuation_rate = _get_value("Item", getattr(layout, "raw_material_item", None), "valuation_rate")
+	item.valuation_rate = _raw_material_valuation_rate(layout)
 	item.gst_hsn_code = _get_value(
 		"Item", _clean(getattr(row, "used_for_finished_part", None)), "gst_hsn_code"
 	)
@@ -189,14 +189,11 @@ def _repair_existing_item(
 	item = frappe.get_doc("Item", item_code)
 	changed = False
 
-	raw_material_valuation_rate = _get_value(
-		"Item",
-		getattr(layout, "raw_material_item", None),
-		"valuation_rate",
-	)
-	if needs_valuation and _is_positive_number(raw_material_valuation_rate):
-		item.valuation_rate = raw_material_valuation_rate
-		changed = True
+	if needs_valuation:
+		raw_material_valuation_rate = _raw_material_valuation_rate(layout)
+		if _is_positive_number(raw_material_valuation_rate):
+			item.valuation_rate = raw_material_valuation_rate
+			changed = True
 
 	if weight_kg is None or weight_kg <= 0:
 		_throw(_("Row {0}: End piece weight must be greater than zero").format(row_idx))
@@ -267,6 +264,40 @@ def _is_positive_number(value: object) -> bool:
 		return float(value) > 0
 	except (TypeError, ValueError):
 		return False
+
+
+def _raw_material_valuation_rate(layout: LayoutDocument) -> object:
+	raw_material_item = _clean(getattr(layout, "raw_material_item", None))
+	if raw_material_item is None:
+		return None
+
+	effective_rate = _effective_raw_material_valuation_rate(
+		item_code=raw_material_item,
+		company=_company_for_layout(layout),
+	)
+	if _is_positive_number(effective_rate):
+		return effective_rate
+
+	return _get_value("Item", raw_material_item, "valuation_rate")
+
+
+def _effective_raw_material_valuation_rate(*, item_code: str, company: str | None) -> object:
+	if company is None:
+		return None
+
+	from erpnext.manufacturing.doctype.bom.bom import get_valuation_rate
+
+	return get_valuation_rate({"item_code": item_code, "company": company})
+
+
+def _company_for_layout(layout: LayoutDocument) -> str | None:
+	company = _clean(getattr(layout, "company", None))
+	if company:
+		return company
+
+	import erpnext
+
+	return _clean(erpnext.get_default_company())
 
 
 def _item_exists(item_code: str) -> bool:
