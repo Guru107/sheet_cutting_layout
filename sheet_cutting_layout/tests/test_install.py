@@ -41,9 +41,7 @@ class TestInstall(SheetCuttingLayoutTestCase):
 		install = self._install_module()
 		calls = []
 
-		self.start_patcher(
-			patch.object(install.frappe, "get_meta", return_value=_Meta({"custom_operation"}))
-		)
+		self.start_patcher(patch.object(install.frappe, "get_meta", return_value=_Meta({"custom_operation"})))
 		self.start_patcher(
 			patch.object(
 				install,
