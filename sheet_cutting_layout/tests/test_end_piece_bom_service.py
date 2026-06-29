@@ -493,6 +493,23 @@ class TestEndPieceBomService(SheetCuttingLayoutTestCase):
 		self.assertEqual(item.valuation_rate, 82.75)
 		get_valuation_rate.assert_called_once_with({"item_code": "RAW-001", "company": "Test Company"})
 
+	def test_generation_falls_back_to_item_valuation_when_effective_rate_lookup_fails(self) -> None:
+		fake_frappe = self._install_fakes(
+			raw_item_groups={"RAW-001": "Sheet Steel"},
+			raw_item_valuation_rates={"RAW-001": 82.75},
+		)
+		layout = Layout(end_pieces=[EndPiece(strip_weight_kg=1.75)])
+
+		with patch(
+			"erpnext.manufacturing.doctype.bom.bom.get_valuation_rate",
+			side_effect=RuntimeError("valuation lookup failed"),
+		):
+			self.service.generate_end_piece_boms(layout)
+
+		item = fake_frappe.created_docs[0]
+		self.assertEqual(item.item_code, "FG01SHR-EP-2x100x200")
+		self.assertEqual(item.valuation_rate, 82.75)
+
 	def test_created_end_piece_item_has_single_stock_and_alternate_uom_rows(self) -> None:
 		from sheet_cutting_layout.services.end_piece_item_service import ensure_end_piece_item
 

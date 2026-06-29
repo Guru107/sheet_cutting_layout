@@ -287,7 +287,11 @@ def _effective_raw_material_valuation_rate(*, item_code: str, company: str | Non
 
 	from erpnext.manufacturing.doctype.bom.bom import get_valuation_rate
 
-	return get_valuation_rate({"item_code": item_code, "company": company})
+	try:
+		return get_valuation_rate({"item_code": item_code, "company": company})
+	except Exception:
+		# Effective BOM valuation is best-effort; item master valuation remains the fallback.
+		return None
 
 
 def _company_for_layout(layout: LayoutDocument) -> str | None:
