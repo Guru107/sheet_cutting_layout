@@ -475,6 +475,41 @@ class TestEndPieceBomService(SheetCuttingLayoutTestCase):
 		)
 		self.assertEqual(self._created_doc(fake_frappe, "BOM").submit_calls, 1)
 
+	def test_generation_uses_effective_raw_material_valuation_for_created_item(self) -> None:
+		fake_frappe = self._install_fakes(
+			raw_item_groups={"RAW-001": "Sheet Steel"},
+			raw_item_valuation_rates={"RAW-001": 0},
+		)
+		layout = Layout(end_pieces=[EndPiece(strip_weight_kg=1.75)])
+
+		with patch(
+			"erpnext.manufacturing.doctype.bom.bom.get_valuation_rate",
+			return_value=82.75,
+		) as get_valuation_rate:
+			self.service.generate_end_piece_boms(layout)
+
+		item = fake_frappe.created_docs[0]
+		self.assertEqual(item.item_code, "FG01SHR-EP-2x100x200")
+		self.assertEqual(item.valuation_rate, 82.75)
+		get_valuation_rate.assert_called_once_with({"item_code": "RAW-001", "company": "Test Company"})
+
+	def test_generation_falls_back_to_item_valuation_when_effective_rate_lookup_fails(self) -> None:
+		fake_frappe = self._install_fakes(
+			raw_item_groups={"RAW-001": "Sheet Steel"},
+			raw_item_valuation_rates={"RAW-001": 82.75},
+		)
+		layout = Layout(end_pieces=[EndPiece(strip_weight_kg=1.75)])
+
+		with patch(
+			"erpnext.manufacturing.doctype.bom.bom.get_valuation_rate",
+			side_effect=RuntimeError("valuation lookup failed"),
+		):
+			self.service.generate_end_piece_boms(layout)
+
+		item = fake_frappe.created_docs[0]
+		self.assertEqual(item.item_code, "FG01SHR-EP-2x100x200")
+		self.assertEqual(item.valuation_rate, 82.75)
+
 	def test_created_end_piece_item_has_single_stock_and_alternate_uom_rows(self) -> None:
 		from sheet_cutting_layout.services.end_piece_item_service import ensure_end_piece_item
 
@@ -512,6 +547,31 @@ class TestEndPieceBomService(SheetCuttingLayoutTestCase):
 		self.assertEqual(repaired_item.valuation_rate, 82.75)
 		self.assertEqual(repaired_item.save_calls, [{"ignore_permissions": True}])
 		self.assertEqual(fake_frappe.db.set_value_calls, [])
+
+	def test_existing_generated_item_repairs_zero_valuation_from_effective_raw_material_rate(
+		self,
+	) -> None:
+		existing_code = "FG01SHR-EP-2x100x200"
+		fake_frappe = self._install_fakes(
+			existing_items={existing_code},
+			raw_item_valuation_rates={
+				"RAW-001": 0,
+				existing_code: 0,
+			},
+		)
+
+		with patch(
+			"erpnext.manufacturing.doctype.bom.bom.get_valuation_rate",
+			return_value=82.75,
+		) as get_valuation_rate:
+			item_code = self.item_service.ensure_end_piece_item(Layout(), EndPiece())
+
+		self.assertEqual(item_code, existing_code)
+		repaired_item = fake_frappe.created_docs[0]
+		self.assertEqual(repaired_item.name, existing_code)
+		self.assertEqual(repaired_item.valuation_rate, 82.75)
+		self.assertEqual(repaired_item.save_calls, [{"ignore_permissions": True}])
+		get_valuation_rate.assert_called_once_with({"item_code": "RAW-001", "company": "Test Company"})
 
 	def test_existing_generated_item_missing_alt_uom_is_repaired(self) -> None:
 		existing_code = "FG01SHR-EP-2x100x200"
@@ -560,7 +620,10 @@ class TestEndPieceBomService(SheetCuttingLayoutTestCase):
 
 	def test_generation_uses_default_company_when_layout_company_is_missing(self) -> None:
 		existing_code = "FG01SHR-EP-2x100x200"
-		fake_frappe = self._install_fakes(existing_items={existing_code})
+		fake_frappe = self._install_fakes(
+			existing_items={existing_code},
+			raw_item_valuation_rates={existing_code: 60.03},
+		)
 		layout = Layout(company=None, end_pieces=[EndPiece()])
 
 		with patch("erpnext.get_default_company", return_value="ERPNext Default Company") as spy:
@@ -715,6 +778,47 @@ class TestEndPieceBomService(SheetCuttingLayoutTestCase):
 					"qty": 2.25,
 					"stock_qty": 2.25,
 					"uom": "Kg",
+				}
+			],
+		)
+
+	def test_generation_uses_secondary_items_when_bom_has_no_scrap_table(self) -> None:
+		existing_code = "FG01SHR-EP-2x100x200"
+		fake_frappe = self._install_fakes(existing_items={existing_code})
+		layout = Layout(
+			end_pieces=[
+				EndPiece(
+					weight_kg=12.0,
+					strip_weight_kg=12.0,
+					bom_quantity=3,
+					bom_scrap_quantity_kg=2.25,
+					scrap_item="EP-SCRAP",
+				)
+			],
+		)
+		new_doc = fake_frappe.new_doc
+
+		def new_doc_without_scrap_items(doctype: str) -> FakeDoc:
+			doc = new_doc(doctype)
+			if doctype == "BOM":
+				doc.meta = SimpleNamespace(has_field=lambda fieldname: fieldname != "scrap_items")
+				doc.secondary_items = []
+			return doc
+
+		with patch.object(fake_frappe, "new_doc", side_effect=new_doc_without_scrap_items):
+			self.service.generate_end_piece_boms(layout)
+
+		bom = self._created_doc(fake_frappe, "BOM")
+		self.assertEqual(
+			bom.secondary_items,
+			[
+				{
+					"type": "Scrap",
+					"item_code": "EP-SCRAP",
+					"qty": 2.25,
+					"stock_qty": 2.25,
+					"uom": "Kg",
+					"stock_uom": "Kg",
 				}
 			],
 		)
