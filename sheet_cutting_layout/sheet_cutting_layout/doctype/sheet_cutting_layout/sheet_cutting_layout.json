@@ -48,7 +48,7 @@
   "generated_bom",
   "twin_generated_bom",
   "workflow_section",
-  "status",
+  "workflow_status",
   "tables_section",
   "finished_parts",
   "end_pieces",
@@ -318,11 +318,11 @@
   {
    "allow_on_submit": 1,
    "default": "Draft",
-   "fieldname": "status",
+   "fieldname": "workflow_status",
    "fieldtype": "Select",
    "hidden": 1,
    "in_list_view": 1,
-   "label": "Status",
+   "label": "Workflow Status",
    "no_copy": 1,
    "options": "Draft\nSubmitted for Check\nPM Approved\nApproved by Purchase\nReleased\nSuperseded",
    "reqd": 1

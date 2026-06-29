@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Literal, Protocol, TypeVar
 
-LayoutVersionStatus = Literal[
+LayoutWorkflowStatus = Literal[
 	"Draft",
 	"Approved by Purchase",
 	"Released",
@@ -19,7 +19,7 @@ class RevisionLayoutDocument(Protocol):
 	name: str
 	project: str
 	revision_no: int
-	status: LayoutVersionStatus
+	workflow_status: LayoutWorkflowStatus
 	based_on_layout: str | None
 	is_active: bool
 	approval_snapshot: list[object]
@@ -33,7 +33,7 @@ RevisionLayoutT = TypeVar("RevisionLayoutT", bound=RevisionLayoutDocument)
 
 
 def create_revision(old_layout: RevisionLayoutT) -> RevisionLayoutT:
-	if old_layout.status != "Released":
+	if old_layout.workflow_status != "Released":
 		raise ValueError("Only released layouts can be revised")
 
 	new_layout = _copy_layout(old_layout)
@@ -46,7 +46,7 @@ def create_revision(old_layout: RevisionLayoutT) -> RevisionLayoutT:
 			getattr(old_layout, "layout_code", old_layout.name),
 			new_layout.revision_no,
 		)
-	new_layout.status = "Draft"
+	new_layout.workflow_status = "Draft"
 	new_layout.based_on_layout = old_layout.name
 	new_layout.is_active = False
 	new_layout.approval_snapshot = []
@@ -69,7 +69,7 @@ def create_revision(old_layout: RevisionLayoutT) -> RevisionLayoutT:
 
 
 def finalize_new_revision_release(new_layout: RevisionLayoutDocument) -> RevisionLayoutDocument:
-	new_layout.status = "Released"
+	new_layout.workflow_status = "Released"
 	new_layout.is_active = True
 	return new_layout
 

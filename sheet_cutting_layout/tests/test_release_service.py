@@ -9,8 +9,8 @@ import frappe
 
 import sheet_cutting_layout.hooks as hooks
 from sheet_cutting_layout.services import release_service
-from sheet_cutting_layout.services.release_service import LayoutReleaseStatus
-from sheet_cutting_layout.services.versioning import LayoutVersionStatus
+from sheet_cutting_layout.services.release_service import LayoutWorkflowStatus as ReleaseWorkflowStatus
+from sheet_cutting_layout.services.versioning import LayoutWorkflowStatus as VersionWorkflowStatus
 from sheet_cutting_layout.tests.base import SheetCuttingLayoutTestCase
 from sheet_cutting_layout.tests.factories import (
 	make_layout,
@@ -22,7 +22,7 @@ from sheet_cutting_layout.tests.factories import (
 class Layout:
 	name: str = "SCL-NEW"
 	project: str = "PROJECT-001"
-	status: LayoutReleaseStatus = "Approved by Purchase"
+	workflow_status: ReleaseWorkflowStatus = "Approved by Purchase"
 	raw_material_item: str = "RMSHEET001"
 	process_scrap_item: str = "PROCESSSCRAP001"
 	no_of_strips: int = 11
@@ -118,7 +118,7 @@ class RevisionLayout:
 	name: str
 	project: str
 	revision_no: int
-	status: LayoutVersionStatus
+	workflow_status: VersionWorkflowStatus
 	is_active: bool
 	layout_code: str = ""
 	raw_material_item: str = "RM-SHEET-001"
@@ -151,7 +151,7 @@ class RevisionLayout:
 			"name": self.name,
 			"project": self.project,
 			"revision_no": self.revision_no,
-			"status": self.status,
+			"workflow_status": self.workflow_status,
 			"is_active": self.is_active,
 			"layout_code": self.layout_code,
 			"raw_material_item": self.raw_material_item,
@@ -236,40 +236,6 @@ class ReleaseServiceIsolatedTestCase(SheetCuttingLayoutTestCase):
 
 class TestReleaseContracts(SheetCuttingLayoutTestCase):
 	def test_hooks_exposes_required_fixtures(self) -> None:
-		expected_fixtures = [
-			{
-				"dt": "Workflow State",
-				"filters": [
-					[
-						"name",
-						"in",
-						[
-							"Draft",
-							"Submitted for Check",
-							"PM Approved",
-							"Approved by Purchase",
-							"Released",
-							"Superseded",
-						],
-					]
-				],
-			},
-			{
-				"dt": "Workflow",
-				"filters": [["name", "=", "Sheet Cutting Layout Approval Workflow"]],
-			},
-			{
-				"dt": "Role",
-				"filters": [["name", "in", ["Projects Manager", "MR Coordinator"]]],
-			},
-			{
-				"dt": "Custom Field",
-				"filters": [["dt", "=", "BOM"]],
-			},
-		]
-
-		assert hooks.fixtures == expected_fixtures
-		assert not hasattr(hooks, "override_whitelisted_methods")
 		assert hooks.doc_events == {
 			"BOM": {
 				"before_insert": "sheet_cutting_layout.overrides.bom.validate_shearing_bom_source",
@@ -279,28 +245,30 @@ class TestReleaseContracts(SheetCuttingLayoutTestCase):
 		assert hooks.before_tests == "sheet_cutting_layout.tests.test_setup.before_tests"
 
 		fixtures_dir = Path(__file__).resolve().parents[1] / "fixtures"
-		for fixture_file_name in ("workflow_state.json", "workflow.json", "role.json", "custom_field.json"):
+		for fixture_file_name in (
+			"workflow_state.json",
+			"workflow_action_master.json",
+			"workflow.json",
+			"role.json",
+		):
 			fixture_path = fixtures_dir / fixture_file_name
 
 			assert fixture_path.exists()
 			assert isinstance(json.loads(fixture_path.read_text()), list)
 
-	def test_bom_custom_fields_are_fixture_owned(self) -> None:
-		fixture_path = Path(__file__).resolve().parents[1] / "fixtures" / "custom_field.json"
-		fields = {
-			row["fieldname"]: row
-			for row in json.loads(fixture_path.read_text(encoding="utf-8"))
-			if row.get("dt") == "BOM"
-		}
+	def test_workflow_action_masters_cover_transition_actions(self) -> None:
+		fixtures_dir = Path(__file__).resolve().parents[1] / "fixtures"
+		workflow = json.loads((fixtures_dir / "workflow.json").read_text(encoding="utf-8"))[0]
+		action_masters = json.loads(
+			(fixtures_dir / "workflow_action_master.json").read_text(encoding="utf-8")
+		)
 
-		assert fields["custom_operation"]["fieldtype"] in {"Data", "Select"}
-		assert fields["custom_operation"]["insert_after"] == "image"
-		assert fields["sheet_cutting_layout"]["fieldtype"] == "Link"
-		assert fields["sheet_cutting_layout"]["options"] == "Sheet Cutting Layout"
-		assert fields["sheet_cutting_layout"]["read_only"] == 1
-		assert fields["sheet_cutting_layout"].get("hidden") in (None, 0)
-		assert fields["sheet_cutting_layout"]["insert_after"] == "custom_operation"
-		assert fields["sheet_cutting_layout"]["no_copy"] == 1
+		transition_actions = {transition["action"] for transition in workflow["transitions"]}
+		fixture_actions = {row["workflow_action_name"] for row in action_masters}
+
+		assert len(action_masters) == len(fixture_actions)
+		assert len(action_masters) == len({row["name"] for row in action_masters})
+		assert fixture_actions == transition_actions
 
 	def test_parent_finished_part_code_is_item_link(self) -> None:
 		doctype_path = (
@@ -341,9 +309,9 @@ class TestReleaseContracts(SheetCuttingLayoutTestCase):
 			)[0]["states"]
 		}
 
-		status_options = fields["status"]["options"].splitlines()
-		assert "Cancel" not in status_options
-		assert "Superseded" in status_options
+		workflow_status_options = fields["workflow_status"]["options"].splitlines()
+		assert "Cancel" not in workflow_status_options
+		assert "Superseded" in workflow_status_options
 		assert workflow_states["Superseded"]["doc_status"] == "2"
 		assert "Cancel" not in workflow_states
 
@@ -362,7 +330,7 @@ class TestReleaseContracts(SheetCuttingLayoutTestCase):
 		}
 
 		assert fields["workflow_section"]["hidden"] == 1
-		assert fields["status"]["hidden"] == 1
+		assert fields["workflow_status"]["hidden"] == 1
 
 	def test_reject_workflow_transitions_return_to_draft(self) -> None:
 		workflow_path = Path(__file__).resolve().parents[1] / "fixtures" / "workflow.json"
@@ -420,7 +388,7 @@ class TestReleaseContracts(SheetCuttingLayoutTestCase):
 			"approval_snapshot",
 			"is_active",
 			"end_piece_bom_status",
-			"status",
+			"workflow_status",
 		):
 			assert fields[fieldname]["no_copy"] == 1
 		assert end_piece_fields["end_piece_item_code"]["no_copy"] == 1
@@ -472,9 +440,6 @@ class TestReleaseContracts(SheetCuttingLayoutTestCase):
 			"comment",
 			"decision_time",
 		}
-
-	def test_workflow_wrapper_override_is_removed(self) -> None:
-		assert not hasattr(hooks, "override_whitelisted_methods")
 
 	def test_readme_mentions_release_gate_and_bom_qty_parts_per_sheet(self) -> None:
 		content = Path(__file__).resolve().parents[2].joinpath("README.md").read_text(encoding="utf-8")
@@ -532,7 +497,7 @@ class TestReleaseFlow(ReleaseServiceIsolatedTestCase):
 		)
 
 		assert result.status == "Released"
-		assert layout.status == "Released"
+		assert layout.workflow_status == "Released"
 
 	def test_release_runs_default_layout_validation(self) -> None:
 		from sheet_cutting_layout.services.release_service import ReleaseContext, release_layout
@@ -548,7 +513,7 @@ class TestReleaseFlow(ReleaseServiceIsolatedTestCase):
 		with self.assertRaisesRegex(validation_error, "alphanumeric"):
 			release_layout(layout, release_context=ReleaseContext(layouts=(), boms=[]))
 
-		assert layout.status == "Approved by Purchase"
+		assert layout.workflow_status == "Approved by Purchase"
 
 	def test_release_allows_injected_validators_for_testability(self) -> None:
 		from sheet_cutting_layout.services.release_service import release_layout
@@ -558,14 +523,14 @@ class TestReleaseFlow(ReleaseServiceIsolatedTestCase):
 
 		release_layout(
 			layout,
-			validators=[lambda received: calls.append(received.status)],
+			validators=[lambda received: calls.append(received.workflow_status)],
 			layouts=[],
 			boms=[],
 			bom_document_factory=_in_memory_bom_factory,
 		)
 
 		assert calls == ["Approved by Purchase"]
-		assert layout.status == "Released"
+		assert layout.workflow_status == "Released"
 
 	def test_release_requires_process_scrap_item_when_process_scrap_is_positive(self) -> None:
 		from sheet_cutting_layout.services.release_service import ReleaseContext, release_layout
@@ -590,7 +555,7 @@ class TestReleaseFlow(ReleaseServiceIsolatedTestCase):
 		with self.assertRaisesRegex(ValueError, "not ready"):
 			release_layout(layout, validators=[fail_validator], layouts=[], boms=[])
 
-		assert layout.status == "Approved by Purchase"
+		assert layout.workflow_status == "Approved by Purchase"
 		assert layout.finished_parts[0].generated_bom is None
 
 	def test_release_uses_injected_context_provider(self) -> None:
@@ -829,7 +794,7 @@ class TestReleaseFlow(ReleaseServiceIsolatedTestCase):
 			name="SCL-001",
 			project="FAM-001",
 			revision_no=1,
-			status="Released",
+			workflow_status="Released",
 			is_active=True,
 			finished_parts=[FinishedPart("PART001LHSHR", generated_bom="BOM-PART001LHSHR-OLD")],
 		)
@@ -837,7 +802,7 @@ class TestReleaseFlow(ReleaseServiceIsolatedTestCase):
 			name="SCL-002",
 			project="FAM-001",
 			revision_no=2,
-			status="Approved by Purchase",
+			workflow_status="Approved by Purchase",
 			is_active=False,
 			finished_parts=[FinishedPart("PART001LHSHR", gross_weight_per_part_kg=2.5)],
 		)
@@ -864,7 +829,7 @@ class TestReleaseFlow(ReleaseServiceIsolatedTestCase):
 			name="SCL-001",
 			project="FAM-001",
 			revision_no=1,
-			status="Released",
+			workflow_status="Released",
 			is_active=True,
 			finished_parts=[FinishedPart("PART001LHSHR", generated_bom="BOM-PART001LHSHR-OLD")],
 		)
@@ -872,7 +837,7 @@ class TestReleaseFlow(ReleaseServiceIsolatedTestCase):
 			name="SCL-002",
 			project="FAM-001",
 			revision_no=2,
-			status="Approved by Purchase",
+			workflow_status="Approved by Purchase",
 			is_active=False,
 			finished_parts=[FinishedPart("PART001LHSHR", gross_weight_per_part_kg=2.5)],
 		)
@@ -889,9 +854,9 @@ class TestReleaseFlow(ReleaseServiceIsolatedTestCase):
 			),
 		)
 
-		assert old_layout.status == "Released"
+		assert old_layout.workflow_status == "Released"
 		assert old_layout.save_calls == 0
-		assert new_layout.status == "Released"
+		assert new_layout.workflow_status == "Released"
 		assert new_layout.save_calls == 1
 
 	def test_release_does_not_db_set_unchanged_submitted_layouts(self) -> None:
@@ -903,7 +868,7 @@ class TestReleaseFlow(ReleaseServiceIsolatedTestCase):
 			name="SCL-001",
 			project="FAM-001",
 			revision_no=1,
-			status="Released",
+			workflow_status="Released",
 			is_active=True,
 			finished_parts=[FinishedPart("PART001LHSHR", generated_bom="BOM-PART001LHSHR-OLD")],
 		)
@@ -911,7 +876,7 @@ class TestReleaseFlow(ReleaseServiceIsolatedTestCase):
 			name="SCL-002",
 			project="FAM-001",
 			revision_no=2,
-			status="Approved by Purchase",
+			workflow_status="Approved by Purchase",
 			is_active=False,
 			finished_parts=[FinishedPart("PART001LHSHR", gross_weight_per_part_kg=2.5)],
 		)
@@ -928,7 +893,7 @@ class TestReleaseFlow(ReleaseServiceIsolatedTestCase):
 			),
 		)
 
-		assert old_layout.status == "Released"
+		assert old_layout.workflow_status == "Released"
 		assert old_layout.is_active is True
 		assert old_layout.save_calls == 0
 		assert old_layout.db_set_calls == []
@@ -1026,7 +991,7 @@ class TestControllerWorkflow(ReleaseServiceIsolatedTestCase):
 		doc.generated_bom = "BOM-OLD"
 		doc.finished_parts = [SimpleNamespace(generated_bom="BOM-OLD")]
 		doc.approval_snapshot = [SimpleNamespace(step_name="MR Approval")]
-		doc.status = "Released"
+		doc.workflow_status = "Released"
 		doc.is_active = True
 		doc.end_piece_bom_status = "Generated"
 		doc.end_pieces = [EndPiece(weight_kg=2.5, end_piece_item_code="FG01SHR-EP-1x1250x260")]
@@ -1036,7 +1001,7 @@ class TestControllerWorkflow(ReleaseServiceIsolatedTestCase):
 		assert doc.generated_bom is None
 		assert doc.finished_parts == []
 		assert doc.approval_snapshot == []
-		assert doc.status == "Draft"
+		assert doc.workflow_status == "Draft"
 		assert doc.is_active is False
 		assert doc.end_piece_bom_status == "Pending"
 		assert doc.end_pieces[0].end_piece_item_code is None
@@ -1064,7 +1029,7 @@ class TestControllerWorkflow(ReleaseServiceIsolatedTestCase):
 		)
 
 		doc = _new_sheet_cutting_layout_doc(sheet_cutting_layout)
-		doc.status = "Released"
+		doc.workflow_status = "Released"
 		doc.on_submit()
 
 		assert calls == [(doc, {})]
@@ -1088,7 +1053,7 @@ class TestControllerWorkflow(ReleaseServiceIsolatedTestCase):
 		snapshot = self.start_patcher(patch.object(sheet_cutting_layout, "record_approval_snapshot"))
 
 		doc = _new_sheet_cutting_layout_doc(sheet_cutting_layout)
-		doc.status = "Approved by Purchase"
+		doc.workflow_status = "Approved by Purchase"
 
 		doc.on_submit()
 
@@ -1109,22 +1074,6 @@ class TestControllerWorkflow(ReleaseServiceIsolatedTestCase):
 
 		validate.assert_called_once_with(doc)
 		snapshot.assert_not_called()
-
-	def test_controller_no_longer_exposes_workflow_side_effect_hooks(self) -> None:
-		from sheet_cutting_layout.sheet_cutting_layout.doctype.sheet_cutting_layout import (
-			sheet_cutting_layout,
-		)
-
-		assert not hasattr(sheet_cutting_layout.SheetCuttingLayout, "before_workflow_action")
-		assert not hasattr(sheet_cutting_layout, "_get_selected_workflow_action")
-		assert not hasattr(sheet_cutting_layout, "apply_sheet_cutting_layout_workflow")
-
-	def test_workflow_wrapper_function_is_removed(self) -> None:
-		from sheet_cutting_layout.sheet_cutting_layout.doctype.sheet_cutting_layout import (
-			sheet_cutting_layout,
-		)
-
-		assert not hasattr(sheet_cutting_layout, "apply_sheet_cutting_layout_workflow")
 
 	def test_rejected_layout_on_trash_removes_workflow_action_links(self) -> None:
 		from sheet_cutting_layout.sheet_cutting_layout.doctype.sheet_cutting_layout import (
@@ -1172,7 +1121,7 @@ class TestControllerWorkflow(ReleaseServiceIsolatedTestCase):
 
 		doc = _new_sheet_cutting_layout_doc(sheet_cutting_layout)
 		doc.name = "SCL-REJECTED"
-		doc.status = "Draft"
+		doc.workflow_status = "Draft"
 
 		doc.on_trash()
 
@@ -1234,7 +1183,7 @@ class TestControllerWorkflow(ReleaseServiceIsolatedTestCase):
 
 		doc = _new_sheet_cutting_layout_doc(sheet_cutting_layout)
 		doc.name = "SCL-RELEASED"
-		doc.status = "Released"
+		doc.workflow_status = "Released"
 
 		doc.on_trash()
 
@@ -1266,7 +1215,7 @@ class TestControllerWorkflow(ReleaseServiceIsolatedTestCase):
 		)
 
 		doc = _new_sheet_cutting_layout_doc(sheet_cutting_layout)
-		doc.status = "Superseded"
+		doc.workflow_status = "Superseded"
 		doc.generated_bom = "BOM-PART001SHR-001"
 		doc.before_cancel()
 
@@ -1309,12 +1258,12 @@ class TestControllerWorkflow(ReleaseServiceIsolatedTestCase):
 		self.start_patcher(patch.object(sheet_cutting_layout, "record_approval_snapshot"))
 
 		doc = _new_sheet_cutting_layout_doc(sheet_cutting_layout)
-		doc.status = "Superseded"
+		doc.workflow_status = "Superseded"
 		doc.generated_bom = "BOM-PART001SHR-001"
 		doc.on_cancel()
 
 		assert calls == [doc]
-		assert doc.status == "Superseded"
+		assert doc.workflow_status == "Superseded"
 
 	def test_form_cancel_lets_layout_controller_cancel_linked_bom(self) -> None:
 		content = (
@@ -1952,7 +1901,7 @@ class TestReleaseContextAndHelpers(ReleaseServiceIsolatedTestCase):
 			name="SCL-NEW",
 			project="FAM-001",
 			revision_no=2,
-			status="Approved by Purchase",
+			workflow_status="Approved by Purchase",
 			is_active=False,
 			finished_parts=[FinishedPart("PART001SHR")],
 		)
@@ -2042,7 +1991,7 @@ class TestReleaseContextAndHelpers(ReleaseServiceIsolatedTestCase):
 		calls: list[tuple[dict[str, object], bool, bool]] = []
 
 		class SubmittedLayout:
-			status = "Released"
+			workflow_status = "Released"
 			is_active = True
 			generated_bom = "BOM-PRIMARY-001"
 			twin_generated_bom = "BOM-TWIN-002"
@@ -2062,7 +2011,7 @@ class TestReleaseContextAndHelpers(ReleaseServiceIsolatedTestCase):
 			[
 				(
 					{
-						"status": "Released",
+						"workflow_status": "Released",
 						"is_active": True,
 						"generated_bom": "BOM-PRIMARY-001",
 						"twin_generated_bom": "BOM-TWIN-002",
@@ -2084,7 +2033,7 @@ class TestRevisioning(ReleaseServiceIsolatedTestCase):
 				project="FAM-001",
 				layout_code="SCL-001",
 				revision_no=2,
-				status="Released",
+				workflow_status="Released",
 				is_active=True,
 			).as_dict()
 		)
@@ -2094,7 +2043,7 @@ class TestRevisioning(ReleaseServiceIsolatedTestCase):
 		assert new_layout is not old_layout
 		assert new_layout.revision_no == 3
 		assert new_layout.layout_code == "SCL-001-R3"
-		assert new_layout.status == "Draft"
+		assert new_layout.workflow_status == "Draft"
 		assert new_layout.based_on_layout == "SCL-001"
 		assert new_layout.is_active is False
 
@@ -2106,7 +2055,7 @@ class TestRevisioning(ReleaseServiceIsolatedTestCase):
 				name="SCL-001",
 				project="FAM-001",
 				revision_no=1,
-				status="Released",
+				workflow_status="Released",
 				is_active=True,
 				approval_snapshot=["purchase-approved"],
 				generated_bom="BOM-PARENT-001-001",
@@ -2144,7 +2093,7 @@ class TestRevisioning(ReleaseServiceIsolatedTestCase):
 			name="SCL-001",
 			project="FAM-001",
 			revision_no=1,
-			status="Released",
+			workflow_status="Released",
 			is_active=True,
 			generated_bom="BOM-PART-001-OLD",
 			finished_parts=[FinishedPart("PART001SHR", generated_bom="BOM-PART-001-OLD")],
@@ -2153,7 +2102,7 @@ class TestRevisioning(ReleaseServiceIsolatedTestCase):
 			name="SCL-002",
 			project="FAM-001",
 			revision_no=2,
-			status="Approved by Purchase",
+			workflow_status="Approved by Purchase",
 			is_active=False,
 			generated_bom="BOM-PART-001-NEW",
 			finished_parts=[FinishedPart("PART001SHR", generated_bom="BOM-PART-001-NEW")],
@@ -2161,9 +2110,9 @@ class TestRevisioning(ReleaseServiceIsolatedTestCase):
 
 		finalize_new_revision_release(new_layout)
 
-		assert new_layout.status == "Released"
+		assert new_layout.workflow_status == "Released"
 		assert new_layout.is_active is True
-		assert old_layout.status == "Released"
+		assert old_layout.workflow_status == "Released"
 		assert old_layout.is_active is True
 
 	def test_release_generates_one_bom_for_single_finished_part_and_keeps_existing_boms_active(self) -> None:
@@ -2173,7 +2122,7 @@ class TestRevisioning(ReleaseServiceIsolatedTestCase):
 			name="SCL-001",
 			project="PROJECT-001",
 			revision_no=1,
-			status="Released",
+			workflow_status="Released",
 			is_active=True,
 			finished_parts=[FinishedPart("PART001SHR", generated_bom="BOM-PART001SHR-OLD")],
 		)
@@ -2181,7 +2130,7 @@ class TestRevisioning(ReleaseServiceIsolatedTestCase):
 			name="SCL-002",
 			project="PROJECT-001",
 			revision_no=2,
-			status="Approved by Purchase",
+			workflow_status="Approved by Purchase",
 			is_active=False,
 			weight_per_sheet_kg=5.0,
 			finished_parts=[
@@ -2211,7 +2160,7 @@ class TestRevisioning(ReleaseServiceIsolatedTestCase):
 		assert new_layout.generated_bom == result.generated_boms[0].name
 		assert [row.finished_part_item for row in new_layout.finished_parts] == ["PART001SHR"]
 		assert [row.bom_quantity for row in new_layout.finished_parts] == [1]
-		assert old_layout.status == "Released"
+		assert old_layout.workflow_status == "Released"
 		assert old_layout.is_active is True
 		assert old_bom.is_active is True
 		assert all(bom.is_active is True for bom in result.generated_boms)
@@ -2340,7 +2289,7 @@ class TestReleaseServiceIntegration(SheetCuttingLayoutTestCase):
 
 		self._release(layout)
 
-		self.assertEqual(layout.status, "Released")
+		self.assertEqual(layout.workflow_status, "Released")
 		self.assertTrue(layout.generated_bom)
 		bom = frappe.get_doc("BOM", layout.generated_bom)
 		self.assertEqual(bom.item, layout.finished_part_code)
@@ -2359,11 +2308,11 @@ class TestReleaseServiceIntegration(SheetCuttingLayoutTestCase):
 		layout = make_release_ready_layout()
 		# Direct submit setup mirrors the current D-1 path until D-5 aligns the
 		# user-facing workflow with native submit.
-		layout.status = "Released"
+		layout.workflow_status = "Released"
 		layout.submit()
 
 		layout.reload()
-		self.assertEqual(layout.status, "Released")
+		self.assertEqual(layout.workflow_status, "Released")
 		self.assertTrue(layout.generated_bom)
 		bom = frappe.get_doc("BOM", layout.generated_bom)
 		self.assertEqual(bom.is_active, 1)
@@ -2372,14 +2321,14 @@ class TestReleaseServiceIntegration(SheetCuttingLayoutTestCase):
 	def test_native_submit_release_persists_release_artifacts(self) -> None:
 		layout = self._release_ready_layout()
 
-		layout.status = "Released"
+		layout.workflow_status = "Released"
 		layout.submit()
 		generated_bom = layout.generated_bom
 
 		layout.reload()
 
 		self.assertEqual(
-			frappe.db.get_value("Sheet Cutting Layout", layout.name, "status"),
+			frappe.db.get_value("Sheet Cutting Layout", layout.name, "workflow_status"),
 			"Released",
 		)
 		self.assertEqual(layout.generated_bom, generated_bom)
@@ -2394,7 +2343,7 @@ class TestReleaseServiceIntegration(SheetCuttingLayoutTestCase):
 		self._release(layout)
 
 		self.assertEqual(
-			frappe.db.get_value("Sheet Cutting Layout", layout.name, "status"),
+			frappe.db.get_value("Sheet Cutting Layout", layout.name, "workflow_status"),
 			"Released",
 		)
 		self.assertEqual(
@@ -2413,7 +2362,7 @@ class TestReleaseServiceIntegration(SheetCuttingLayoutTestCase):
 		revision_name = create_sheet_cutting_layout_revision(layout.name)
 
 		revision = frappe.get_doc("Sheet Cutting Layout", revision_name)
-		self.assertEqual(revision.status, "Draft")
+		self.assertEqual(revision.workflow_status, "Draft")
 		self.assertEqual(revision.based_on_layout, layout.name)
 		self.assertEqual(revision.revision_no, layout.revision_no + 1)
 		self.assertFalse(revision.generated_bom)

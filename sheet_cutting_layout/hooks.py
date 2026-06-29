@@ -5,32 +5,6 @@ app_description = "A module for creating Sheet Cutting Layout for Press Parts"
 app_email = "connect@gurudatt.in"
 app_license = "agpl-3.0"
 
-fixtures = [
-	{
-		"dt": "Workflow State",
-		"filters": [
-			[
-				"name",
-				"in",
-				[
-					"Draft",
-					"Submitted for Check",
-					"PM Approved",
-					"Approved by Purchase",
-					"Released",
-					"Superseded",
-				],
-			]
-		],
-	},
-	{"dt": "Workflow", "filters": [["name", "=", "Sheet Cutting Layout Approval Workflow"]]},
-	{
-		"dt": "Role",
-		"filters": [["name", "in", ["Projects Manager", "MR Coordinator"]]],
-	},
-	{"dt": "Custom Field", "filters": [["dt", "=", "BOM"]]},
-]
-
 doc_events = {
 	"BOM": {
 		"before_insert": "sheet_cutting_layout.overrides.bom.validate_shearing_bom_source",
@@ -116,7 +90,7 @@ doc_events = {
 # ------------
 
 # before_install = "sheet_cutting_layout.install.before_install"
-# after_install = "sheet_cutting_layout.install.after_install"
+after_install = "sheet_cutting_layout.install.create_missing_bom_custom_fields"
 
 # Uninstallation
 # ------------

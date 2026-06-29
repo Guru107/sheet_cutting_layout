@@ -35,7 +35,7 @@ class _FakeLayoutDoc:
 
 @dataclass
 class _PreviousDoc:
-	status: str
+	workflow_status: str
 
 	def get(self, fieldname: str) -> object:
 		return getattr(self, fieldname, None)
@@ -53,11 +53,11 @@ class TestSheetCuttingLayoutController(SheetCuttingLayoutTestCase):
 		self.assertFalse(hasattr(controller.SheetCuttingLayout, "before_workflow_action"))
 		self.assertFalse(hasattr(controller, "apply_sheet_cutting_layout_workflow"))
 
-	def test_on_submit_releases_and_snapshots_when_status_released(self) -> None:
+	def test_on_submit_releases_and_snapshots_when_workflow_status_released(self) -> None:
 		doc = object.__new__(controller.SheetCuttingLayout)
 		doc.doctype = "Sheet Cutting Layout"
 		doc.name = "SCL-TEST-RELEASE"
-		doc.status = "Released"
+		doc.workflow_status = "Released"
 
 		with (
 			patch.object(controller, "release_layout") as release,
@@ -85,7 +85,7 @@ class TestSheetCuttingLayoutController(SheetCuttingLayoutTestCase):
 	def test_on_submit_does_not_snapshot_or_release_when_not_released(self) -> None:
 		doc = object.__new__(controller.SheetCuttingLayout)
 		doc.doctype = "Sheet Cutting Layout"
-		doc.status = "Approved by Purchase"
+		doc.workflow_status = "Approved by Purchase"
 
 		with (
 			patch.object(controller, "release_layout") as release,
@@ -99,19 +99,19 @@ class TestSheetCuttingLayoutController(SheetCuttingLayoutTestCase):
 	def test_before_submit_allows_mr_release_only_after_purchase_approval(self) -> None:
 		doc = object.__new__(controller.SheetCuttingLayout)
 		doc.doctype = "Sheet Cutting Layout"
-		doc.status = "Released"
-		doc._doc_before_save = _PreviousDoc(status="Approved by Purchase")
+		doc.workflow_status = "Released"
+		doc._doc_before_save = _PreviousDoc(workflow_status="Approved by Purchase")
 
 		with patch.object(controller.frappe, "throw") as throw:
 			doc.before_submit()
 
 		throw.assert_not_called()
 
-	def test_before_submit_rejects_non_release_status(self) -> None:
+	def test_before_submit_rejects_non_release_workflow_status(self) -> None:
 		doc = object.__new__(controller.SheetCuttingLayout)
 		doc.doctype = "Sheet Cutting Layout"
-		doc.status = "Approved by Purchase"
-		doc._doc_before_save = _PreviousDoc(status="Approved by Purchase")
+		doc.workflow_status = "Approved by Purchase"
+		doc._doc_before_save = _PreviousDoc(workflow_status="Approved by Purchase")
 
 		with (
 			patch.object(controller.frappe, "throw", side_effect=Exception("release required")),
@@ -123,8 +123,8 @@ class TestSheetCuttingLayoutController(SheetCuttingLayoutTestCase):
 		doc = object.__new__(controller.SheetCuttingLayout)
 		doc.doctype = "Sheet Cutting Layout"
 		doc.owner = "mr@example.com"
-		doc.status = "Released"
-		doc._doc_before_save = _PreviousDoc(status="Approved by Purchase")
+		doc.workflow_status = "Released"
+		doc._doc_before_save = _PreviousDoc(workflow_status="Approved by Purchase")
 
 		with (
 			patch.object(controller, "_get_session_user", return_value="mr@example.com"),
@@ -142,8 +142,8 @@ class TestSheetCuttingLayoutController(SheetCuttingLayoutTestCase):
 		doc = object.__new__(controller.SheetCuttingLayout)
 		doc.doctype = "Sheet Cutting Layout"
 		doc.owner = "Administrator"
-		doc.status = "Released"
-		doc._doc_before_save = _PreviousDoc(status="Approved by Purchase")
+		doc.workflow_status = "Released"
+		doc._doc_before_save = _PreviousDoc(workflow_status="Approved by Purchase")
 
 		with (
 			patch.object(controller, "_get_session_user", return_value="Administrator"),
@@ -159,8 +159,8 @@ class TestSheetCuttingLayoutController(SheetCuttingLayoutTestCase):
 		doc = object.__new__(controller.SheetCuttingLayout)
 		doc.doctype = "Sheet Cutting Layout"
 		doc.owner = "owner@example.com"
-		doc.status = "Released"
-		doc._doc_before_save = _PreviousDoc(status="Approved by Purchase")
+		doc.workflow_status = "Released"
+		doc._doc_before_save = _PreviousDoc(workflow_status="Approved by Purchase")
 
 		with (
 			patch.object(controller, "_get_session_user", return_value="mr@example.com"),
@@ -176,8 +176,8 @@ class TestSheetCuttingLayoutController(SheetCuttingLayoutTestCase):
 		doc = object.__new__(controller.SheetCuttingLayout)
 		doc.doctype = "Sheet Cutting Layout"
 		doc.owner = "mr@example.com"
-		doc.status = "Released"
-		doc._doc_before_save = _PreviousDoc(status="Approved by Purchase")
+		doc.workflow_status = "Released"
+		doc._doc_before_save = _PreviousDoc(workflow_status="Approved by Purchase")
 
 		with (
 			patch.object(controller, "_get_session_user", return_value="mr@example.com"),
@@ -191,8 +191,8 @@ class TestSheetCuttingLayoutController(SheetCuttingLayoutTestCase):
 	def test_before_submit_rejects_direct_release_without_purchase_approval(self) -> None:
 		doc = object.__new__(controller.SheetCuttingLayout)
 		doc.doctype = "Sheet Cutting Layout"
-		doc.status = "Released"
-		doc._doc_before_save = _PreviousDoc(status="Draft")
+		doc.workflow_status = "Released"
+		doc._doc_before_save = _PreviousDoc(workflow_status="Draft")
 
 		with (
 			patch.object(controller.frappe, "throw", side_effect=Exception("MR Release requires approval")),
@@ -203,7 +203,7 @@ class TestSheetCuttingLayoutController(SheetCuttingLayoutTestCase):
 	def test_before_submit_rejects_release_without_previous_status(self) -> None:
 		doc = object.__new__(controller.SheetCuttingLayout)
 		doc.doctype = "Sheet Cutting Layout"
-		doc.status = "Released"
+		doc.workflow_status = "Released"
 
 		with (
 			patch.object(controller.frappe, "throw", side_effect=Exception("MR Release requires approval")),
@@ -215,7 +215,7 @@ class TestSheetCuttingLayoutController(SheetCuttingLayoutTestCase):
 		doc = object.__new__(controller.SheetCuttingLayout)
 		doc.doctype = "Sheet Cutting Layout"
 		doc.name = "SCL-TEST-SUPERSEDE"
-		doc.status = "Superseded"
+		doc.workflow_status = "Superseded"
 
 		with (
 			patch.object(controller, "_insert_approval_snapshot_row") as snapshot,
@@ -242,7 +242,7 @@ class TestSheetCuttingLayoutController(SheetCuttingLayoutTestCase):
 		doc = object.__new__(controller.SheetCuttingLayout)
 		doc.doctype = "Sheet Cutting Layout"
 		doc.owner = "mr@example.com"
-		doc.status = "Superseded"
+		doc.workflow_status = "Superseded"
 
 		with (
 			patch.object(controller, "_get_session_user", return_value="mr@example.com"),
@@ -258,10 +258,10 @@ class TestSheetCuttingLayoutController(SheetCuttingLayoutTestCase):
 		allows_self.assert_called_once_with(doc, action="Supersede")
 		snapshot.assert_not_called()
 
-	def test_before_cancel_rejects_direct_cancel_without_supersede_state(self) -> None:
+	def test_before_cancel_rejects_direct_cancel_without_supersede_workflow_state(self) -> None:
 		doc = object.__new__(controller.SheetCuttingLayout)
 		doc.doctype = "Sheet Cutting Layout"
-		doc.status = "Released"
+		doc.workflow_status = "Released"
 
 		with (
 			patch.object(controller.frappe, "throw", side_effect=Exception("Supersede required")),
@@ -296,11 +296,90 @@ class TestSheetCuttingLayoutController(SheetCuttingLayoutTestCase):
 		retire.assert_called_once_with(doc)
 		snapshot.assert_not_called()
 
+	def test_before_submit_allows_native_submit_when_workflow_disabled(self) -> None:
+		doc = object.__new__(controller.SheetCuttingLayout)
+		doc.doctype = "Sheet Cutting Layout"
+		doc.workflow_status = "Draft"
+
+		with (
+			patch.object(controller, "_has_active_workflow", return_value=False, create=True),
+			patch.object(controller.frappe, "throw") as throw,
+		):
+			doc.before_submit()
+
+		throw.assert_not_called()
+
+	def test_on_submit_releases_without_snapshot_when_workflow_disabled(self) -> None:
+		doc = object.__new__(controller.SheetCuttingLayout)
+		doc.doctype = "Sheet Cutting Layout"
+		doc.name = "SCL-TEST-NATIVE-SUBMIT"
+		doc.workflow_status = "Draft"
+
+		with (
+			patch.object(controller, "_has_active_workflow", return_value=False, create=True),
+			patch.object(
+				controller,
+				"release_layout",
+				side_effect=lambda layout: setattr(layout, "workflow_status", "Released"),
+			) as release,
+			patch.object(controller, "_insert_approval_snapshot_row") as snapshot,
+		):
+			doc.on_submit()
+
+		self.assertEqual(doc.workflow_status, "Released")
+		release.assert_called_once_with(doc)
+		snapshot.assert_not_called()
+
+	def test_before_cancel_allows_native_cancel_when_workflow_disabled(self) -> None:
+		doc = object.__new__(controller.SheetCuttingLayout)
+		doc.doctype = "Sheet Cutting Layout"
+		doc.workflow_status = "Draft"
+
+		with (
+			patch.object(controller, "_has_active_workflow", return_value=False, create=True),
+			patch.object(controller, "_insert_approval_snapshot_row") as snapshot,
+			patch.object(controller.frappe, "throw") as throw,
+		):
+			doc.before_cancel()
+
+		self.assertEqual(doc.ignore_linked_doctypes, ["BOM", "Sheet Cutting Layout"])
+		throw.assert_not_called()
+		snapshot.assert_not_called()
+
+	def test_on_cancel_retires_and_supersedes_when_workflow_disabled(self) -> None:
+		doc = object.__new__(controller.SheetCuttingLayout)
+		doc.doctype = "Sheet Cutting Layout"
+		doc.workflow_status = "Released"
+
+		with (
+			patch.object(controller, "_has_active_workflow", return_value=False, create=True),
+			patch.object(controller, "retire_layout") as retire,
+		):
+			doc.on_cancel()
+
+		self.assertEqual(doc.workflow_status, "Superseded")
+		retire.assert_called_once_with(doc)
+
+	def test_on_update_skips_snapshot_when_workflow_disabled(self) -> None:
+		doc = object.__new__(controller.SheetCuttingLayout)
+		doc.doctype = "Sheet Cutting Layout"
+		doc.name = "SCL-TEST-NATIVE-UPDATE"
+		doc.workflow_status = "Submitted for Check"
+		doc._doc_before_save = _PreviousDoc(workflow_status="Draft")
+
+		with (
+			patch.object(controller, "_has_active_workflow", return_value=False, create=True),
+			patch.object(controller, "_insert_approval_snapshot_row") as snapshot,
+		):
+			doc.on_update()
+
+		snapshot.assert_not_called()
+
 	def test_on_trash_keeps_rejected_layout_without_workflow_actions(self) -> None:
 		doc = object.__new__(controller.SheetCuttingLayout)
 		doc.doctype = "Sheet Cutting Layout"
 		doc.name = "SCL-TEST-REJECTED"
-		doc.status = "Draft"
+		doc.workflow_status = "Draft"
 
 		with (
 			patch.object(controller.frappe.db, "get_all", return_value=[]) as get_all,
@@ -406,30 +485,69 @@ class TestSheetCuttingLayoutController(SheetCuttingLayoutTestCase):
 	def test_mr_release_generates_native_bom_with_test_uom_items(self) -> None:
 		layout = make_release_ready_layout()
 
-		layout.status = "Released"
+		layout.workflow_status = "Released"
 		layout.on_submit()
 
-		self.assertEqual(layout.status, "Released")
+		self.assertEqual(layout.workflow_status, "Released")
 		self.assertTrue(layout.generated_bom)
 
 	def test_native_submit_persists_release_artifacts_after_reload(self) -> None:
 		layout = make_release_ready_layout()
 
 		# D-1 moves side effects to native on_submit, while D-5 will align the
-		# workflow fixture so user-facing MR Release reaches this status naturally.
-		layout.status = "Released"
+		# workflow fixture so user-facing MR Release reaches this workflow state naturally.
+		layout.workflow_status = "Released"
 		layout.submit()
 		generated_bom = layout.generated_bom
 
 		layout.reload()
 
-		self.assertEqual(layout.status, "Released")
+		self.assertEqual(layout.workflow_status, "Released")
 		self.assertEqual(layout.generated_bom, generated_bom)
 		self.assertEqual(len(layout.finished_parts), 1)
 		self.assertEqual(layout.finished_parts[0].generated_bom, generated_bom)
 		self.assertEqual(len(layout.approval_snapshot), 1)
 		self.assertEqual(layout.approval_snapshot[0].step_name, "MR Approval")
 		self.assertEqual(layout.approval_snapshot[0].decision, "Approved")
+
+	def test_native_submit_cancel_without_active_workflow_skips_approval_snapshots(self) -> None:
+		workflow_name = "Sheet Cutting Layout Approval Workflow"
+		original_is_active = frappe.db.get_value("Workflow", workflow_name, "is_active")
+
+		try:
+			frappe.db.set_value("Workflow", workflow_name, "is_active", 0, update_modified=False)
+			_clear_sheet_cutting_layout_workflow_cache()
+
+			layout = make_layout(
+				finished_part_code=f"SCLTESTFG{frappe.generate_hash(length=5).upper()}SHR",
+				parts_per_strip=1,
+				no_of_strips=1,
+				strip_length_mm=2500,
+			).insert()
+
+			self.assertEqual(layout.docstatus, 0)
+
+			layout.submit()
+			layout.reload()
+			self.assertEqual(layout.docstatus, 1)
+			self.assertEqual(layout.workflow_status, "Released")
+			self.assertFalse(layout.approval_snapshot)
+			self.assertTrue(layout.generated_bom)
+			generated_bom = layout.generated_bom
+			self.assertEqual(frappe.db.get_value("BOM", generated_bom, "is_active"), 1)
+
+			layout.cancel()
+			layout.reload()
+			self.assertEqual(layout.docstatus, 2)
+			self.assertEqual(layout.workflow_status, "Superseded")
+			self.assertIn(frappe.db.get_value("BOM", generated_bom, "docstatus"), (1, 2))
+			self.assertEqual(frappe.db.get_value("BOM", generated_bom, "is_active"), 0)
+			self.assertFalse(layout.approval_snapshot)
+		finally:
+			frappe.db.set_value(
+				"Workflow", workflow_name, "is_active", original_is_active, update_modified=False
+			)
+			_clear_sheet_cutting_layout_workflow_cache()
 
 	def test_reject_returns_layout_to_draft_and_records_snapshot(self) -> None:
 		from frappe.model.workflow import apply_workflow
@@ -455,12 +573,12 @@ class TestSheetCuttingLayoutController(SheetCuttingLayoutTestCase):
 
 				for action in actions:
 					layout = apply_workflow(layout, action)
-				self.assertEqual(layout.status, rejected_state)
+				self.assertEqual(layout.workflow_status, rejected_state)
 
 				layout = apply_workflow(layout, "Reject")
 				layout.reload()
 
-				self.assertEqual(layout.status, "Draft")
+				self.assertEqual(layout.workflow_status, "Draft")
 				self.assertEqual(layout.docstatus, 0)
 				self.assertIn(
 					("Rejection", "Rejected"),
@@ -471,14 +589,14 @@ class TestSheetCuttingLayoutController(SheetCuttingLayoutTestCase):
 				layout = apply_workflow(layout, "Submit for Check")
 				layout.reload()
 
-				self.assertEqual(layout.status, "Submitted for Check")
+				self.assertEqual(layout.workflow_status, "Submitted for Check")
 
 	def test_native_cancel_persists_supersession_snapshot_after_reload(self) -> None:
 		layout = make_release_ready_layout()
-		layout.status = "Released"
+		layout.workflow_status = "Released"
 		layout.submit()
 
-		layout.status = "Superseded"
+		layout.workflow_status = "Superseded"
 		layout.cancel()
 		layout.reload()
 
@@ -489,12 +607,12 @@ class TestSheetCuttingLayoutController(SheetCuttingLayoutTestCase):
 		import frappe
 
 		layout = make_release_ready_layout()
-		layout.status = "Released"
+		layout.workflow_status = "Released"
 		layout.submit()
 		bom_name = layout.generated_bom
 		self.assertEqual(frappe.db.get_value("BOM", bom_name, "is_active"), 1)
 
-		layout.status = "Superseded"
+		layout.workflow_status = "Superseded"
 		layout.cancel()
 
 		self.assertEqual(frappe.db.get_value("BOM", bom_name, "is_active"), 0)
@@ -505,7 +623,7 @@ class TestSheetCuttingLayoutController(SheetCuttingLayoutTestCase):
 		from frappe.model.workflow import apply_workflow
 
 		layout = make_release_ready_layout()
-		layout.status = "Released"
+		layout.workflow_status = "Released"
 		layout.submit()
 		bom_name = layout.generated_bom
 		self.assertTrue(bom_name)
@@ -514,7 +632,7 @@ class TestSheetCuttingLayoutController(SheetCuttingLayoutTestCase):
 		apply_workflow(layout, "Supersede")
 
 		layout.reload()
-		self.assertEqual(layout.status, "Superseded")
+		self.assertEqual(layout.workflow_status, "Superseded")
 		self.assertEqual(frappe.db.get_value("Sheet Cutting Layout", layout.name, "docstatus"), 2)
 		self.assertEqual(frappe.db.get_value("BOM", bom_name, "is_active"), 0)
 
@@ -526,3 +644,9 @@ class TestSheetCuttingLayoutController(SheetCuttingLayoutTestCase):
 		self.assertNotIn("Cancel", state_names)
 		superseded = next(state for state in workflow.states if state.state == "Superseded")
 		self.assertEqual(int(superseded.doc_status), 2)
+
+
+def _clear_sheet_cutting_layout_workflow_cache() -> None:
+	frappe.cache.hdel("workflow", "Sheet Cutting Layout")
+	frappe.clear_cache(doctype="Sheet Cutting Layout")
+	frappe.clear_cache(doctype="Workflow")

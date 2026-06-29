@@ -34,12 +34,12 @@ from sheet_cutting_layout.services.workflow import (
 	record_approval_snapshot,
 )
 
-_DRAFT_STATUS_SNAPSHOT_ACTIONS = {
+_DRAFT_WORKFLOW_STATUS_SNAPSHOT_ACTIONS = {
 	"Submitted for Check": SUBMIT_FOR_CHECK_ACTION,
 	"PM Approved": PROJECT_MANAGER_APPROVAL_ACTION,
 	"Approved by Purchase": PURCHASE_APPROVAL_ACTION,
 }
-_REJECTABLE_STATUSES = frozenset(
+_REJECTABLE_WORKFLOW_STATUSES = frozenset(
 	{
 		"Submitted for Check",
 		"PM Approved",
@@ -58,17 +58,24 @@ class SheetCuttingLayout(Document):
 		validate_sheet_cutting_layout(self)
 
 	def on_update(self) -> None:
+		if not _has_active_workflow():
+			return
 		_record_draft_workflow_snapshot(self)
 
 	def before_submit(self) -> None:
-		if getattr(self, "status", None) != "Released":
+		if not _has_active_workflow():
+			return
+		if getattr(self, "workflow_status", None) != "Released":
 			frappe.throw(_("Sheet Cutting Layout can be submitted only through MR Release"))
-		if _previous_status(self) != "Approved by Purchase":
-			frappe.throw(_("MR Release requires Approved by Purchase status"))
+		if _previous_workflow_status(self) != "Approved by Purchase":
+			frappe.throw(_("MR Release requires Approved by Purchase workflow state"))
 		_validate_workflow_approval_access(self, action=MR_RELEASE_ACTION)
 
 	def on_submit(self) -> None:
-		if getattr(self, "status", None) != "Released":
+		if not _has_active_workflow():
+			release_layout(self)
+			return
+		if getattr(self, "workflow_status", None) != "Released":
 			return
 
 		_record_workflow_snapshot(self, action=MR_RELEASE_ACTION)
@@ -76,12 +83,20 @@ class SheetCuttingLayout(Document):
 
 	def before_cancel(self) -> None:
 		self.ignore_linked_doctypes = ["BOM", "Sheet Cutting Layout"]
-		if getattr(self, "status", None) != "Superseded":
+		if not _has_active_workflow():
+			return
+		if getattr(self, "workflow_status", None) != "Superseded":
 			frappe.throw(_("Sheet Cutting Layout can be cancelled only through Supersede"))
 		_validate_workflow_approval_access(self, action=SUPERSEDE_ACTION)
 		_record_workflow_snapshot(self, action=SUPERSEDE_ACTION)
 
 	def on_cancel(self) -> None:
+		if not _has_active_workflow():
+			self.workflow_status = "Superseded"
+			if getattr(self, "name", None):
+				self.db_set("workflow_status", "Superseded", update_modified=False)
+			retire_layout(self)
+			return
 		retire_layout(self)
 
 	def on_trash(self) -> None:
@@ -98,8 +113,8 @@ def _clear_copied_release_artifacts(doc: object) -> None:
 		doc.finished_parts = []
 	if hasattr(doc, "approval_snapshot"):
 		doc.approval_snapshot = []
-	if hasattr(doc, "status"):
-		doc.status = "Draft"
+	if hasattr(doc, "workflow_status"):
+		doc.workflow_status = "Draft"
 	if hasattr(doc, "is_active"):
 		doc.is_active = False
 
@@ -134,9 +149,12 @@ def _record_workflow_snapshot(doc: object, *, action: str) -> None:
 
 
 def _record_draft_workflow_snapshot(doc: object) -> None:
-	status = getattr(doc, "status", None)
-	previous_status = _previous_status(doc)
-	action = _draft_workflow_snapshot_action(status=status, previous_status=previous_status)
+	workflow_status = getattr(doc, "workflow_status", None)
+	previous_workflow_status = _previous_workflow_status(doc)
+	action = _draft_workflow_snapshot_action(
+		workflow_status=workflow_status,
+		previous_workflow_status=previous_workflow_status,
+	)
 	if not action:
 		return
 
@@ -151,12 +169,14 @@ def _record_draft_workflow_snapshot(doc: object) -> None:
 	_insert_approval_snapshot_row(doc, row=row)
 
 
-def _draft_workflow_snapshot_action(*, status: object, previous_status: object) -> str | None:
-	if previous_status in {None, status}:
+def _draft_workflow_snapshot_action(
+	*, workflow_status: object, previous_workflow_status: object
+) -> str | None:
+	if previous_workflow_status in {None, workflow_status}:
 		return None
-	if status == "Draft" and previous_status in _REJECTABLE_STATUSES:
+	if workflow_status == "Draft" and previous_workflow_status in _REJECTABLE_WORKFLOW_STATUSES:
 		return REJECT_ACTION
-	return _DRAFT_STATUS_SNAPSHOT_ACTIONS.get(status)
+	return _DRAFT_WORKFLOW_STATUS_SNAPSHOT_ACTIONS.get(workflow_status)
 
 
 def _insert_approval_snapshot_row(doc: object, *, row: dict[str, object]) -> None:
@@ -214,7 +234,7 @@ def _next_approval_snapshot_idx(parent: str) -> int:
 	return int(rows[0].idx or 0) + 1
 
 
-def _previous_status(doc: object) -> object:
+def _previous_workflow_status(doc: object) -> object:
 	previous = getattr(doc, "_doc_before_save", None)
 	if previous is None:
 		get_doc_before_save = getattr(doc, "get_doc_before_save", None)
@@ -222,8 +242,17 @@ def _previous_status(doc: object) -> object:
 			previous = get_doc_before_save()
 	get = getattr(previous, "get", None)
 	if callable(get):
-		return get("status")
+		return get("workflow_status")
 	return None
+
+
+def _has_active_workflow() -> bool:
+	return bool(
+		frappe.db.exists(
+			"Workflow",
+			{"document_type": "Sheet Cutting Layout", "is_active": 1},
+		)
+	)
 
 
 def _validate_workflow_approval_access(doc: object, *, action: str) -> None:
