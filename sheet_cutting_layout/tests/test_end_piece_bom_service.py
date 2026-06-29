@@ -719,6 +719,47 @@ class TestEndPieceBomService(SheetCuttingLayoutTestCase):
 			],
 		)
 
+	def test_generation_uses_secondary_items_when_bom_has_no_scrap_table(self) -> None:
+		existing_code = "FG01SHR-EP-2x100x200"
+		fake_frappe = self._install_fakes(existing_items={existing_code})
+		layout = Layout(
+			end_pieces=[
+				EndPiece(
+					weight_kg=12.0,
+					strip_weight_kg=12.0,
+					bom_quantity=3,
+					bom_scrap_quantity_kg=2.25,
+					scrap_item="EP-SCRAP",
+				)
+			],
+		)
+		new_doc = fake_frappe.new_doc
+
+		def new_doc_without_scrap_items(doctype: str) -> FakeDoc:
+			doc = new_doc(doctype)
+			if doctype == "BOM":
+				delattr(doc, "scrap_items")
+				doc.secondary_items = []
+			return doc
+
+		with patch.object(fake_frappe, "new_doc", side_effect=new_doc_without_scrap_items):
+			self.service.generate_end_piece_boms(layout)
+
+		bom = self._created_doc(fake_frappe, "BOM")
+		self.assertEqual(
+			bom.secondary_items,
+			[
+				{
+					"type": "Scrap",
+					"item_code": "EP-SCRAP",
+					"qty": 2.25,
+					"stock_qty": 2.25,
+					"uom": "Kg",
+					"stock_uom": "Kg",
+				}
+			],
+		)
+
 	def test_generation_validates_pending_rows_with_row_numbered_messages(self) -> None:
 		self._install_fakes()
 		cases = [
