@@ -23,7 +23,7 @@ from sheet_cutting_layout.services.versioning import finalize_new_revision_relea
 
 _ = frappe._
 
-LayoutReleaseStatus = Literal["Approved by Purchase", "Released"]
+LayoutWorkflowStatus = Literal["Approved by Purchase", "Released"]
 
 
 class EndPieceRow(Protocol):
@@ -48,7 +48,7 @@ class FinishedPartRow(Protocol):
 class ReleaseLayoutDocument(Protocol):
 	name: str
 	project: str
-	status: LayoutReleaseStatus
+	workflow_status: LayoutWorkflowStatus
 	raw_material_item: str
 	process_scrap_item: str
 	no_of_strips: int
@@ -76,7 +76,7 @@ class BomRecord(Protocol):
 
 @dataclass
 class ReleaseResult:
-	status: LayoutReleaseStatus
+	status: LayoutWorkflowStatus
 	generated_boms: list[BomDocument] = field(default_factory=list)
 
 
@@ -129,18 +129,18 @@ def release_layout(
 		boms.extend(generated_boms)
 
 	_activate_boms(generated_boms)
-	layout.status = "Released"
+	layout.workflow_status = "Released"
 	if layouts:
 		finalize_new_revision_release(layout)  # type: ignore[arg-type]
 	_sync_finished_part_reference_rows(layout, generated_boms, _parent_finished_part_rows(layout))
 	if layouts:
 		# Always persist the in-memory layout being released. The release context
 		# contains a re-fetched copy of the same record; saving that copy instead
-		# would write the pre-release status back and lose generated_bom.
+		# would write the pre-release workflow state back and lose generated_bom.
 		_save_layout_records((layout,))
 	_save_bom_records(generated_boms)
 
-	return ReleaseResult(status=layout.status, generated_boms=generated_boms)
+	return ReleaseResult(status=layout.workflow_status, generated_boms=generated_boms)
 
 
 def retire_layout(layout: object) -> None:
@@ -456,7 +456,7 @@ def _save_submitted_layout_record(layout: object) -> None:
 	state_values = _supported_field_values(
 		layout,
 		{
-			"status": getattr(layout, "status", None),
+			"workflow_status": getattr(layout, "workflow_status", None),
 			"is_active": getattr(layout, "is_active", None),
 			"generated_bom": getattr(layout, "generated_bom", None),
 			"twin_generated_bom": getattr(layout, "twin_generated_bom", None),

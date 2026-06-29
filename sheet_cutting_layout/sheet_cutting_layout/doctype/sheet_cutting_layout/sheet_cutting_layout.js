@@ -480,7 +480,7 @@ frappe.provide("sheet_cutting_layout");
 		if (!hasReusableEndPieces || frm.is_new() || !hasWritePermission(frm)) {
 			return;
 		}
-		if (frm.doc.status === "Released" && frm.doc.end_piece_bom_status === "Pending") {
+		if (frm.doc.workflow_status === "Released" && frm.doc.end_piece_bom_status === "Pending") {
 			frm.add_custom_button(__("Generate End Piece BOMs"), () => generateEndPieceBoms(frm));
 		}
 	}
@@ -520,7 +520,7 @@ frappe.provide("sheet_cutting_layout");
 			updateOrientationDescription(frm);
 			addEndPieceBomButtons(frm);
 			addDownloadLayoutButton(frm);
-			if (!frm.is_new() && ["Released", "Superseded"].includes(frm.doc.status)) {
+			if (!frm.is_new() && frm.doc.workflow_status === "Released") {
 				frm.add_custom_button(__("New Version"), () => {
 					frappe.call({
 						method: "sheet_cutting_layout.sheet_cutting_layout.doctype.sheet_cutting_layout.sheet_cutting_layout.create_sheet_cutting_layout_revision",

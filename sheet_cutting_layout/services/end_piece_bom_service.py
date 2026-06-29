@@ -37,7 +37,7 @@ class EndPieceRow(Protocol):
 
 class LayoutDocument(Protocol):
 	name: str
-	status: str | None
+	workflow_status: str | None
 	company: str | None
 	finished_part_code: str | None
 	raw_material_item: str | None
@@ -48,7 +48,7 @@ class LayoutDocument(Protocol):
 
 
 def generate_end_piece_boms(layout: LayoutDocument) -> dict[str, list[str]]:
-	if getattr(layout, "status", None) != "Released":
+	if getattr(layout, "workflow_status", None) != "Released":
 		_throw(_("End-piece BOMs can be generated only after release"))
 
 	generated_items: list[str] = []

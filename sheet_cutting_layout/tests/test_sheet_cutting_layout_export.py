@@ -62,7 +62,7 @@ class TestSheetCuttingLayoutExport(SheetCuttingLayoutTestCase):
 			"layout_code": layout_code,
 			"project": project,
 			"revision_no": 1,
-			"status": "Draft",
+			"workflow_status": "Draft",
 			"raw_material_item": raw_material,
 			"process_scrap_item": scrap,
 			"sheet_thickness_mm": 2.0,

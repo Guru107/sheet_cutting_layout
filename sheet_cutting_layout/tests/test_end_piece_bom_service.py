@@ -41,7 +41,7 @@ class EndPiece:
 class Layout:
 	name: str = "SCL-001"
 	doctype: str = "Sheet Cutting Layout"
-	status: str = "Released"
+	workflow_status: str = "Released"
 	company: str | None = "Test Company"
 	finished_part_code: str | None = "FG01SHR"
 	raw_material_item: str = "RAW-001"
@@ -312,7 +312,7 @@ class TestEndPieceBomService(SheetCuttingLayoutTestCase):
 
 	def test_generation_requires_released_layout(self) -> None:
 		self._install_fakes()
-		layout = Layout(status="Draft", end_pieces=[EndPiece()])
+		layout = Layout(workflow_status="Draft", end_pieces=[EndPiece()])
 
 		with self.assertRaisesRegex(ValueError, "only after release"):
 			self.service.generate_end_piece_boms(layout)

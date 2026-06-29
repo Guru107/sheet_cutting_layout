@@ -96,7 +96,7 @@ def make_layout(
 		"strip_length_mm": 260,
 		"parts_per_strip": 2,
 		"no_of_strips": 1,
-		"status": "Draft",
+		"workflow_status": "Draft",
 		"finished_part_code": finished_part_code,
 		"net_weight_per_part_kg": net_weight_per_part_kg,
 		"generated_bom": generated_bom,
@@ -109,7 +109,7 @@ def make_layout(
 
 def make_release_ready_layout(*, finished_part_code: str | None = None, **overrides: object):
 	"""Insert a registered layout and put it in the release-gate state
-	(status Approved by Purchase, net weight equal to gross)."""
+	(workflow status Approved by Purchase, net weight equal to gross)."""
 	if finished_part_code is None:
 		suffix = frappe.generate_hash(length=5).upper()
 		finished_part_code = f"{ITEM_CODE_PREFIX}FG{suffix}SHR"
@@ -121,7 +121,7 @@ def make_release_ready_layout(*, finished_part_code: str | None = None, **overri
 		**overrides,
 	)
 	layout.insert()
-	layout.db_set("status", "Approved by Purchase", update_modified=False)
+	layout.db_set("workflow_status", "Approved by Purchase", update_modified=False)
 	# Persist the release-gate weight too, so re-fetching the record by name also
 	# yields a release-ready document (db_set keeps the in-memory value in sync).
 	layout.db_set(

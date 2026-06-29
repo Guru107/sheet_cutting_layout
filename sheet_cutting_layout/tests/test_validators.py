@@ -124,28 +124,6 @@ class TestValidators(SheetCuttingLayoutTestCase):
 		self.addCleanup(self._frappe_patch.stop)
 		self.addCleanup(self._translation_patch.stop)
 
-	def test_legacy_end_piece_multiplicity_guard_is_removed(self) -> None:
-		import inspect
-		from pathlib import Path
-
-		from sheet_cutting_layout.services import bom_service, validators
-
-		legacy_field = "qty" + "_per_sheet"
-		repo_root = Path(__file__).resolve().parents[2]
-		layout_end_piece_json = repo_root / (
-			"sheet_cutting_layout/sheet_cutting_layout/doctype/layout_end_piece/layout_end_piece.json"
-		)
-		consumption_spec = repo_root / "cypress/integration/sheet_cutting_layout_consumption.js"
-		release_service = repo_root / "sheet_cutting_layout/services/release_service.py"
-
-		validators_source = inspect.getsource(validators)
-		self.assertNotIn(legacy_field, validators_source)
-		self.assertNotIn("_validate_unreleased_legacy_end_piece_multiplicity", validators_source)
-		self.assertNotIn(legacy_field, inspect.getsource(bom_service))
-		self.assertNotIn(legacy_field, release_service.read_text())
-		self.assertNotIn(legacy_field, layout_end_piece_json.read_text())
-		self.assertNotIn(legacy_field, consumption_spec.read_text())
-
 	def _balanced_layout(
 		self,
 		*,

@@ -138,7 +138,7 @@ class RevisionVersioningStateMachine(RuleBasedStateMachine):
 					"project": self.project,
 					"layout_code": "SCL-STATEFUL-001-R1",
 					"revision_no": 1,
-					"status": "Released",
+					"workflow_status": "Released",
 					"is_active": True,
 					"approval_snapshot": [],
 					"finished_part_code": "PART-001SHR",
@@ -165,7 +165,7 @@ class RevisionVersioningStateMachine(RuleBasedStateMachine):
 		self.next_layout_id += 1
 		self.layouts.append(new_layout)
 
-		assert new_layout.status == "Draft"
+		assert new_layout.workflow_status == "Draft"
 		assert new_layout.is_active is False
 		assert new_layout.based_on_layout == active_layout.name
 		assert new_layout.revision_no == active_layout.revision_no + 1
@@ -176,22 +176,22 @@ class RevisionVersioningStateMachine(RuleBasedStateMachine):
 
 		finalize_new_revision_release(new_layout)
 
-		assert new_layout.status == "Released"
+		assert new_layout.workflow_status == "Released"
 		assert new_layout.is_active is True
-		assert active_layout.status == "Released"
+		assert active_layout.workflow_status == "Released"
 		assert active_layout.is_active is True
 
 	@invariant()
 	def every_active_layout_in_family_is_released(self) -> None:
 		for layout in self.layouts:
 			if layout.project == self.project and layout.is_active:
-				assert layout.status == "Released"
+				assert layout.workflow_status == "Released"
 
 	def _active_released_layouts(self) -> list[object]:
 		return [
 			layout
 			for layout in self.layouts
-			if layout.project == self.project and layout.status == "Released" and layout.is_active
+			if layout.project == self.project and layout.workflow_status == "Released" and layout.is_active
 		]
 
 

@@ -85,11 +85,11 @@ class TestLhRhReleaseIntegration(SheetCuttingLayoutTestCase):
 			twin_finished_part=twin_item,
 		)
 
-		layout.status = "Released"
+		layout.workflow_status = "Released"
 		layout.submit()
 		layout.reload()
 
-		self.assertEqual(layout.status, "Released")
+		self.assertEqual(layout.workflow_status, "Released")
 		self.assertEqual(len(layout.finished_parts), 2)
 		self.assertEqual([row.orientation for row in layout.finished_parts], ["LH", "RH"])
 		self.assertEqual(layout.finished_parts[1].finished_part_item, twin_item)
@@ -103,17 +103,17 @@ class TestLhRhReleaseIntegration(SheetCuttingLayoutTestCase):
 
 		apply_workflow(layout, "Supersede")
 		layout.reload()
-		self.assertEqual(layout.status, "Superseded")
+		self.assertEqual(layout.workflow_status, "Superseded")
 		for bom_name in bom_names:
 			self.assertEqual(frappe.db.get_value("BOM", bom_name, "is_active"), 0)
 
 	def test_non_lh_rh_release_leaves_twin_generated_bom_empty(self) -> None:
 		layout = make_release_ready_layout()
 
-		layout.status = "Released"
+		layout.workflow_status = "Released"
 		layout.submit()
 		layout.reload()
 
-		self.assertEqual(layout.status, "Released")
+		self.assertEqual(layout.workflow_status, "Released")
 		self.assertTrue(layout.generated_bom)
 		self.assertFalse(layout.twin_generated_bom)
