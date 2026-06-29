@@ -14,7 +14,7 @@ from sheet_cutting_layout.tests.factories import ensure_item, make_layout, make_
 
 class TestSheetCuttingLayoutSmoke(SheetCuttingLayoutTestCase):
 	def _native_release(self, layout):
-		layout.status = "Released"
+		layout.workflow_status = "Released"
 		layout.submit()
 		layout.reload()
 		return layout
@@ -48,7 +48,7 @@ class TestSheetCuttingLayoutSmoke(SheetCuttingLayoutTestCase):
 		layout = self._workflow_release(layout)
 		bom_name = layout.generated_bom
 
-		self.assertEqual(layout.status, "Released")
+		self.assertEqual(layout.workflow_status, "Released")
 		self.assertTrue(bom_name)
 		self.assertEqual(len(layout.finished_parts), 1)
 		self.assertIn("MR Approval", [row.step_name for row in layout.approval_snapshot])
@@ -61,13 +61,13 @@ class TestSheetCuttingLayoutSmoke(SheetCuttingLayoutTestCase):
 		self.assertEqual(frappe.response["filecontent"][:2], b"PK")
 
 		revision = frappe.get_doc("Sheet Cutting Layout", create_sheet_cutting_layout_revision(layout.name))
-		self.assertEqual(revision.status, "Draft")
+		self.assertEqual(revision.workflow_status, "Draft")
 		self.assertEqual(revision.based_on_layout, layout.name)
 		self.assertFalse(revision.generated_bom)
 
 		apply_workflow(layout, "Supersede")
 		layout.reload()
-		self.assertEqual(layout.status, "Superseded")
+		self.assertEqual(layout.workflow_status, "Superseded")
 		self.assertEqual(frappe.db.get_value("BOM", bom_name, "is_active"), 0)
 
 	def test_reuse_end_piece_generation_smoke(self) -> None:
@@ -95,7 +95,7 @@ class TestSheetCuttingLayoutSmoke(SheetCuttingLayoutTestCase):
 				}
 			],
 		).insert()
-		layout.db_set("status", "Approved by Purchase", update_modified=False)
+		layout.db_set("workflow_status", "Approved by Purchase", update_modified=False)
 		layout.reload()
 		self._native_release(layout)
 
@@ -129,11 +129,11 @@ class TestSheetCuttingLayoutSmoke(SheetCuttingLayoutTestCase):
 		).insert()
 
 		layout = apply_workflow(layout, "Submit for Check")
-		self.assertEqual(layout.status, "Submitted for Check")
+		self.assertEqual(layout.workflow_status, "Submitted for Check")
 
 		layout = apply_workflow(layout, "Reject")
 		layout.reload()
-		self.assertEqual(layout.status, "Draft")
+		self.assertEqual(layout.workflow_status, "Draft")
 		self.assertEqual(layout.docstatus, 0)
 		self.assertIn(
 			("Rejection", "Rejected"),

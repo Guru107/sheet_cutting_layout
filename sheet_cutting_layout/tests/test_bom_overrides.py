@@ -49,4 +49,4 @@ class TestBomOverrides(SheetCuttingLayoutTestCase):
 		with patch.object(frappe.db, "get_value", return_value="Superseded") as get_value:
 			validate_shearing_bom_source(_bom("Shearing", "SCL-001"), "before_cancel")
 
-		get_value.assert_called_once_with("Sheet Cutting Layout", "SCL-001", "status")
+		get_value.assert_called_once_with("Sheet Cutting Layout", "SCL-001", "workflow_status")
