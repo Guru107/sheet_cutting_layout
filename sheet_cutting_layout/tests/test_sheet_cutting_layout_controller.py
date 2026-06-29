@@ -309,11 +309,11 @@ class TestSheetCuttingLayoutController(SheetCuttingLayoutTestCase):
 
 		throw.assert_not_called()
 
-	def test_on_submit_skips_snapshot_and_release_when_workflow_disabled(self) -> None:
+	def test_on_submit_releases_without_snapshot_when_workflow_disabled(self) -> None:
 		doc = object.__new__(controller.SheetCuttingLayout)
 		doc.doctype = "Sheet Cutting Layout"
 		doc.name = "SCL-TEST-NATIVE-SUBMIT"
-		doc.workflow_status = "Released"
+		doc.workflow_status = "Draft"
 
 		with (
 			patch.object(controller, "_has_active_workflow", return_value=False, create=True),
@@ -322,7 +322,8 @@ class TestSheetCuttingLayoutController(SheetCuttingLayoutTestCase):
 		):
 			doc.on_submit()
 
-		release.assert_not_called()
+		self.assertEqual(doc.workflow_status, "Released")
+		release.assert_called_once_with(doc)
 		snapshot.assert_not_called()
 
 	def test_before_cancel_allows_native_cancel_when_workflow_disabled(self) -> None:
@@ -341,9 +342,10 @@ class TestSheetCuttingLayoutController(SheetCuttingLayoutTestCase):
 		throw.assert_not_called()
 		snapshot.assert_not_called()
 
-	def test_on_cancel_skips_retire_when_workflow_disabled(self) -> None:
+	def test_on_cancel_retires_and_supersedes_when_workflow_disabled(self) -> None:
 		doc = object.__new__(controller.SheetCuttingLayout)
 		doc.doctype = "Sheet Cutting Layout"
+		doc.workflow_status = "Released"
 
 		with (
 			patch.object(controller, "_has_active_workflow", return_value=False, create=True),
@@ -351,7 +353,8 @@ class TestSheetCuttingLayoutController(SheetCuttingLayoutTestCase):
 		):
 			doc.on_cancel()
 
-		retire.assert_not_called()
+		self.assertEqual(doc.workflow_status, "Superseded")
+		retire.assert_called_once_with(doc)
 
 	def test_on_update_skips_snapshot_when_workflow_disabled(self) -> None:
 		doc = object.__new__(controller.SheetCuttingLayout)
@@ -523,12 +526,18 @@ class TestSheetCuttingLayoutController(SheetCuttingLayoutTestCase):
 			layout.submit()
 			layout.reload()
 			self.assertEqual(layout.docstatus, 1)
+			self.assertEqual(layout.workflow_status, "Released")
 			self.assertFalse(layout.approval_snapshot)
-			self.assertFalse(layout.generated_bom)
+			self.assertTrue(layout.generated_bom)
+			generated_bom = layout.generated_bom
+			self.assertEqual(frappe.db.get_value("BOM", generated_bom, "is_active"), 1)
 
 			layout.cancel()
 			layout.reload()
 			self.assertEqual(layout.docstatus, 2)
+			self.assertEqual(layout.workflow_status, "Superseded")
+			self.assertIn(frappe.db.get_value("BOM", generated_bom, "docstatus"), (1, 2))
+			self.assertEqual(frappe.db.get_value("BOM", generated_bom, "is_active"), 0)
 			self.assertFalse(layout.approval_snapshot)
 		finally:
 			frappe.db.set_value(
