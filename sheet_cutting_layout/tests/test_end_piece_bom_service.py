@@ -485,12 +485,13 @@ class TestEndPieceBomService(SheetCuttingLayoutTestCase):
 		with patch(
 			"erpnext.manufacturing.doctype.bom.bom.get_valuation_rate",
 			return_value=82.75,
-		):
+		) as get_valuation_rate:
 			self.service.generate_end_piece_boms(layout)
 
 		item = fake_frappe.created_docs[0]
 		self.assertEqual(item.item_code, "FG01SHR-EP-2x100x200")
 		self.assertEqual(item.valuation_rate, 82.75)
+		get_valuation_rate.assert_called_once_with({"item_code": "RAW-001", "company": "Test Company"})
 
 	def test_created_end_piece_item_has_single_stock_and_alternate_uom_rows(self) -> None:
 		from sheet_cutting_layout.services.end_piece_item_service import ensure_end_piece_item
@@ -545,7 +546,7 @@ class TestEndPieceBomService(SheetCuttingLayoutTestCase):
 		with patch(
 			"erpnext.manufacturing.doctype.bom.bom.get_valuation_rate",
 			return_value=82.75,
-		):
+		) as get_valuation_rate:
 			item_code = self.item_service.ensure_end_piece_item(Layout(), EndPiece())
 
 		self.assertEqual(item_code, existing_code)
@@ -553,6 +554,7 @@ class TestEndPieceBomService(SheetCuttingLayoutTestCase):
 		self.assertEqual(repaired_item.name, existing_code)
 		self.assertEqual(repaired_item.valuation_rate, 82.75)
 		self.assertEqual(repaired_item.save_calls, [{"ignore_permissions": True}])
+		get_valuation_rate.assert_called_once_with({"item_code": "RAW-001", "company": "Test Company"})
 
 	def test_existing_generated_item_missing_alt_uom_is_repaired(self) -> None:
 		existing_code = "FG01SHR-EP-2x100x200"
@@ -782,7 +784,7 @@ class TestEndPieceBomService(SheetCuttingLayoutTestCase):
 		def new_doc_without_scrap_items(doctype: str) -> FakeDoc:
 			doc = new_doc(doctype)
 			if doctype == "BOM":
-				delattr(doc, "scrap_items")
+				doc.meta = SimpleNamespace(has_field=lambda fieldname: fieldname != "scrap_items")
 				doc.secondary_items = []
 			return doc
 
