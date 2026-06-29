@@ -105,19 +105,29 @@ def _create_end_piece_bom(layout: LayoutDocument, row: EndPieceRow, item_code: s
 		)
 
 	for scrap_row in weight_rows.scrap_items:
-		bom.append(
-			"scrap_items",
-			{
-				"item_code": scrap_row.item_code,
-				"qty": scrap_row.qty,
-				"stock_qty": scrap_row.qty,
-				"uom": scrap_row.uom,
-			},
-		)
+		scrap_item = {
+			"item_code": scrap_row.item_code,
+			"qty": scrap_row.qty,
+			"stock_qty": scrap_row.qty,
+			"uom": scrap_row.uom,
+		}
+		if _has_bom_table(bom, "scrap_items"):
+			bom.append("scrap_items", scrap_item)
+		else:
+			scrap_item.update({"type": "Scrap", "stock_uom": scrap_row.uom})
+			bom.append("secondary_items", scrap_item)
 
 	bom.insert(ignore_permissions=True)
 	bom.submit()
 	return bom.name
+
+
+def _has_bom_table(bom: object, fieldname: str) -> bool:
+	meta = getattr(bom, "meta", None)
+	has_field = getattr(meta, "has_field", None)
+	if callable(has_field):
+		return bool(has_field(fieldname))
+	return hasattr(bom, fieldname)
 
 
 def _validate_pending_row(layout: LayoutDocument, row: EndPieceRow) -> None:
