@@ -317,7 +317,11 @@ class TestSheetCuttingLayoutController(SheetCuttingLayoutTestCase):
 
 		with (
 			patch.object(controller, "_has_active_workflow", return_value=False, create=True),
-			patch.object(controller, "release_layout") as release,
+			patch.object(
+				controller,
+				"release_layout",
+				side_effect=lambda layout: setattr(layout, "workflow_status", "Released"),
+			) as release,
 			patch.object(controller, "_insert_approval_snapshot_row") as snapshot,
 		):
 			doc.on_submit()

@@ -73,7 +73,6 @@ class SheetCuttingLayout(Document):
 
 	def on_submit(self) -> None:
 		if not _has_active_workflow():
-			self.workflow_status = "Released"
 			release_layout(self)
 			return
 		if getattr(self, "workflow_status", None) != "Released":
