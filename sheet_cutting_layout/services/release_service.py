@@ -6,6 +6,11 @@ from typing import Literal, Protocol
 
 import frappe
 
+from sheet_cutting_layout.services.alternative_item import (
+	ensure_item_allows_alternatives,
+	set_allow_alternative_item_if_supported,
+	with_bom_item_allow_alternative_item,
+)
 from sheet_cutting_layout.services.bom_service import (
 	BomDocument,
 	BomItemRow,
@@ -269,14 +274,20 @@ def _insert_frappe_bom(bom: BomDocument) -> BomDocument:
 	bom_doc.sheet_cutting_layout = bom.sheet_cutting_layout or getattr(
 		getattr(bom, "_layout", None), "name", None
 	)
+	set_allow_alternative_item_if_supported(bom_doc)
 	for row in bom.items:
+		ensure_item_allows_alternatives(row.item_code)
 		bom_doc.append(
 			"items",
-			{
-				"item_code": row.item_code,
-				"qty": row.qty,
-				"uom": row.uom,
-			},
+			with_bom_item_allow_alternative_item(
+				bom_doc,
+				"items",
+				{
+					"item_code": row.item_code,
+					"qty": row.qty,
+					"uom": row.uom,
+				},
+			),
 		)
 	for row in bom.scrap_items:
 		_append_frappe_bom_scrap_row(bom_doc, row)
