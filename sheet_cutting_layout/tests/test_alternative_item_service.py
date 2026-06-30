@@ -115,6 +115,27 @@ class TestAlternativeItemService(SheetCuttingLayoutTestCase):
 			("Item", "RM-001", "allow_alternative_item", 1, {}),
 		]
 
+	def test_ensure_item_allows_alternatives_skips_when_item_schema_does_not_support_field(self) -> None:
+		from sheet_cutting_layout.services import alternative_item
+
+		db = SimpleNamespace(set_value_calls=[])
+
+		def set_value(*args: object, **kwargs: object) -> None:
+			db.set_value_calls.append((args, kwargs))
+
+		db.set_value = set_value
+		fake_frappe = SimpleNamespace(
+			db=db,
+			get_meta=lambda doctype: self._meta(set())
+			if doctype == "Item"
+			else self._meta({"allow_alternative_item"}),
+		)
+
+		with patch.object(alternative_item, "frappe", fake_frappe):
+			assert alternative_item.ensure_item_allows_alternatives("RM-001") is False
+
+		assert db.set_value_calls == []
+
 	def test_ensure_item_allows_alternatives_skips_blank_item_code(self) -> None:
 		from sheet_cutting_layout.services import alternative_item
 
