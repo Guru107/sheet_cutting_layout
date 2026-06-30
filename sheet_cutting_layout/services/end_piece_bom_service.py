@@ -6,6 +6,11 @@ from typing import Protocol
 import frappe
 
 from sheet_cutting_layout.services import validators
+from sheet_cutting_layout.services.alternative_item import (
+	ensure_item_allows_alternatives,
+	set_allow_alternative_item_if_supported,
+	with_bom_item_allow_alternative_item,
+)
 from sheet_cutting_layout.services.bom_service import build_weight_split_bom_rows
 from sheet_cutting_layout.services.end_piece_item_service import (
 	ensure_end_piece_item,
@@ -86,6 +91,7 @@ def _create_end_piece_bom(layout: LayoutDocument, row: EndPieceRow, item_code: s
 	bom.quantity = getattr(row, "bom_quantity", None)
 	bom.custom_operation = "Shearing"
 	bom.sheet_cutting_layout = getattr(layout, "name", None)
+	set_allow_alternative_item_if_supported(bom)
 
 	weight_rows = build_weight_split_bom_rows(
 		raw_material_item=item_code,
@@ -95,13 +101,18 @@ def _create_end_piece_bom(layout: LayoutDocument, row: EndPieceRow, item_code: s
 		scrap_row_type="process_scrap",
 	)
 	for item_row in weight_rows.items:
+		ensure_item_allows_alternatives(item_row.item_code)
 		bom.append(
 			"items",
-			{
-				"item_code": item_row.item_code,
-				"qty": item_row.qty,
-				"uom": item_row.uom,
-			},
+			with_bom_item_allow_alternative_item(
+				bom,
+				"items",
+				{
+					"item_code": item_row.item_code,
+					"qty": item_row.qty,
+					"uom": item_row.uom,
+				},
+			),
 		)
 
 	for scrap_row in weight_rows.scrap_items:
