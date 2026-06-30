@@ -118,8 +118,15 @@ class TestAlternativeItemService(SheetCuttingLayoutTestCase):
 	def test_ensure_item_allows_alternatives_skips_blank_item_code(self) -> None:
 		from sheet_cutting_layout.services import alternative_item
 
-		db = SimpleNamespace(set_value=lambda *args, **kwargs: None)
+		db = SimpleNamespace(set_value_calls=[])
+
+		def set_value(*args: object, **kwargs: object) -> None:
+			db.set_value_calls.append((args, kwargs))
+
+		db.set_value = set_value
 		fake_frappe = SimpleNamespace(db=db, get_meta=lambda _doctype: self._meta({"allow_alternative_item"}))
 
 		with patch.object(alternative_item, "frappe", fake_frappe):
 			assert alternative_item.ensure_item_allows_alternatives("  ") is False
+
+		assert db.set_value_calls == []
