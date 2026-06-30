@@ -28,8 +28,8 @@ class TestAlternativeItemService(SheetCuttingLayoutTestCase):
 
 		doc = SimpleNamespace(doctype="BOM", meta=self._meta({"allow_alternative_item"}))
 
-		assert set_allow_alternative_item_if_supported(doc) is True
-		assert doc.allow_alternative_item == 1
+		self.assertTrue(set_allow_alternative_item_if_supported(doc))
+		self.assertEqual(doc.allow_alternative_item, 1)
 
 	def test_set_allow_alternative_item_if_supported_skips_missing_field(self) -> None:
 		from sheet_cutting_layout.services.alternative_item import (
@@ -38,8 +38,8 @@ class TestAlternativeItemService(SheetCuttingLayoutTestCase):
 
 		doc = SimpleNamespace(doctype="BOM", meta=self._meta(set()))
 
-		assert set_allow_alternative_item_if_supported(doc) is False
-		assert not hasattr(doc, "allow_alternative_item")
+		self.assertFalse(set_allow_alternative_item_if_supported(doc))
+		self.assertFalse(hasattr(doc, "allow_alternative_item"))
 
 	def test_bom_item_values_adds_flag_when_child_schema_supports_field(self) -> None:
 		from sheet_cutting_layout.services import alternative_item
@@ -61,12 +61,15 @@ class TestAlternativeItemService(SheetCuttingLayoutTestCase):
 				{"item_code": "RM-001", "qty": 1, "uom": "Kg"},
 			)
 
-		assert values == {
-			"item_code": "RM-001",
-			"qty": 1,
-			"uom": "Kg",
-			"allow_alternative_item": 1,
-		}
+		self.assertEqual(
+			values,
+			{
+				"item_code": "RM-001",
+				"qty": 1,
+				"uom": "Kg",
+				"allow_alternative_item": 1,
+			},
+		)
 
 	def test_bom_item_values_skips_flag_when_child_schema_does_not_support_field(self) -> None:
 		from sheet_cutting_layout.services import alternative_item
@@ -84,7 +87,7 @@ class TestAlternativeItemService(SheetCuttingLayoutTestCase):
 				{"item_code": "RM-001", "qty": 1, "uom": "Kg"},
 			)
 
-		assert values == {"item_code": "RM-001", "qty": 1, "uom": "Kg"}
+		self.assertEqual(values, {"item_code": "RM-001", "qty": 1, "uom": "Kg"})
 
 	def test_ensure_item_allows_alternatives_updates_item_when_schema_supports_field(self) -> None:
 		from sheet_cutting_layout.services import alternative_item
@@ -109,11 +112,12 @@ class TestAlternativeItemService(SheetCuttingLayoutTestCase):
 		)
 
 		with patch.object(alternative_item, "frappe", fake_frappe):
-			assert alternative_item.ensure_item_allows_alternatives(" RM-001 ") is True
+			self.assertTrue(alternative_item.ensure_item_allows_alternatives(" RM-001 "))
 
-		assert db.set_value_calls == [
-			("Item", "RM-001", "allow_alternative_item", 1, {}),
-		]
+		self.assertEqual(
+			db.set_value_calls,
+			[("Item", "RM-001", "allow_alternative_item", 1, {})],
+		)
 
 	def test_ensure_item_allows_alternatives_skips_when_item_schema_does_not_support_field(self) -> None:
 		from sheet_cutting_layout.services import alternative_item
@@ -132,9 +136,9 @@ class TestAlternativeItemService(SheetCuttingLayoutTestCase):
 		)
 
 		with patch.object(alternative_item, "frappe", fake_frappe):
-			assert alternative_item.ensure_item_allows_alternatives("RM-001") is False
+			self.assertFalse(alternative_item.ensure_item_allows_alternatives("RM-001"))
 
-		assert db.set_value_calls == []
+		self.assertEqual(db.set_value_calls, [])
 
 	def test_ensure_item_allows_alternatives_skips_blank_item_code(self) -> None:
 		from sheet_cutting_layout.services import alternative_item
@@ -148,6 +152,6 @@ class TestAlternativeItemService(SheetCuttingLayoutTestCase):
 		fake_frappe = SimpleNamespace(db=db, get_meta=lambda _doctype: self._meta({"allow_alternative_item"}))
 
 		with patch.object(alternative_item, "frappe", fake_frappe):
-			assert alternative_item.ensure_item_allows_alternatives("  ") is False
+			self.assertFalse(alternative_item.ensure_item_allows_alternatives("  "))
 
-		assert db.set_value_calls == []
+		self.assertEqual(db.set_value_calls, [])
