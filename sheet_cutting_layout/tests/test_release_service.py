@@ -1808,9 +1808,7 @@ class TestFrappeBomInsertAndEndPieces(ReleaseServiceIsolatedTestCase):
 		set_value_calls: list[tuple[str, str, str, object, dict[str, object]]] = []
 
 		def item_meta() -> object:
-			return SimpleNamespace(
-				has_field=lambda fieldname: fieldname == "allow_alternative_item"
-			)
+			return SimpleNamespace(has_field=lambda fieldname: fieldname == "allow_alternative_item")
 
 		class FrappeBom:
 			def __init__(self) -> None:
