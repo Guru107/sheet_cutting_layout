@@ -4,6 +4,8 @@ from typing import Protocol
 
 import frappe
 
+from sheet_cutting_layout.services.alternative_item import set_allow_alternative_item_if_supported
+
 _ = frappe._
 
 
@@ -134,6 +136,7 @@ def ensure_end_piece_item(
 	item.stock_uom = "Kg"
 	item.is_stock_item = 1
 	item.disabled = 0
+	set_allow_alternative_item_if_supported(item)
 	_append_app_created_item_uoms(item, stock_uom=item.stock_uom, weight_kg=weight_kg)
 	try:
 		# System-generated Item downstream of a write-permission-checked layout action.

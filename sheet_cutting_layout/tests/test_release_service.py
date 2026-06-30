@@ -1501,6 +1501,188 @@ class TestFrappeBomInsertAndEndPieces(ReleaseServiceIsolatedTestCase):
 
 		assert inserted.name == "BOM-PART001SHR"
 
+	def test_frappe_bom_insert_allows_alternatives_on_header_raw_row_and_item_master(self) -> None:
+		from sheet_cutting_layout.services import alternative_item, release_service
+		from sheet_cutting_layout.services.bom_service import BomDocument, BomItemRow
+
+		created_boms: list[object] = []
+		set_value_calls: list[tuple[str, str, str, object, dict[str, object]]] = []
+
+		def meta(fields: set[str], *, table_options: dict[str, str] | None = None) -> object:
+			table_options = table_options or {}
+
+			def get_field(fieldname: str) -> object | None:
+				child_doctype = table_options.get(fieldname)
+				if child_doctype is None:
+					return None
+				return SimpleNamespace(options=child_doctype)
+
+			return SimpleNamespace(
+				has_field=lambda fieldname: fieldname in fields,
+				get_field=get_field,
+			)
+
+		class FrappeBom:
+			def __init__(self) -> None:
+				self.doctype = "BOM"
+				self.name = ""
+				self.items: list[dict[str, object]] = []
+				self.meta = meta(
+					{"allow_alternative_item", "items"},
+					table_options={"items": "BOM Item"},
+				)
+
+			def append(self, fieldname: str, row: dict[str, object]) -> None:
+				getattr(self, fieldname).append(row)
+
+			def insert(self) -> None:
+				self.name = self.name or "BOM-PERSISTED"
+				created_boms.append(self)
+
+			def submit(self) -> None:
+				self.docstatus = 1
+
+		class FakeDB:
+			@staticmethod
+			def set_value(
+				doctype: str,
+				name: str,
+				fieldname: str,
+				value: object,
+				**kwargs: object,
+			) -> None:
+				set_value_calls.append((doctype, name, fieldname, value, kwargs))
+
+		class FrappeStub:
+			db = FakeDB()
+
+			@staticmethod
+			def new_doc(doctype: str) -> FrappeBom:
+				assert doctype == "BOM"
+				return FrappeBom()
+
+			@staticmethod
+			def get_meta(doctype: str) -> object:
+				if doctype in {"Item", "BOM Item"}:
+					return meta({"allow_alternative_item"})
+				return meta(set())
+
+			@staticmethod
+			def throw(message: str) -> None:
+				raise ValueError(message)
+
+		bom = BomDocument(item="PART001SHR", name="BOM-PART001SHR")
+		bom._layout = type("LayoutWithCompany", (), {"company": "Test Company", "name": "SCL-001"})()
+		bom.items.append(BomItemRow(item_code="RMSHEET001", qty=39.3, row_type="raw_material"))
+		self.start_patcher(patch.object(release_service, "frappe", FrappeStub))
+		self.start_patcher(patch.object(alternative_item, "frappe", FrappeStub))
+
+		release_service._insert_frappe_bom(bom)
+
+		self.assertEqual(created_boms[0].allow_alternative_item, 1)
+		self.assertEqual(
+			created_boms[0].items,
+			[
+				{
+					"item_code": "RMSHEET001",
+					"qty": 39.3,
+					"uom": "Kg",
+					"allow_alternative_item": 1,
+				}
+			],
+		)
+		self.assertEqual(
+			set_value_calls,
+			[("Item", "RMSHEET001", "allow_alternative_item", 1, {})],
+		)
+
+	def test_frappe_bom_insert_skips_raw_row_flag_when_bom_item_schema_lacks_field(self) -> None:
+		from sheet_cutting_layout.services import alternative_item, release_service
+		from sheet_cutting_layout.services.bom_service import BomDocument, BomItemRow
+
+		created_boms: list[object] = []
+		set_value_calls: list[tuple[str, str, str, object, dict[str, object]]] = []
+
+		def meta(fields: set[str], *, table_options: dict[str, str] | None = None) -> object:
+			table_options = table_options or {}
+
+			def get_field(fieldname: str) -> object | None:
+				child_doctype = table_options.get(fieldname)
+				if child_doctype is None:
+					return None
+				return SimpleNamespace(options=child_doctype)
+
+			return SimpleNamespace(
+				has_field=lambda fieldname: fieldname in fields,
+				get_field=get_field,
+			)
+
+		class FrappeBom:
+			def __init__(self) -> None:
+				self.doctype = "BOM"
+				self.name = ""
+				self.items: list[dict[str, object]] = []
+				self.meta = meta(
+					{"allow_alternative_item", "items"},
+					table_options={"items": "BOM Item"},
+				)
+
+			def append(self, fieldname: str, row: dict[str, object]) -> None:
+				getattr(self, fieldname).append(row)
+
+			def insert(self) -> None:
+				self.name = self.name or "BOM-PERSISTED"
+				created_boms.append(self)
+
+			def submit(self) -> None:
+				self.docstatus = 1
+
+		class FakeDB:
+			@staticmethod
+			def set_value(
+				doctype: str,
+				name: str,
+				fieldname: str,
+				value: object,
+				**kwargs: object,
+			) -> None:
+				set_value_calls.append((doctype, name, fieldname, value, kwargs))
+
+		class FrappeStub:
+			db = FakeDB()
+
+			@staticmethod
+			def new_doc(doctype: str) -> FrappeBom:
+				assert doctype == "BOM"
+				return FrappeBom()
+
+			@staticmethod
+			def get_meta(doctype: str) -> object:
+				if doctype == "Item":
+					return meta({"allow_alternative_item"})
+				if doctype == "BOM Item":
+					return meta(set())
+				return meta(set())
+
+			@staticmethod
+			def throw(message: str) -> None:
+				raise ValueError(message)
+
+		bom = BomDocument(item="PART001SHR", name="BOM-PART001SHR")
+		bom._layout = type("LayoutWithCompany", (), {"company": "Test Company", "name": "SCL-001"})()
+		bom.items.append(BomItemRow(item_code="RMSHEET001", qty=39.3, row_type="raw_material"))
+		self.start_patcher(patch.object(release_service, "frappe", FrappeStub))
+		self.start_patcher(patch.object(alternative_item, "frappe", FrappeStub))
+
+		release_service._insert_frappe_bom(bom)
+
+		self.assertEqual(
+			set_value_calls,
+			[("Item", "RMSHEET001", "allow_alternative_item", 1, {})],
+		)
+		self.assertEqual(created_boms[0].allow_alternative_item, 1)
+		self.assertNotIn("allow_alternative_item", created_boms[0].items[0])
+
 	def test_frappe_bom_insert_appends_scrap_without_rate_resolution(self) -> None:
 		from sheet_cutting_layout.services import release_service
 		from sheet_cutting_layout.services.bom_service import BomDocument, BomItemRow
@@ -1620,9 +1802,13 @@ class TestFrappeBomInsertAndEndPieces(ReleaseServiceIsolatedTestCase):
 		)
 
 	def test_default_release_creates_reuse_end_piece_byproduct_row(self) -> None:
-		from sheet_cutting_layout.services import release_service
+		from sheet_cutting_layout.services import alternative_item, release_service
 
 		created_boms: list[object] = []
+		set_value_calls: list[tuple[str, str, str, object, dict[str, object]]] = []
+
+		def item_meta() -> object:
+			return SimpleNamespace(has_field=lambda fieldname: fieldname == "allow_alternative_item")
 
 		class FrappeBom:
 			def __init__(self) -> None:
@@ -1642,10 +1828,26 @@ class TestFrappeBomInsertAndEndPieces(ReleaseServiceIsolatedTestCase):
 				self.docstatus = 1
 
 		class FrappeStub:
+			class db:
+				@staticmethod
+				def set_value(
+					doctype: str,
+					name: str,
+					fieldname: str,
+					value: object,
+					**kwargs: object,
+				) -> None:
+					set_value_calls.append((doctype, name, fieldname, value, kwargs))
+
 			@staticmethod
 			def new_doc(doctype: str) -> FrappeBom:
 				assert doctype == "BOM"
 				return FrappeBom()
+
+			@staticmethod
+			def get_meta(doctype: str) -> object:
+				assert doctype == "Item"
+				return item_meta()
 
 			@staticmethod
 			def throw(message: str) -> None:
@@ -1678,6 +1880,7 @@ class TestFrappeBomInsertAndEndPieces(ReleaseServiceIsolatedTestCase):
 			return f"{source_finished_part}-EP-1.6x1250x179"
 
 		self.start_patcher(patch.object(release_service, "frappe", FrappeStub))
+		self.start_patcher(patch.object(alternative_item, "frappe", FrappeStub))
 		self.start_patcher(patch.object(release_service, "ensure_end_piece_item", fake_ensure))
 
 		result = release_service.release_layout(
@@ -1703,6 +1906,10 @@ class TestFrappeBomInsertAndEndPieces(ReleaseServiceIsolatedTestCase):
 		]
 		assert round(layout.finished_parts[0].scrap_weight_kg, 6) == 14.233142
 		assert layout.finished_parts[0].raw_material_weight_kg == 39.3
+		assert set_value_calls == [
+			("Item", "RMSHEET001", "allow_alternative_item", 1, {}),
+			("Item", "FG01SHR-EP-1.6x1250x179", "allow_alternative_item", 1, {}),
+		]
 
 	def test_default_release_persists_generated_end_piece_item_code_on_saved_layout(self) -> None:
 		from sheet_cutting_layout.services import release_service
