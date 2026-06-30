@@ -40,6 +40,13 @@ instead of failing generation.
 
 ## Testing
 
+Before adding or changing tests, verify the live v15 and v16 schemas for `Item`, `BOM`, and `BOM Item`:
+
+- Confirm the header field name for `Item` and `BOM`.
+- Confirm the child-row field name for `BOM Item`.
+- Confirm whether row dictionaries or document metadata expose those fields differently between versions.
+- Base the helper and tests on the verified schema, not on assumed field names.
+
 Add focused tests to assert:
 
 - Generated end-piece Items have `allow_alternative_item = 1`.
