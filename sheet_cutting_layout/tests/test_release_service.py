@@ -1601,6 +1601,7 @@ class TestFrappeBomInsertAndEndPieces(ReleaseServiceIsolatedTestCase):
 		from sheet_cutting_layout.services.bom_service import BomDocument, BomItemRow
 
 		created_boms: list[object] = []
+		set_value_calls: list[tuple[str, str, str, object, dict[str, object]]] = []
 
 		def meta(fields: set[str], *, table_options: dict[str, str] | None = None) -> object:
 			table_options = table_options or {}
@@ -1645,13 +1646,7 @@ class TestFrappeBomInsertAndEndPieces(ReleaseServiceIsolatedTestCase):
 				value: object,
 				**kwargs: object,
 			) -> None:
-				assert (doctype, name, fieldname, value, kwargs) == (
-					"Item",
-					"RMSHEET001",
-					"allow_alternative_item",
-					1,
-					{},
-				)
+				set_value_calls.append((doctype, name, fieldname, value, kwargs))
 
 		class FrappeStub:
 			db = FakeDB()
@@ -1681,6 +1676,10 @@ class TestFrappeBomInsertAndEndPieces(ReleaseServiceIsolatedTestCase):
 
 		release_service._insert_frappe_bom(bom)
 
+		self.assertEqual(
+			set_value_calls,
+			[("Item", "RMSHEET001", "allow_alternative_item", 1, {})],
+		)
 		self.assertEqual(created_boms[0].allow_alternative_item, 1)
 		self.assertNotIn("allow_alternative_item", created_boms[0].items[0])
 
