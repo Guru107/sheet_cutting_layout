@@ -290,6 +290,8 @@ def _insert_frappe_bom(bom: BomDocument) -> BomDocument:
 			),
 		)
 	for row in bom.scrap_items:
+		if row.row_type == "end_piece_byproduct":
+			ensure_item_allows_alternatives(row.item_code)
 		_append_frappe_bom_scrap_row(bom_doc, row)
 	bom_doc.insert()
 	bom_doc.submit()

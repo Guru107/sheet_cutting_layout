@@ -1802,9 +1802,15 @@ class TestFrappeBomInsertAndEndPieces(ReleaseServiceIsolatedTestCase):
 		)
 
 	def test_default_release_creates_reuse_end_piece_byproduct_row(self) -> None:
-		from sheet_cutting_layout.services import release_service
+		from sheet_cutting_layout.services import alternative_item, release_service
 
 		created_boms: list[object] = []
+		set_value_calls: list[tuple[str, str, str, object, dict[str, object]]] = []
+
+		def item_meta() -> object:
+			return SimpleNamespace(
+				has_field=lambda fieldname: fieldname == "allow_alternative_item"
+			)
 
 		class FrappeBom:
 			def __init__(self) -> None:
@@ -1824,10 +1830,26 @@ class TestFrappeBomInsertAndEndPieces(ReleaseServiceIsolatedTestCase):
 				self.docstatus = 1
 
 		class FrappeStub:
+			class db:
+				@staticmethod
+				def set_value(
+					doctype: str,
+					name: str,
+					fieldname: str,
+					value: object,
+					**kwargs: object,
+				) -> None:
+					set_value_calls.append((doctype, name, fieldname, value, kwargs))
+
 			@staticmethod
 			def new_doc(doctype: str) -> FrappeBom:
 				assert doctype == "BOM"
 				return FrappeBom()
+
+			@staticmethod
+			def get_meta(doctype: str) -> object:
+				assert doctype == "Item"
+				return item_meta()
 
 			@staticmethod
 			def throw(message: str) -> None:
@@ -1860,6 +1882,7 @@ class TestFrappeBomInsertAndEndPieces(ReleaseServiceIsolatedTestCase):
 			return f"{source_finished_part}-EP-1.6x1250x179"
 
 		self.start_patcher(patch.object(release_service, "frappe", FrappeStub))
+		self.start_patcher(patch.object(alternative_item, "frappe", FrappeStub))
 		self.start_patcher(patch.object(release_service, "ensure_end_piece_item", fake_ensure))
 
 		result = release_service.release_layout(
@@ -1885,6 +1908,10 @@ class TestFrappeBomInsertAndEndPieces(ReleaseServiceIsolatedTestCase):
 		]
 		assert round(layout.finished_parts[0].scrap_weight_kg, 6) == 14.233142
 		assert layout.finished_parts[0].raw_material_weight_kg == 39.3
+		assert set_value_calls == [
+			("Item", "RMSHEET001", "allow_alternative_item", 1, {}),
+			("Item", "FG01SHR-EP-1.6x1250x179", "allow_alternative_item", 1, {}),
+		]
 
 	def test_default_release_persists_generated_end_piece_item_code_on_saved_layout(self) -> None:
 		from sheet_cutting_layout.services import release_service
