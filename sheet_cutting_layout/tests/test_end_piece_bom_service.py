@@ -226,6 +226,7 @@ class TestEndPieceBomService(SheetCuttingLayoutTestCase):
 		super().setUp()
 		self.service = importlib.import_module("sheet_cutting_layout.services.end_piece_bom_service")
 		self.item_service = importlib.import_module("sheet_cutting_layout.services.end_piece_item_service")
+		self.alternative_item = importlib.import_module("sheet_cutting_layout.services.alternative_item")
 
 	def _created_doc(self, fake_frappe: FakeFrappe, doctype: str) -> FakeDoc:
 		return next(doc for doc in fake_frappe.created_docs if doc.doctype == doctype)
@@ -248,14 +249,21 @@ class TestEndPieceBomService(SheetCuttingLayoutTestCase):
 		self.translation_patch = patch.object(self.service, "_", lambda message: message)
 		self.item_frappe_patch = patch.object(self.item_service, "frappe", fake_frappe)
 		self.item_translation_patch = patch.object(self.item_service, "_", lambda message: message)
+		self.alternative_item_frappe_patch = patch.object(
+			self.alternative_item,
+			"frappe",
+			fake_frappe,
+		)
 		self.frappe_patch.start()
 		self.translation_patch.start()
 		self.item_frappe_patch.start()
 		self.item_translation_patch.start()
+		self.alternative_item_frappe_patch.start()
 		self.addCleanup(self.frappe_patch.stop)
 		self.addCleanup(self.translation_patch.stop)
 		self.addCleanup(self.item_frappe_patch.stop)
 		self.addCleanup(self.item_translation_patch.stop)
+		self.addCleanup(self.alternative_item_frappe_patch.stop)
 		return fake_frappe
 
 	def test_get_value_returns_none_for_missing_name_without_query(self) -> None:
@@ -383,6 +391,10 @@ class TestEndPieceBomService(SheetCuttingLayoutTestCase):
 			],
 		)
 		self.assertEqual(bom.scrap_items, [])
+		self.assertIn(
+			("Item", existing_code, "allow_alternative_item", 1, {}),
+			fake_frappe.db.set_value_calls,
+		)
 
 	def test_generated_end_piece_bom_uses_strip_weight_as_raw_material_qty(self) -> None:
 		existing_code = "FG01SHR-EP-2x100x200"
@@ -864,16 +876,6 @@ class TestEndPieceBomService(SheetCuttingLayoutTestCase):
 		existing_code = "FG01SHR-EP-2x100x200"
 		fake_frappe = self._install_fakes(existing_items={existing_code})
 		layout = Layout(end_pieces=[EndPiece()])
-		new_doc = fake_frappe.new_doc
-
-		def new_doc_without_bom_item_flag(doctype: str) -> FakeDoc:
-			doc = new_doc(doctype)
-			if doctype == "BOM":
-				doc.meta = _meta(
-					{"allow_alternative_item", "items", "scrap_items"},
-					table_options={"items": "BOM Item", "scrap_items": "BOM Scrap Item"},
-				)
-			return doc
 
 		def get_meta_without_bom_item_flag(doctype: str) -> object:
 			if doctype == "BOM Item":
@@ -882,10 +884,7 @@ class TestEndPieceBomService(SheetCuttingLayoutTestCase):
 				return _meta({"allow_alternative_item"})
 			return _meta(set())
 
-		with (
-			patch.object(fake_frappe, "new_doc", side_effect=new_doc_without_bom_item_flag),
-			patch.object(fake_frappe, "get_meta", side_effect=get_meta_without_bom_item_flag),
-		):
+		with patch.object(fake_frappe, "get_meta", side_effect=get_meta_without_bom_item_flag):
 			self.service.generate_end_piece_boms(layout)
 
 		bom = self._created_doc(fake_frappe, "BOM")
