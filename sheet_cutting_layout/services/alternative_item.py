@@ -47,7 +47,7 @@ def _field_is_supported(doc: object, fieldname: str) -> bool:
 	if doctype is not None:
 		return _doctype_field_is_supported(doctype, fieldname)
 
-	return hasattr(doc, fieldname)
+	return False
 
 
 def _child_table_field_is_supported(
@@ -69,10 +69,7 @@ def _child_table_field_is_supported(
 
 
 def _doctype_field_is_supported(doctype: str, fieldname: str) -> bool:
-	try:
-		meta = frappe.get_meta(doctype)
-	except Exception:
-		return False
+	meta = frappe.get_meta(doctype)
 	has_field = getattr(meta, "has_field", None)
 	return bool(callable(has_field) and has_field(fieldname))
 
