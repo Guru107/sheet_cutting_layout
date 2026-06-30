@@ -67,6 +67,21 @@ class SubmittedLayout(Layout):
 		raise AssertionError("Submitted layouts must not call save() during generated-link persistence")
 
 
+def _meta(fields: set[str], *, table_options: dict[str, str] | None = None) -> object:
+	table_options = table_options or {}
+
+	def get_field(fieldname: str) -> object | None:
+		child_doctype = table_options.get(fieldname)
+		if child_doctype is None:
+			return None
+		return SimpleNamespace(options=child_doctype)
+
+	return SimpleNamespace(
+		has_field=lambda fieldname: fieldname in fields,
+		get_field=get_field,
+	)
+
+
 class FakeDoc:
 	def __init__(self, doctype: str) -> None:
 		self.doctype = doctype
@@ -77,6 +92,13 @@ class FakeDoc:
 		self.insert_calls = 0
 		self.submit_calls = 0
 		self.save_calls: list[dict[str, object]] = []
+		if doctype == "Item":
+			self.meta = _meta({"allow_alternative_item"})
+		if doctype == "BOM":
+			self.meta = _meta(
+				{"allow_alternative_item", "items", "scrap_items"},
+				table_options={"items": "BOM Item", "scrap_items": "BOM Scrap Item"},
+			)
 
 	def append(self, fieldname: str, row: dict[str, object]) -> None:
 		getattr(self, fieldname).append(row)
@@ -174,6 +196,11 @@ class FakeFrappe:
 		doc = FakeDoc(doctype)
 		self.created_docs.append(doc)
 		return doc
+
+	def get_meta(self, doctype: str) -> object:
+		if doctype in {"Item", "BOM", "BOM Item"}:
+			return _meta({"allow_alternative_item"})
+		return _meta(set())
 
 	def get_cached_value(self, doctype: str, name: str, fieldname: str) -> object:
 		return self.db.get_value(doctype, name, fieldname)
@@ -351,6 +378,7 @@ class TestEndPieceBomService(SheetCuttingLayoutTestCase):
 					"item_code": existing_code,
 					"qty": 2.5,
 					"uom": "Kg",
+					"allow_alternative_item": 1,
 				}
 			],
 		)
@@ -466,6 +494,7 @@ class TestEndPieceBomService(SheetCuttingLayoutTestCase):
 		self.assertEqual(item.stock_uom, "Kg")
 		self.assertEqual(item.is_stock_item, 1)
 		self.assertEqual(item.disabled, 0)
+		self.assertEqual(item.allow_alternative_item, 1)
 		self.assertEqual(
 			item.uoms,
 			[
@@ -473,7 +502,14 @@ class TestEndPieceBomService(SheetCuttingLayoutTestCase):
 				{"uom": "Nos", "conversion_factor": 1.75},
 			],
 		)
-		self.assertEqual(self._created_doc(fake_frappe, "BOM").submit_calls, 1)
+		bom = self._created_doc(fake_frappe, "BOM")
+		self.assertEqual(bom.allow_alternative_item, 1)
+		self.assertEqual(bom.items[0]["allow_alternative_item"], 1)
+		self.assertIn(
+			("Item", "FG01SHR-EP-2x100x200", "allow_alternative_item", 1, {}),
+			fake_frappe.db.set_value_calls,
+		)
+		self.assertEqual(bom.submit_calls, 1)
 
 	def test_generation_uses_effective_raw_material_valuation_for_created_item(self) -> None:
 		fake_frappe = self._install_fakes(
@@ -767,6 +803,7 @@ class TestEndPieceBomService(SheetCuttingLayoutTestCase):
 					"item_code": existing_code,
 					"qty": 12.0,
 					"uom": "Kg",
+					"allow_alternative_item": 1,
 				}
 			],
 		)
@@ -822,6 +859,38 @@ class TestEndPieceBomService(SheetCuttingLayoutTestCase):
 				}
 			],
 		)
+
+	def test_generation_skips_bom_item_flag_when_child_schema_does_not_support_field(self) -> None:
+		existing_code = "FG01SHR-EP-2x100x200"
+		fake_frappe = self._install_fakes(existing_items={existing_code})
+		layout = Layout(end_pieces=[EndPiece()])
+		new_doc = fake_frappe.new_doc
+
+		def new_doc_without_bom_item_flag(doctype: str) -> FakeDoc:
+			doc = new_doc(doctype)
+			if doctype == "BOM":
+				doc.meta = _meta(
+					{"allow_alternative_item", "items", "scrap_items"},
+					table_options={"items": "BOM Item", "scrap_items": "BOM Scrap Item"},
+				)
+			return doc
+
+		def get_meta_without_bom_item_flag(doctype: str) -> object:
+			if doctype == "BOM Item":
+				return _meta(set())
+			if doctype in {"Item", "BOM"}:
+				return _meta({"allow_alternative_item"})
+			return _meta(set())
+
+		with (
+			patch.object(fake_frappe, "new_doc", side_effect=new_doc_without_bom_item_flag),
+			patch.object(fake_frappe, "get_meta", side_effect=get_meta_without_bom_item_flag),
+		):
+			self.service.generate_end_piece_boms(layout)
+
+		bom = self._created_doc(fake_frappe, "BOM")
+		self.assertEqual(bom.allow_alternative_item, 1)
+		self.assertNotIn("allow_alternative_item", bom.items[0])
 
 	def test_generation_validates_pending_rows_with_row_numbered_messages(self) -> None:
 		self._install_fakes()
