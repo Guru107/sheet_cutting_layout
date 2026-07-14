@@ -6,6 +6,16 @@ The format follows Keep a Changelog, adapted to stay lightweight for this repo.
 
 ## [Unreleased]
 
+## [1.0.2] - 2026-07-14
+
+### Fixed
+
+- added the missing System Manager submit permission for Sheet Cutting Layout so approved layouts can be submitted without a permission block
+
+### Changed
+
+- app version promoted from `1.0.1` to `1.0.2`
+
 ## [1.0.1] - 2026-06-28
 
 ### Added
