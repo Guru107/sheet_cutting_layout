@@ -53,3 +53,19 @@ risk.
 Do not commit bench site config, credentials, API keys, generated build output, or private data.
 Keep long-running work out of request hooks; use Frappe background jobs for expensive operations.
 When adding database-heavy features, include selective filters and mention useful indexes in the PR.
+
+## Agent skills
+
+### Issue tracker
+
+Issues are tracked in GitHub Issues using the `gh` CLI. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Use the canonical `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, and `wontfix`
+labels. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+This is a single-context repository using root `CONTEXT.md` and `docs/adr/`. See
+`docs/agents/domain.md`.
