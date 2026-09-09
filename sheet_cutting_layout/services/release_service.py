@@ -292,6 +292,7 @@ def _insert_frappe_bom(bom: BomDocument) -> BomDocument:
 	for row in bom.scrap_items:
 		if row.row_type == "end_piece_byproduct":
 			ensure_item_allows_alternatives(row.item_code)
+	for row in _output_rows_for_bom_document(bom_doc, bom.scrap_items):
 		_append_frappe_bom_scrap_row(bom_doc, row)
 	bom_doc.insert()
 	bom_doc.submit()
@@ -300,6 +301,28 @@ def _insert_frappe_bom(bom: BomDocument) -> BomDocument:
 	bom.is_active = bool(getattr(bom_doc, "is_active", True))
 	bom._persisted_with_frappe = True
 	return bom
+
+
+def _output_rows_for_bom_document(bom_doc: object, rows: list[BomItemRow]) -> list[BomItemRow]:
+	has_scrap_items = _has_bom_child_table(bom_doc, "scrap_items")
+	has_secondary_items = _has_bom_child_table(bom_doc, "secondary_items")
+	if not has_scrap_items and not has_secondary_items:
+		return rows
+
+	merged_rows: dict[tuple[str, str, str], BomItemRow] = {}
+	for row in rows:
+		output_type = _secondary_item_type(row) if has_secondary_items else ""
+		key = (row.item_code, row.uom, output_type)
+		if key in merged_rows:
+			merged_rows[key].qty += row.qty
+			continue
+		merged_rows[key] = BomItemRow(
+			item_code=row.item_code,
+			qty=row.qty,
+			row_type=row.row_type,
+			uom=row.uom,
+		)
+	return list(merged_rows.values())
 
 
 def _append_frappe_bom_scrap_row(bom_doc: object, row: BomItemRow) -> None:

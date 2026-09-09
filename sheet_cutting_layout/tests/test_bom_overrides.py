@@ -21,9 +21,8 @@ def _bom(
 
 
 class TestBomOverrides(SheetCuttingLayoutTestCase):
-	def test_manual_shearing_bom_requires_sheet_cutting_layout_link(self) -> None:
-		with self.assertRaisesRegex(frappe.ValidationError, "Create a Sheet Cutting Layout"):
-			validate_shearing_bom_source(_bom("Shearing"), "before_insert")
+	def test_manual_shearing_bom_insert_is_allowed(self) -> None:
+		validate_shearing_bom_source(_bom("Shearing"), "before_insert")
 
 	def test_linked_shearing_bom_insert_is_allowed(self) -> None:
 		validate_shearing_bom_source(_bom("Shearing", "SCL-001"), "before_insert")
@@ -31,9 +30,8 @@ class TestBomOverrides(SheetCuttingLayoutTestCase):
 	def test_non_shearing_bom_is_unaffected(self) -> None:
 		validate_shearing_bom_source(_bom("Machining"), "before_insert")
 
-	def test_copied_shearing_bom_without_no_copy_layout_link_is_blocked(self) -> None:
-		with self.assertRaisesRegex(frappe.ValidationError, "Create a Sheet Cutting Layout"):
-			validate_shearing_bom_source(_bom("Shearing", None), "before_insert")
+	def test_copied_shearing_bom_without_layout_link_is_allowed(self) -> None:
+		validate_shearing_bom_source(_bom("Shearing", None), "before_insert")
 
 	def test_update_cost_style_resaves_are_allowed_for_layout_generated_bom(self) -> None:
 		validate_shearing_bom_source(_bom("Shearing", "SCL-001"), "before_save")

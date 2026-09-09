@@ -226,6 +226,58 @@ class _SavableBomFrappeStub:
 		return type("SavableBom", (), {"name": name, "save": lambda self, **kwargs: None})()
 
 
+def _recording_bom_frappe_stub(output_table: str, created_boms: list[object]) -> type[object]:
+	class FrappeBom:
+		def __init__(self) -> None:
+			self.name = ""
+			self.items: list[dict[str, object]] = []
+			setattr(self, output_table, [])
+
+		def append(self, fieldname: str, row: dict[str, object]) -> None:
+			getattr(self, fieldname).append(row)
+
+		def insert(self) -> None:
+			self.name = self.name or "BOM-PERSISTED"
+			created_boms.append(self)
+
+		def submit(self) -> None:
+			self.docstatus = 1
+
+	class FrappeStub:
+		@staticmethod
+		def new_doc(doctype: str) -> FrappeBom:
+			assert doctype == "BOM"
+			return FrappeBom()
+
+	return FrappeStub
+
+
+def _layout_with_shared_scrap_and_reuse_output() -> Layout:
+	layout = Layout(
+		process_scrap_item="SHARED-OUTPUT",
+		weight_per_sheet_kg=12.0,
+		finished_parts=[
+			FinishedPart(
+				"PART001SHR",
+				parts_per_sheet=2,
+				gross_weight_per_part_kg=4.0,
+				scrap_weight_per_part_kg=1.0,
+			)
+		],
+		end_pieces=[
+			EndPiece(weight_kg=3.0, disposition="Scrap", scrap_item="SHARED-OUTPUT"),
+			EndPiece(
+				weight_kg=5.0,
+				strip_weight_kg=4.0,
+				disposition="Reuse",
+				end_piece_item_code="SHARED-OUTPUT",
+			),
+		],
+	)
+	layout.company = "Test Company"
+	return layout
+
+
 class ReleaseServiceIsolatedTestCase(SheetCuttingLayoutTestCase):
 	"""Keep unit-style tests deterministic under bench by disabling live persistence paths."""
 
@@ -238,7 +290,6 @@ class TestReleaseContracts(SheetCuttingLayoutTestCase):
 	def test_hooks_exposes_required_fixtures(self) -> None:
 		assert hooks.doc_events == {
 			"BOM": {
-				"before_insert": "sheet_cutting_layout.overrides.bom.validate_shearing_bom_source",
 				"before_cancel": "sheet_cutting_layout.overrides.bom.validate_shearing_bom_source",
 			}
 		}
@@ -786,6 +837,67 @@ class TestReleaseFlow(ReleaseServiceIsolatedTestCase):
 			("PROCESSSCRAP001", 20.0, "process_scrap"),
 			("ENDSCRAP001", 10.0, "end_piece_scrap"),
 		]
+
+	def test_release_merges_all_matching_output_items_for_v15_bom(self) -> None:
+		from sheet_cutting_layout.services import release_service
+
+		created_boms: list[object] = []
+		layout = _layout_with_shared_scrap_and_reuse_output()
+		self.start_patcher(
+			patch.object(
+				release_service,
+				"frappe",
+				_recording_bom_frappe_stub("scrap_items", created_boms),
+			)
+		)
+		self.start_patcher(
+			patch.object(release_service, "set_allow_alternative_item_if_supported", return_value=False)
+		)
+		self.start_patcher(patch.object(release_service, "ensure_item_allows_alternatives"))
+
+		release_service.release_layout(
+			layout,
+			validators=[lambda _layout: None],
+			layouts=[],
+			boms=[],
+		)
+
+		self.assertEqual(
+			created_boms[0].scrap_items,
+			[{"item_code": "SHARED-OUTPUT", "stock_qty": 9.0, "stock_uom": "Kg"}],
+		)
+
+	def test_release_groups_matching_v16_outputs_by_item_and_disposition(self) -> None:
+		from sheet_cutting_layout.services import release_service
+
+		created_boms: list[object] = []
+		layout = _layout_with_shared_scrap_and_reuse_output()
+		self.start_patcher(
+			patch.object(
+				release_service,
+				"frappe",
+				_recording_bom_frappe_stub("secondary_items", created_boms),
+			)
+		)
+		self.start_patcher(
+			patch.object(release_service, "set_allow_alternative_item_if_supported", return_value=False)
+		)
+		self.start_patcher(patch.object(release_service, "ensure_item_allows_alternatives"))
+
+		release_service.release_layout(
+			layout,
+			validators=[lambda _layout: None],
+			layouts=[],
+			boms=[],
+		)
+
+		self.assertEqual(
+			[(row["type"], row["item_code"], row["stock_qty"]) for row in created_boms[0].secondary_items],
+			[
+				("Scrap", "SHARED-OUTPUT", 5.0),
+				("By-Product", "SHARED-OUTPUT", 4.0),
+			],
+		)
 
 	def test_generated_boms_are_activated_on_release(self) -> None:
 		from sheet_cutting_layout.services.release_service import release_layout

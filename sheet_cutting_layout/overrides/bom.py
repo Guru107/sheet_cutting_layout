@@ -18,7 +18,3 @@ def validate_shearing_bom_source(doc: object, method: str | None = None) -> None
 				"Use the Sheet Cutting Layout workflow instead of cancelling or amending this BOM."
 			)
 		)
-	if method == "before_insert":
-		if layout_name:
-			return
-		frappe.throw(_("Create a Sheet Cutting Layout to generate a Shearing BOM."))
