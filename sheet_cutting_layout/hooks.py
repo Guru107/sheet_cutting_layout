@@ -7,7 +7,8 @@ app_license = "agpl-3.0"
 
 doc_events = {
 	"BOM": {
-		"before_cancel": "sheet_cutting_layout.overrides.bom.validate_shearing_bom_source",
+		"before_insert": "sheet_cutting_layout.overrides.bom.validate_generated_shearing_bom_lifecycle",
+		"before_cancel": "sheet_cutting_layout.overrides.bom.validate_generated_shearing_bom_lifecycle",
 	}
 }
 

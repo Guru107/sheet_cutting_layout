@@ -7,7 +7,7 @@ from unittest.mock import patch
 
 import frappe
 
-from sheet_cutting_layout.overrides.bom import validate_shearing_bom_source
+from sheet_cutting_layout.overrides.bom import validate_generated_shearing_bom_lifecycle
 from sheet_cutting_layout.tests.base import SheetCuttingLayoutTestCase
 from sheet_cutting_layout.tests.factories import ensure_item
 
@@ -109,7 +109,7 @@ class FakeDoc:
 		if self.doctype == "Item" and not any(row.get("uom") == self.stock_uom for row in self.uoms):
 			self.uoms.insert(0, {"uom": self.stock_uom, "conversion_factor": 1})
 		if self.doctype == "BOM":
-			validate_shearing_bom_source(self, "before_insert")
+			validate_generated_shearing_bom_lifecycle(self, "before_insert")
 		if self.doctype == "BOM" and not getattr(self, "company", None):
 			raise ValueError("Company is required")
 		if not self.name:

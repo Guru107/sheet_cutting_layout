@@ -226,30 +226,35 @@ class _SavableBomFrappeStub:
 		return type("SavableBom", (), {"name": name, "save": lambda self, **kwargs: None})()
 
 
-def _recording_bom_frappe_stub(output_table: str, created_boms: list[object]) -> type[object]:
-	class FrappeBom:
-		def __init__(self) -> None:
-			self.name = ""
-			self.items: list[dict[str, object]] = []
-			setattr(self, output_table, [])
+class _RecordingBom:
+	scrap_items: list[dict[str, object]]
+	secondary_items: list[dict[str, object]]
 
-		def append(self, fieldname: str, row: dict[str, object]) -> None:
-			getattr(self, fieldname).append(row)
+	def __init__(self, output_table: str, created_boms: list["_RecordingBom"]) -> None:
+		self.name = ""
+		self.items: list[dict[str, object]] = []
+		self._created_boms = created_boms
+		setattr(self, output_table, [])
 
-		def insert(self) -> None:
-			self.name = self.name or "BOM-PERSISTED"
-			created_boms.append(self)
+	def append(self, fieldname: str, row: dict[str, object]) -> None:
+		getattr(self, fieldname).append(row)
 
-		def submit(self) -> None:
-			self.docstatus = 1
+	def insert(self) -> None:
+		self.name = self.name or "BOM-PERSISTED"
+		self._created_boms.append(self)
 
-	class FrappeStub:
-		@staticmethod
-		def new_doc(doctype: str) -> FrappeBom:
-			assert doctype == "BOM"
-			return FrappeBom()
+	def submit(self) -> None:
+		self.docstatus = 1
 
-	return FrappeStub
+
+class _RecordingBomFrappeStub:
+	def __init__(self, output_table: str, created_boms: list[_RecordingBom]) -> None:
+		self.output_table = output_table
+		self.created_boms = created_boms
+
+	def new_doc(self, doctype: str) -> _RecordingBom:
+		assert doctype == "BOM"
+		return _RecordingBom(self.output_table, self.created_boms)
 
 
 def _layout_with_shared_scrap_and_reuse_output() -> Layout:
@@ -290,7 +295,8 @@ class TestReleaseContracts(SheetCuttingLayoutTestCase):
 	def test_hooks_exposes_required_fixtures(self) -> None:
 		assert hooks.doc_events == {
 			"BOM": {
-				"before_cancel": "sheet_cutting_layout.overrides.bom.validate_shearing_bom_source",
+				"before_insert": "sheet_cutting_layout.overrides.bom.validate_generated_shearing_bom_lifecycle",
+				"before_cancel": "sheet_cutting_layout.overrides.bom.validate_generated_shearing_bom_lifecycle",
 			}
 		}
 		assert hooks.before_tests == "sheet_cutting_layout.tests.test_setup.before_tests"
@@ -841,13 +847,13 @@ class TestReleaseFlow(ReleaseServiceIsolatedTestCase):
 	def test_release_merges_all_matching_output_items_for_v15_bom(self) -> None:
 		from sheet_cutting_layout.services import release_service
 
-		created_boms: list[object] = []
+		created_boms: list[_RecordingBom] = []
 		layout = _layout_with_shared_scrap_and_reuse_output()
 		self.start_patcher(
 			patch.object(
 				release_service,
 				"frappe",
-				_recording_bom_frappe_stub("scrap_items", created_boms),
+				_RecordingBomFrappeStub("scrap_items", created_boms),
 			)
 		)
 		self.start_patcher(
@@ -870,13 +876,13 @@ class TestReleaseFlow(ReleaseServiceIsolatedTestCase):
 	def test_release_groups_matching_v16_outputs_by_item_and_disposition(self) -> None:
 		from sheet_cutting_layout.services import release_service
 
-		created_boms: list[object] = []
+		created_boms: list[_RecordingBom] = []
 		layout = _layout_with_shared_scrap_and_reuse_output()
 		self.start_patcher(
 			patch.object(
 				release_service,
 				"frappe",
-				_recording_bom_frappe_stub("secondary_items", created_boms),
+				_RecordingBomFrappeStub("secondary_items", created_boms),
 			)
 		)
 		self.start_patcher(

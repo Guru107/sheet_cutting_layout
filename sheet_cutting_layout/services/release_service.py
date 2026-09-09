@@ -309,10 +309,10 @@ def _output_rows_for_bom_document(bom_doc: object, rows: list[BomItemRow]) -> li
 	if not has_scrap_items and not has_secondary_items:
 		return rows
 
-	merged_rows: dict[tuple[str, str, str], BomItemRow] = {}
+	merged_rows: dict[tuple[str, str], BomItemRow] = {}
 	for row in rows:
 		output_type = _secondary_item_type(row) if has_secondary_items else ""
-		key = (row.item_code, row.uom, output_type)
+		key = (row.item_code, output_type)
 		if key in merged_rows:
 			merged_rows[key].qty += row.qty
 			continue
